@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { createRng } from '../core/rng';
-import { BACK_VIEWS, NPC_LOOKS, PALETTE, SPRITES } from './sprites';
+import { BACK_VIEWS, ENEMY_LOOKS, NPC_LOOKS, PALETTE, SPRITES } from './sprites';
 import { generateInteriorArt } from './interiorArt';
 import { generateStreetTextures } from './streetArt';
 import { generateHideoutArt } from './hideoutArt';
@@ -39,6 +39,12 @@ export function generateTextures(scene: Phaser.Scene): void {
 
   // Dash afterimage: player silhouette in cyan.
   gridTexture(scene, 'player-dash', SPRITES.player.map(r => r.replace(/[^.]/g, 'c')));
+
+  for (const [key, [base, map]] of Object.entries(ENEMY_LOOKS)) {
+    SPRITES[key] = SPRITES[base].map(r => [...r].map(ch => map[ch] ?? ch).join(''));
+    gridTexture(scene, key, SPRITES[key]);
+    BACK_VIEWS[key] = { rows: BACK_VIEWS[base].rows, to: map[BACK_VIEWS[base].to] ?? BACK_VIEWS[base].to };
+  }
 
   for (const [key, { rows, to }] of Object.entries(BACK_VIEWS)) {
     gridTexture(scene, `${key}-back`, SPRITES[key].map((r, i) => rows.includes(i) ? r.replace(/[^.k]/g, to) : r));

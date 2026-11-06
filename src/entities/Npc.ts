@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
 import { floatText } from '../fx/effects';
 
-export type NpcActivity = 'wander' | 'smoke' | 'talk' | 'sit' | 'phone' | 'idle';
+export type NpcActivity = 'wander' | 'smoke' | 'talk' | 'sit' | 'phone' | 'idle' | 'eat' | 'play' | 'cook' | 'lean';
 
 const EMOTES: Record<NpcActivity, string[]> = {
   wander: [], idle: ['...', '?'],
-  smoke: [], talk: ['...', 'ha ha', '!', 'tu savais ?', 'chut'],
-  sit: ['zzz', '...'], phone: ['allô ?', 'ouais...', 'demain.'],
+  smoke: [], talk: ['...', 'Ha ha', '!', 'Tu savais ?', 'Chut'],
+  sit: ['zzz', '...'], phone: ['Allô ?', 'Ouais...', 'Demain.'],
+  eat: ['Slurp', 'Trop salé', 'Encore un !'], play: ['Allez !', 'Non non NON', 'GG', 'Record !'],
+  cook: ['Ramen !', 'Suivant !', 'Ça arrive !'], lean: ['...', 'Tu regardes quoi ?', 'Pff'],
 };
 
 /** Building resident: walks between random points or stays put doing something. No combat. */

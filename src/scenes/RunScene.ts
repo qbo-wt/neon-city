@@ -87,8 +87,7 @@ export class RunScene extends Phaser.Scene {
 
     this.hooks = {
       player: this.player,
-      fireBullet: (x, y, a, s, d) => this.bullets.fire(x, y, a, s, d),
-      summon: id => this.summon(id),
+      fireBullet: (x, y, a, s, d, o) => this.bullets.fire(x, y, a, s, d, 'enemy', o),
       onDeath: e => this.onEnemyDeath(e),
     };
 
@@ -155,7 +154,15 @@ ${streetName.toUpperCase()}`;
     if (!b.active || b.getData('owner') !== 'enemy') return;
     const res = this.player.receiveHit(b.getData('damage'), this.time.now, b.x, b.y);
     if (res === 'parried') this.bullets.reflect(b);
-    else if (res === 'hit') b.destroy();
+    else if (res === 'hit') {
+      // Quickhack: the shot also pushes psychosis up.
+      const psy = (b.getData('psy') as number) * (1 - this.stats.psyResist);
+      if (psy > 0) {
+        this.run.psy = Math.min(100, this.run.psy + psy);
+        floatText(this, this.player.x, this.player.y - 16, `+${Math.round(psy)} PSY`, '#39ff88', 8);
+      }
+      b.destroy();
+    }
   }
 
   private bulletHitsEnemy(b: Phaser.Physics.Arcade.Image, e: Enemy) {
@@ -184,7 +191,7 @@ ${streetName.toUpperCase()}`;
         // The player may have moved onto the point during the telegraph: re-pick if too close.
         const p = Phaser.Math.Distance.Between(pt.x, pt.y, this.player.x, this.player.y) < CONFIG.MIN_SPAWN_DIST ? this.freePoint() : pt;
         const e = this.spawnEnemy(ids[i], p.x, p.y);
-        if (ids[i] === 'boss') this.boss = e;
+        if (e.def.behavior === 'boss') this.boss = e;
       });
     });
   }
@@ -195,13 +202,6 @@ ${streetName.toUpperCase()}`;
     return spawnPoints(this.room.template, 1, tile, Math.random)[0];
   }
 
-  private summon(id: EnemyId) {
-    const live = this.enemies.getChildren().filter(e => (e as Enemy).summoned).length;
-    if (live >= 4) return;
-    const p = this.freePoint();
-    this.spawnEnemy(id, p.x, p.y).summoned = true;
-  }
-
   private spawnEnemy(id: EnemyId, x: number, y: number): Enemy {
     const e = new Enemy(this, x, y, ENEMIES[id], this.hooks);
     this.enemies.add(e);
@@ -210,10 +210,11 @@ ${streetName.toUpperCase()}`;
   }
 
   private onEnemyDeath(e: Enemy) {
+    if (e === this.boss) this.boss = undefined;
+    if (e.exploded) return; // blew itself up: no kill, no credits
     this.run.kills++;
     this.run.psy = psyOnKill(this.run.psy, this.stats.psyResist);
-    // Boss summons pay nothing, so stalling the boss to farm them is pointless.
-    const gain = e.summoned ? 0 : Math.round(e.def.credits * this.stats.creditMult);
+    const gain = Math.round(e.def.credits * this.stats.creditMult);
     this.run.creditsEarned += gain;
     if (gain) floatText(this, e.x, e.y - 4, `+${gain}¢`, '#f5e663', 7);
     if (e === this.boss) this.boss = undefined;
@@ -224,7 +225,7 @@ ${streetName.toUpperCase()}`;
     if (this.waveIndex < this.room.waves.length) { this.spawnWave(); return; }
     this.roomActive = false;
     this.bullets.group.clear(true, true);
-    if (this.room.isBoss) {
+    if (this.room.isBoss && !this.room.doorRewards.length) {
       this.ending = true;
       (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
       this.cameras.main.flash(400, 255, 42, 109);
@@ -232,11 +233,11 @@ ${streetName.toUpperCase()}`;
       this.time.delayedCall(1500, () => this.finish(true));
       return;
     }
-    floatText(this, CONFIG.WIDTH / 2, 120, 'SECTEUR NETTOYÉ', '#00f0ff', 11);
+    floatText(this, CONFIG.WIDTH / 2, 120, this.room.isBoss ? 'CIBLE NEUTRALISÉE' : 'SECTEUR NETTOYÉ', this.room.isBoss ? '#f5e663' : '#00f0ff', 11);
     if (this.stats.regenOnClear > 0) {
       const before = this.player.hp;
       this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + this.stats.maxHp * this.stats.regenOnClear);
-      this.run.hpHealed += this.player.hp - before;
+      this.run.hpHealed += Math.max(0, this.player.hp - before);
       floatText(this, this.player.x, this.player.y - 14, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 8);
     }
     this.unlockDoors();
@@ -280,7 +281,7 @@ ${streetName.toUpperCase()}`;
     if (reward === 'heal') {
       const before = this.player.hp;
       this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + this.stats.maxHp * CONFIG.HEAL_FRACTION);
-      this.run.hpHealed += this.player.hp - before;
+      this.run.hpHealed += Math.max(0, this.player.hp - before);
       floatText(this, this.player.x, this.player.y - 14, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 9);
     }
     if (reward === 'chest') {

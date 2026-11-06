@@ -8,18 +8,34 @@ describe('run generation', () => {
   it('is deterministic', () => {
     expect(JSON.stringify(generateRun(5))).toBe(JSON.stringify(generateRun(5)));
   });
-  it('has 8 rooms, only the last is the boss', () => {
+  it('has 10 rooms with a boss every 5 rooms', () => {
     const run = generateRun(11);
-    expect(run).toHaveLength(CONFIG.ROOMS_PER_RUN);
-    expect(run.filter(r => r.isBoss).map(r => r.index)).toEqual([CONFIG.ROOMS_PER_RUN - 1]);
-    expect(run[run.length - 1].doorRewards).toEqual([]);
+    expect(CONFIG.ROOMS_PER_RUN).toBe(10);
+    expect(run).toHaveLength(10);
+    expect(run.filter(r => r.isBoss).map(r => r.index)).toEqual([4, 9]);
+  });
+  it('a boss room holds the boss alone, in a single wave', () => {
+    const run = generateRun(3);
+    expect(run[4].waves).toEqual([['warden']]);
+    expect(run[9].waves).toEqual([['boss']]);
+  });
+  it('the mid-run boss opens doors, the final boss ends the run', () => {
+    const run = generateRun(8);
+    expect(run[4].doorRewards.length).toBeGreaterThanOrEqual(2);
+    expect(run[9].doorRewards).toEqual([]);
+  });
+  it('the 3 new enemies appear in later sectors', () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 40; seed++) generateRun(seed).filter(r => !r.isBoss).forEach(r => r.waves.flat().forEach(id => seen.add(id)));
+    ['drone', 'bomber', 'hacker'].forEach(id => expect(seen.has(id)).toBe(true));
+    generateRun(1)[0].waves.flat().forEach(id => expect(['runner', 'gunner']).toContain(id));
   });
   it('waves grow with index and doors offer 2-3 rewards', () => {
     for (let seed = 0; seed < 50; seed++) {
       const run = generateRun(seed);
       expect(run[0].waves).toHaveLength(1);
       expect(run[6].waves.length).toBeGreaterThanOrEqual(2);
-      run.slice(0, -1).forEach(r => {
+      run.filter(r => !r.isBoss).forEach(r => {
         expect(r.doorRewards.length).toBeGreaterThanOrEqual(2);
         expect(r.doorRewards.length).toBeLessThanOrEqual(3);
       });

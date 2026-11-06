@@ -75,6 +75,56 @@ export function generateInteriorArt(scene: Phaser.Scene, tex: CanvasTex, px: Px)
       .forEach(([c, x, y]) => px(ctx, c as string, x as number, y as number, 9, 7));
   });
 
+  tex(scene, 'arcade-cab', 22, 32, ctx => {
+    px(ctx, '#05030f', 0, 0, 22, 32); px(ctx, '#6a2cff', 1, 1, 20, 30);
+    px(ctx, '#05030f', 3, 4, 16, 12); px(ctx, '#00f0ff', 4, 5, 14, 10);
+    px(ctx, '#ff2a6d', 6, 8, 3, 3); px(ctx, '#f5e663', 12, 10, 3, 2); // game on screen
+    px(ctx, '#36167f', 1, 18, 20, 6); px(ctx, '#ff2a6d', 5, 20, 2, 2); px(ctx, '#f5e663', 14, 20, 2, 2); px(ctx, '#39ff88', 17, 20, 2, 2);
+    px(ctx, '#f5e663', 3, 1, 16, 2); // marquee
+  });
+  tex(scene, 'noodle-cart', 60, 30, ctx => {
+    px(ctx, '#05030f', 0, 0, 60, 30);
+    for (let x = 1; x < 59; x += 8) { px(ctx, '#ff2a6d', x, 1, 4, 9); px(ctx, '#e8e8ff', x + 4, 1, 4, 9); } // awning
+    px(ctx, '#5a4a3a', 1, 11, 58, 14); px(ctx, '#3a2f25', 1, 25, 58, 4);
+    [8, 22, 36].forEach(x => { px(ctx, '#05030f', x, 13, 10, 7); px(ctx, '#c8c8e8', x + 1, 14, 8, 5); px(ctx, '#f5e663', x + 2, 15, 6, 2); }); // bowls
+    px(ctx, '#ff3b3b', 50, 13, 6, 6); // lantern
+  });
+  tex(scene, 'boxes', 26, 26, ctx => {
+    px(ctx, '#05030f', 0, 8, 26, 18); px(ctx, '#8a6a4a', 1, 9, 12, 16); px(ctx, '#7a5a3a', 13, 9, 12, 16);
+    px(ctx, '#05030f', 5, 0, 16, 10); px(ctx, '#9a7a5a', 6, 1, 14, 8);
+    px(ctx, '#5a4a3a', 1, 16, 24, 1); px(ctx, '#e8e8ff', 16, 12, 6, 3);
+  });
+  tex(scene, 'mop-bucket', 14, 16, ctx => {
+    px(ctx, '#05030f', 1, 6, 12, 10); px(ctx, '#f5e663', 2, 7, 10, 8); px(ctx, '#5a8aa8', 3, 7, 8, 2);
+    px(ctx, '#8a6a4a', 9, 0, 2, 9);
+  });
+  tex(scene, 'bike', 34, 16, ctx => {
+    ctx.strokeStyle = '#05030f'; ctx.lineWidth = 2;
+    [[7, 9], [27, 9]].forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.stroke(); });
+    px(ctx, '#00f0ff', 8, 6, 18, 2); px(ctx, '#00f0ff', 15, 2, 2, 6); px(ctx, '#e8e8ff', 13, 1, 6, 2);
+  });
+  ['#ff2a6d', '#00f0ff', '#f5e663', '#39ff88'].forEach((c, i) => tex(scene, `poster-${i}`, 14, 18, ctx => {
+    px(ctx, '#05030f', 0, 0, 14, 18); px(ctx, c, 1, 1, 12, 16);
+    px(ctx, '#05030f', 3, 3, 8, 7); px(ctx, '#e8e8ff', 3, 12, 8, 1); px(ctx, '#e8e8ff', 3, 14, 6, 1);
+  }));
+  tex(scene, 'ad-screen', 64, 20, ctx => {
+    px(ctx, '#05030f', 0, 0, 64, 20); px(ctx, '#140f2b', 1, 1, 62, 18);
+    px(ctx, '#ff2a6d55', 1, 1, 62, 18);
+  });
+  tex(scene, 'couch-old', 50, 20, ctx => {
+    px(ctx, '#05030f', 0, 0, 50, 20); px(ctx, '#5a3a2a', 1, 1, 48, 18);
+    px(ctx, '#7a4a32', 3, 2, 21, 10); px(ctx, '#7a4a32', 26, 2, 21, 10); px(ctx, '#3a2418', 1, 13, 48, 6);
+    px(ctx, '#c8a070', 30, 5, 4, 3); // stuffing coming out
+  });
+  tex(scene, 'doormat', 22, 8, ctx => {
+    px(ctx, '#3a2f25', 0, 0, 22, 8);
+    for (let x = 1; x < 22; x += 3) px(ctx, '#2a2118', x, 1, 1, 6);
+  });
+  tex(scene, 'laundry', 18, 14, ctx => {
+    px(ctx, '#05030f', 0, 2, 18, 12); px(ctx, '#8a86b0', 1, 3, 16, 10);
+    px(ctx, '#ff2a6d', 3, 0, 5, 5); px(ctx, '#00f0ff', 9, 1, 6, 4); px(ctx, '#f5e663', 6, 4, 4, 3);
+  });
+
   // ---------- ripperdoc clinic: cold white tiles, red medical accents ----------
   tex(scene, 'floor-clinic', 32, 32, ctx => {
     px(ctx, '#c9ccd6', 0, 0, 32, 32);

@@ -23,9 +23,11 @@ export const CONFIG = {
   COUNTER_MULT: 2,
   HIT_INVULN_MS: 500,
 
-  ROOMS_PER_RUN: 8,
+  ROOMS_PER_RUN: 10,
+  /** a boss fight, alone, every N sectors; the last one ends the run */
+  BOSS_EVERY: 5,
   /** psychosis per second in combat, even with no implant: Neon City wears you down */
-  PSY_BASE_RATE: 0.35,
+  PSY_BASE_RATE: 0.28,
   PSY_RATE_PER_LOAD: 0.035,
   PSY_PER_KILL: 1,
   PSY_DRAIN_SLOW: 3,

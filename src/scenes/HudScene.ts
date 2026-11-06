@@ -28,8 +28,8 @@ export class HudScene extends Phaser.Scene {
     this.psyText = txt(this, 126, 3, '', 6);
     this.rightText = txt(this, CONFIG.WIDTH - 4, 3, '', 6).setOrigin(1, 0);
     this.implantsText = txt(this, 4, CONFIG.HEIGHT - 10, '', 6, '#8a86b0');
-    this.bossText = txt(this, CONFIG.WIDTH / 2, CONFIG.HEIGHT - 28, '', 7, '#ff2a6d').setOrigin(0.5);
-    this.crisisText = txt(this, CONFIG.WIDTH / 2, 30, 'CYBERPSYCHOSE', 14, '#ff2a6d').setOrigin(0.5).setVisible(false);
+    this.bossText = txt(this, CONFIG.WIDTH / 2, 21, '', 7, '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 3);
+    this.crisisText = txt(this, CONFIG.WIDTH / 2, 48, 'CYBERPSYCHOSE', 14, '#ff2a6d').setOrigin(0.5).setVisible(false);
   }
 
   update(time: number) {
@@ -60,7 +60,9 @@ export class HudScene extends Phaser.Scene {
 
     if (d.boss) {
       this.bossText.setText(d.boss.name.toUpperCase());
-      bar(g, W / 2 - 100, CONFIG.HEIGHT - 20, 200, 5, d.boss.hp / d.boss.max, COLORS.magenta);
+      // Boss bar across the top of the screen, under the HUD strip.
+      g.fillStyle(0x05030f, 0.75).fillRect(W / 2 - 124, 15, 248, 20);
+      bar(g, W / 2 - 120, 27, 240, 5, d.boss.hp / d.boss.max, COLORS.magenta);
     } else this.bossText.setText('');
 
     this.drawPsychosisFx(time, tier);

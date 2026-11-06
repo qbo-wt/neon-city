@@ -167,6 +167,26 @@ export const SPRITES: Record<string, string[]> = {
     '.cc.',
   ],
   'fx-spark': ['ww', 'ww'],
+  'enemy-drone': [
+    '...kkkkkk...',
+    'kkkGggggGkkk',
+    'kgkgrrrrgkgk',
+    'kkkgrwwrgkkk',
+    '...kgrrgk...',
+    '...kGggGk...',
+    '..kk.kk.kk..',
+    '.kg..kk..gk.',
+    '.kk......kk.',
+    '............',
+  ],
+  'bullet-hack': [
+    '.eeee.',
+    'eewwee',
+    'ewwwwe',
+    'ewwwwe',
+    'eewwee',
+    '.eeee.',
+  ],
   // Facing indicator drawn pointing right, rotated at runtime.
   chevron: [
     'ww....',
@@ -187,6 +207,13 @@ export const NPC_LOOKS: Record<string, Record<string, string>> = {
   'npc-5': { c: 'r', C: 'M', w: 'c', s: 'h' },
   'npc-doc': { c: 'w', C: 'g', w: 'G', y: 'r' },
   'npc-netrunner': { c: 'e', C: 'G', w: 'k', y: 'e', s: 'S' },
+};
+
+/** New enemies as recolours of existing sprites: [base sprite, char map]. */
+export const ENEMY_LOOKS: Record<string, [string, Record<string, string>]> = {
+  'enemy-hacker': ['enemy-gunner', { p: 'e', P: 'G', m: 'e', y: 'e' }],
+  'enemy-bomber': ['enemy-runner', { m: 'y', M: 'Y', w: 'r', g: 'Y' }],
+  'enemy-warden': ['enemy-boss', { y: 'c', m: 'p', M: 'P', r: 'e' }],
 };
 
 /** Back views: the face rows are painted over with hair/helmet so you can tell who looks away. */

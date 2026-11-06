@@ -26,7 +26,7 @@ npm run build      # vérification des types + build statique dans dist/
 
 ## Boucle de jeu
 
-Appart (terminal = historique des runs) → couloir de l'immeuble (PNJ, clinique du charcudoc = arbre du **corps**, repaire de la netrunneuse = arbre de l'**esprit**) → ascenseur → run de 8 secteurs dans les rues (décor différent à chaque secteur, le dernier est un boss) → mort ou victoire → les crédits sont gardés, les implants et la psychose sont perdus → retour à l'appart.
+Appart (terminal = historique des runs) → couloir de l'immeuble (PNJ, clinique du charcudoc = arbre du **corps**, repaire de la netrunneuse = arbre de l'**esprit**) → ascenseur → run de 10 secteurs dans les rues (décor différent à chaque secteur, un boss seul aux secteurs 5 et 10) → mort ou victoire → les crédits sont gardés, les implants et la psychose sont perdus → retour à l'appart.
 
 **Psychose** : la jauge monte dès le premier combat (la ville use), plus vite avec chaque implant, et à chaque ennemi tué. À 50 % : glitchs visuels. À 75 % : la vie baisse lentement. À 100 % : crise de cyberpsychose (+50 % dégâts et vitesse, mais la vie fond).
 
