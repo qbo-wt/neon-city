@@ -155,15 +155,17 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.lungeDir = aim;
     this.lungeUntil = now + 70;
 
-    const hx = this.x + aim.x * CONFIG.ATTACK_RANGE * 0.7, hy = this.y + aim.y * CONFIG.ATTACK_RANGE * 0.7;
+    const reach = CONFIG.ATTACK_RANGE * 0.7 * this.stats.rangeMult;
+    const hx = this.x + aim.x * reach, hy = this.y + aim.y * reach;
     const slash = this.scene.add.image(this.x + aim.x * 8, this.y + aim.y * 8, 'slash')
-      .setRotation(Math.atan2(aim.y, aim.x)).setDepth(12).setScale(finisher ? 1.3 : 1)
+      .setRotation(Math.atan2(aim.y, aim.x)).setDepth(12).setScale((finisher ? 1.3 : 1) * this.stats.rangeMult)
       .setFlipY(this.comboIndex === 2);
-    if (finisher) slash.setTint(COLORS.magenta);
+    if (this.stats.rangeMult > 1) slash.setTint(0xff3b3b); // katana: red moon arc
+    else if (finisher) slash.setTint(COLORS.magenta);
     this.scene.tweens.add({ targets: slash, alpha: 0, duration: 140, onComplete: () => slash.destroy() });
 
     const ev: AttackEvent = {
-      x: hx, y: hy, radius: finisher ? 18 : 14, comboIndex: this.comboIndex,
+      x: hx, y: hy, radius: (finisher ? 18 : 14) * this.stats.rangeMult, comboIndex: this.comboIndex,
       mult: finisher ? this.stats.finisherMult : 1, dirX: aim.x, dirY: aim.y,
     };
     this.scene.events.emit(PLAYER_ATTACK, ev);

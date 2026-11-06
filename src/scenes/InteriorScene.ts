@@ -4,7 +4,7 @@ import { loadSave, writeSave, type SaveData } from '../core/save';
 import { computeStats } from '../core/stats';
 import { getStorage } from '../core/storage';
 import type { RoomTemplate } from '../data/rooms';
-import { Npc, type NpcActivity } from '../entities/Npc';
+import { Npc, type NpcActivity, type NpcOpts } from '../entities/Npc';
 import { Player } from '../entities/Player';
 import { Controls } from '../input/controls';
 import { buildRoom, type BuiltRoom, type RoomOptions } from '../systems/roomBuilder';
@@ -18,6 +18,8 @@ export interface Interaction {
   x: number; y: number; r: number;
   label: string;
   action: () => void;
+  /** Moving target (NPC): its live position is used instead of x/y. */
+  follow?: { x: number; y: number };
 }
 
 export interface Modal { isOpen: boolean; close(): void }
@@ -99,11 +101,11 @@ export abstract class InteriorScene extends Phaser.Scene {
     return this.add.image(x, y, 'glow').setTint(color).setAlpha(alpha).setScale(sx, sy).setBlendMode(Phaser.BlendModes.ADD).setDepth(1);
   }
 
-  protected npc(look: string, x: number, y: number, activity: NpcActivity, opts: { flip?: boolean; faceUp?: boolean; bounds?: Phaser.Geom.Rectangle } = {}) {
-    const n = new Npc(this, x, y, look, activity, opts.bounds ?? new Phaser.Geom.Rectangle(48, 48, 384, 160), opts.faceUp);
-    n.setFlipX(!!opts.flip);
+  protected npc(look: string, x: number, y: number, activity: NpcActivity, opts: NpcOpts = {}) {
+    const n = new Npc(this, x, y, look, activity, opts.bounds ?? new Phaser.Geom.Rectangle(48, 48, 384, 160), opts);
     this.npcGroup.add(n);
     this.npcs.push(n);
+    if (opts.name) this.interactions.push({ x, y, r: 24, follow: n, label: `Parler à ${opts.name}`, action: () => n.speak() });
     return n;
   }
 
@@ -141,7 +143,7 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.player.tick(time);
 
     const near = this.interactions
-      .map(i => ({ i, d: Phaser.Math.Distance.Between(this.player.x, this.player.y, i.x, i.y) }))
+      .map(i => ({ i, d: Phaser.Math.Distance.Between(this.player.x, this.player.y, i.follow?.x ?? i.x, i.follow?.y ?? i.y) }))
       .filter(o => o.d < o.i.r)
       .sort((a, b) => a.d - b.d)[0]?.i;
     if (near) {

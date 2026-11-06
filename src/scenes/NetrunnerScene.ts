@@ -4,6 +4,7 @@ import { floatText } from '../fx/effects';
 import { NET_THEME, SkillTreePanel } from '../ui/SkillTreePanel';
 import { txt } from '../ui/text';
 import { InteriorScene } from './InteriorScene';
+import { SPECIAL_LINES } from '../data/dialogue';
 
 /** Dark den full of servers and cables. Sells the MIND branches (psychosis resistance, implant load, network). */
 export class NetrunnerScene extends InteriorScene {
@@ -43,13 +44,14 @@ export class NetrunnerScene extends InteriorScene {
       } });
     }
 
-    const nyx = this.npc('npc-netrunner', 252, 104, 'sit', { faceUp: true });
+    const nyx = this.npc('npc-nyx', 252, 104, 'sit', { faceUp: true, name: 'Nyx', lines: SPECIAL_LINES.nyx });
     nyx.setDepth(9);
     const shop = new SkillTreePanel(this, () => this.save, s => this.persistSave(s), [4, 5], NET_THEME);
     this.modals.push(shop);
+    this.interactions = this.interactions.filter(i => i.follow !== nyx);
     this.time.delayedCall(500, () => floatText(this, nyx.x, nyx.y - 16, 'Ton cerveau grésille. Branche-toi.', '#39ff88', 7));
     this.interactions.push(
-      { x: 252, y: 142, r: 34, label: 'Parler à Nyx', action: () => shop.open() },
+      { x: 252, y: 142, r: 34, label: 'Parler à Nyx — calibrage neural', action: () => { nyx.speak(); shop.open(); } },
       { x: 24, y: 112, r: 30, label: 'Retourner dans le couloir', action: () => this.go(SCENES.Building, { from: 'net' }) },
     );
   }

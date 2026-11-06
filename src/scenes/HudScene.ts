@@ -56,7 +56,8 @@ export class HudScene extends Phaser.Scene {
       g.fillStyle(i < d.dash ? COLORS.cyan : 0x221d35).fillRect(268 + i * 8, 4, 6, 6);
     }
     this.rightText.setText(`NEURO[F] ${d.blockers}   ${d.credits}¢   SECTEUR ${d.room}/${d.rooms}`);
-    this.implantsText.setText(d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '');
+    const parts = [d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
+    this.implantsText.setText(parts.filter(Boolean).join('   |   '));
 
     if (d.boss) {
       this.bossText.setText(d.boss.name.toUpperCase());

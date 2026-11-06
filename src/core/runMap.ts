@@ -68,12 +68,12 @@ export function findTile(template: RoomTemplate, ch: string): { x: number; y: nu
 }
 
 /** Pixel centres of free floor tiles at least MIN_SPAWN_DIST from the player tile. */
-export function spawnPoints(template: RoomTemplate, count: number, playerTile: { x: number; y: number }, rng: Rng): { x: number; y: number }[] {
+export function spawnPoints(template: RoomTemplate, count: number, playerTile: { x: number; y: number }, rng: Rng, blocked: ReadonlySet<string> = new Set()): { x: number; y: number }[] {
   const px = (playerTile.x + 0.5) * TILE, py = (playerTile.y + 0.5) * TILE;
   const free: { x: number; y: number }[] = [];
   template.grid.forEach((row, y) => [...row].forEach((ch, x) => {
     const cx = (x + 0.5) * TILE, cy = (y + 0.5) * TILE;
-    if ((ch === '.' || ch === 'P') && Math.hypot(cx - px, cy - py) >= CONFIG.MIN_SPAWN_DIST) free.push({ x: cx, y: cy });
+    if ((ch === '.' || ch === 'P') && !blocked.has(`${x},${y}`) && Math.hypot(cx - px, cy - py) >= CONFIG.MIN_SPAWN_DIST) free.push({ x: cx, y: cy });
   }));
   const chosen = shuffle(rng, free);
   // Rooms are small: if more enemies than tiles, reuse tiles with jitter.

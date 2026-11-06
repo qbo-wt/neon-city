@@ -22,7 +22,8 @@ export class Rain {
   private g: Phaser.GameObjects.Graphics;
   private drops: { x: number; y: number; v: number; l: number }[] = [];
   constructor(scene: Phaser.Scene, private w: number, private h: number, count = 70, depth = 40) {
-    this.g = scene.add.graphics().setDepth(depth);
+    // Screen-fixed: rain falls over the view, whatever the camera scroll.
+    this.g = scene.add.graphics().setDepth(depth).setScrollFactor(0);
     for (let i = 0; i < count; i++) this.drops.push(this.newDrop(true));
   }
   private newDrop(anywhere: boolean) {

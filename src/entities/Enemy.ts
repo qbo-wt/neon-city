@@ -13,10 +13,10 @@ export interface EnemyHooks {
 }
 
 type AiState = 'chase' | 'windup' | 'attack' | 'recover' | 'stunned';
-type BossMove = 'charge' | 'fan' | 'nova';
+type BossMove = 'charge' | 'fan' | 'nova' | 'barrage' | 'quake';
 const BOSS_CYCLES: Record<string, BossMove[]> = {
-  warden: ['charge', 'fan', 'charge', 'nova'],
-  boss: ['charge', 'fan', 'nova', 'charge', 'fan', 'nova'],
+  warden: ['charge', 'barrage', 'fan', 'quake', 'charge', 'nova'],
+  boss: ['charge', 'nova', 'barrage', 'quake', 'fan', 'charge', 'barrage', 'nova', 'quake'],
 };
 
 /** Light enemies are pushed back and briefly staggered by hits; heavy ones barely flinch. */
@@ -47,6 +47,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private shadow: Phaser.GameObjects.Image;
   private chevron: Phaser.GameObjects.Image;
   private baseKey: string;
+  private quakeRing?: Phaser.GameObjects.Arc;
 
   constructor(scene: Phaser.Scene, x: number, y: number, readonly def: EnemyDef, private hooks: EnemyHooks) {
     super(scene, x, y, `enemy-${def.id}`);
@@ -63,9 +64,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.chevron = scene.add.image(x, y, 'chevron').setTint(def.behavior === 'hack' ? 0x39ff88 : COLORS.magenta).setDepth(7).setAlpha(0.9);
   }
 
+  /** Boss phase 2 below 50% HP, phase 3 (frenzy) below 25%. */
   get enraged() { return this.def.behavior === 'boss' && this.hp < this.maxHp / 2; }
-  private get speed() { return this.def.speed * (this.enraged ? 1.4 : 1); }
-  private get telegraph() { return this.def.telegraphMs * (this.enraged ? 0.7 : 1); }
+  get frenzy() { return this.def.behavior === 'boss' && this.hp < this.maxHp / 4; }
+  private get speed() { return this.def.speed * (this.frenzy ? 1.65 : this.enraged ? 1.4 : 1); }
+  private get telegraph() { return this.def.telegraphMs * (this.frenzy ? 0.55 : this.enraged ? 0.7 : 1); }
   private get heavy() { return this.def.behavior === 'boss' || this.def.behavior === 'charge'; }
 
   /** True once per stun: the next player hit counts as a counter-attack. */
@@ -111,6 +114,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   override destroy(fromScene?: boolean) {
+    this.quakeRing?.destroy();
     this.shadow?.destroy();
     this.chevron?.destroy();
     super.destroy(fromScene);
@@ -206,13 +210,18 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       const cycle = BOSS_CYCLES[this.def.id] ?? BOSS_CYCLES.boss;
       this.move = cycle[this.cycle++ % cycle.length];
       this.chargeDir = { x: nx, y: ny };
-      this.enter('windup', this.telegraph);
+      this.enter('windup', this.telegraph * (this.move === 'quake' ? 1.4 : 1));
+      if (this.move === 'quake') {
+        // Telegraph: a red ring grows around the boss; get out before it closes.
+        this.quakeRing = this.scene.add.circle(this.x, this.y, 78).setStrokeStyle(2, 0xff3b3b).setFillStyle(0xff3b3b, 0.08).setScale(0.15).setDepth(6);
+        this.scene.tweens.add({ targets: this.quakeRing, scale: 1, duration: this.telegraph * 1.4 });
+      }
     }
   }
 
   private release(now: number, nx: number, ny: number, dist: number) {
     const b = this.def.behavior;
-    const cd = { boss: this.enraged ? 600 : 950, ranged: 1300 + Math.random() * 700, burst: 1500 + Math.random() * 600, hack: 2600 + Math.random() * 800 }[b as string] ?? 750;
+    const cd = { boss: this.frenzy ? 380 : this.enraged ? 600 : 950, ranged: 1300 + Math.random() * 700, burst: 1500 + Math.random() * 600, hack: 2600 + Math.random() * 800 }[b as string] ?? 750;
     this.nextAttackAt = now + cd;
     this.chargeDir = { x: 0, y: 0 };
     const aimAt = () => Math.atan2(this.hooks.player.y - this.y, this.hooks.player.x - this.x);
@@ -241,16 +250,37 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     } else if (this.move === 'fan') {
       const n = this.enraged ? 11 : 7, spread = 1.0, base = Math.atan2(ny, nx);
       for (let i = 0; i < n; i++) this.hooks.fireBullet(this.x, this.y, base - spread / 2 + (spread * i) / (n - 1), 120, this.def.damage * 0.7);
+      // Phase 2+: the fan is followed by a nova.
+      if (this.enraged) this.scene.time.delayedCall(380, () => { if (!this.dead) this.nova(); });
       this.enter('recover', 400);
+    } else if (this.move === 'barrage') {
+      // A stream of aimed shots: keep strafing.
+      const shots = this.frenzy ? 12 : 8;
+      for (let i = 0; i < shots; i++) this.scene.time.delayedCall(i * 75, () => { if (!this.dead) this.hooks.fireBullet(this.x, this.y, aimAt() + (Math.random() - 0.5) * 0.12, 180, this.def.damage * 0.55); });
+      this.enter('recover', shots * 75 + 200);
+    } else if (this.move === 'quake') {
+      this.quakeRing?.destroy();
+      this.quakeRing = undefined;
+      const wave = this.scene.add.circle(this.x, this.y, 78).setStrokeStyle(3, 0xff3b3b).setDepth(6);
+      this.scene.tweens.add({ targets: wave, scale: 1.25, alpha: 0, duration: 260, onComplete: () => wave.destroy() });
+      sparks(this.scene, this.x, this.y, 0xff3b3b, 20, 70);
+      this.scene.cameras.main.shake(220, 0.01);
+      if (dist < 78) this.resolveHitOnPlayer(now, 1.3);
+      if (this.frenzy) this.scene.time.delayedCall(300, () => { if (!this.dead) this.nova(); });
+      this.enter('recover', 650);
     } else {
-      // Nova: a ring of bullets with one gap, then a second ring offset by half a step.
-      const n = this.enraged ? 18 : 14, gap = Math.floor(Math.random() * n);
-      for (let ring = 0; ring < 2; ring++) this.scene.time.delayedCall(ring * 260, () => {
-        if (this.dead) return;
-        for (let i = 0; i < n; i++) if (i !== gap && i !== (gap + 1) % n) this.hooks.fireBullet(this.x, this.y, (i + ring * 0.5) * (Math.PI * 2 / n), 95, this.def.damage * 0.6);
-      });
+      this.nova();
       this.enter('recover', 700);
     }
+  }
+
+  /** Nova: rings of bullets with a gap to slip through; one more ring per phase. */
+  private nova() {
+    const n = this.enraged ? 18 : 14, gap = Math.floor(Math.random() * n), rings = this.frenzy ? 3 : 2;
+    for (let ring = 0; ring < rings; ring++) this.scene.time.delayedCall(ring * 260, () => {
+      if (this.dead) return;
+      for (let i = 0; i < n; i++) if (i !== gap && i !== (gap + 1) % n) this.hooks.fireBullet(this.x, this.y, (i + ring * 0.5) * (Math.PI * 2 / n), 95, this.def.damage * 0.6);
+    });
   }
 
   private explode(now: number) {
@@ -281,8 +311,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (done) this.enter('recover', 600);
   }
 
-  private resolveHitOnPlayer(now: number) {
-    const res = this.hooks.player.receiveHit(this.def.damage, now, this.x, this.y);
+  private resolveHitOnPlayer(now: number, mult = 1) {
+    const res = this.hooks.player.receiveHit(this.def.damage * mult, now, this.x, this.y);
     if (res === 'parried') this.stun(now, this.def.behavior === 'melee' ? CONFIG.STUN_MS : CONFIG.STUN_MS * 1.5);
     return res;
   }

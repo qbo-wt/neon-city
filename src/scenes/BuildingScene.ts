@@ -3,6 +3,9 @@ import { COLORS, SCENES } from '../config';
 import type { RoomTemplate } from '../data/rooms';
 import { txt } from '../ui/text';
 import { InteriorScene } from './InteriorScene';
+import type { NpcActivity, NpcOpts } from '../entities/Npc';
+import { NAMES, RUMORS, SPECIAL_LINES } from '../data/dialogue';
+import { RESIDENTS } from '../gfx/npcArt';
 
 /** Solid props: [texture, x, y]. Walking lanes are kept clear: home door → corridor, corridor ↔ side doors, corridor → elevator. */
 const PROPS: [string, number, number][] = [
@@ -20,7 +23,7 @@ const WALL_DECOR: [string, number, number][] = [
 
 /**
  * Megabuilding floor. a = neighbours' doors, A = home, L = elevator (2 tiles),
- * D = ripperdoc clinic (left wall), N = netrunner den (right wall).
+ * C = ripperdoc clinic (left wall), N = netrunner den (right wall).
  */
 export class BuildingScene extends InteriorScene {
   protected readonly placeName = 'IMMEUBLE H-12, ÉTAGE 37';
@@ -28,7 +31,7 @@ export class BuildingScene extends InteriorScene {
     '#a##A##a##LL#a#',
     '#.............#',
     '#.............#',
-    'D.............N',
+    'C.............N',
     '#.............#',
     '#.............#',
     '#.............#',
@@ -48,7 +51,7 @@ export class BuildingScene extends InteriorScene {
     const m = this.built.marks;
     m.a.forEach(d => d.obj.setTexture('door-apt'));
     m.A[0].obj.setTexture('door-home');
-    m.D[0].obj.setTexture('door-doc');
+    m.C[0].obj.setTexture('door-doc');
     m.N[0].obj.setTexture('door-net');
     this.add.image(352, 16, 'elevator').setDepth(1);
     this.add.image(144, 38, 'doormat').setDepth(0.5);
@@ -87,26 +90,36 @@ export class BuildingScene extends InteriorScene {
       if (i === 2) this.tweens.add({ targets: g, alpha: 0.02, yoyo: true, repeat: -1, duration: 50, repeatDelay: 900 });
     });
 
-    // Residents: the floor never sleeps.
+    // Residents: the floor never sleeps. Each one has a name and something to say.
     const lane = new Phaser.Geom.Rectangle(64, 92, 352, 40);
-    this.npc('npc-0', 120, 110, 'wander', { bounds: lane });
-    this.npc('npc-2', 330, 104, 'wander', { bounds: lane });
-    this.npc('npc-5', 200, 120, 'wander', { bounds: lane });
-    this.npc('npc-3', 400, 116, 'wander', { bounds: lane });
-    this.npc('npc-1', 100, 150, 'talk');
-    this.npc('npc-4', 116, 150, 'talk', { flip: true });
-    this.npc('npc-2', 160, 204, 'sit');
-    this.npc('npc-3', 296, 204, 'sit');
-    this.npc('npc-1', 312, 204, 'talk', { flip: true });
-    this.npc('npc-4', 236, 146, 'cook');
-    this.npc('npc-0', 220, 196, 'eat', { faceUp: true });
-    this.npc('npc-5', 252, 196, 'eat', { faceUp: true });
-    this.npc('npc-2', 276, 72, 'play', { faceUp: true });
-    this.npc('npc-1', 300, 72, 'play', { faceUp: true });
-    this.npc('npc-0', 222, 72, 'phone', { faceUp: true });
-    this.npc('npc-3', 384, 72, 'lean', { flip: true });
-    this.npc('npc-5', 440, 190, 'smoke', { flip: true });
-    this.npc('npc-4', 396, 160, 'sit');
+    let r = 0;
+    const res = (x: number, y: number, activity: NpcActivity, extra: NpcOpts = {}) => {
+      const i = r++;
+      return this.npc(`res-${i % RESIDENTS}`, x, y, activity, {
+        name: NAMES[i % NAMES.length], lines: [RUMORS[(i * 7) % RUMORS.length], RUMORS[(i * 7 + 3) % RUMORS.length]], ...extra,
+      });
+    };
+    res(120, 110, 'wander', { bounds: lane });
+    res(330, 104, 'wander', { bounds: lane });
+    res(200, 120, 'wander', { bounds: lane });
+    res(400, 116, 'wander', { bounds: lane });
+    res(260, 100, 'wander', { bounds: lane });
+    res(100, 150, 'talk');
+    res(116, 150, 'talk', { flip: true });
+    res(160, 204, 'sit');
+    res(296, 204, 'sit');
+    res(312, 204, 'talk', { flip: true });
+    this.npc('npc-lo', 236, 146, 'cook', { name: 'Mamie Lo', lines: SPECIAL_LINES.lo });
+    res(220, 196, 'eat', { faceUp: true });
+    res(252, 196, 'eat', { faceUp: true });
+    res(276, 72, 'play', { faceUp: true, lines: SPECIAL_LINES.gamer });
+    res(300, 72, 'play', { faceUp: true, lines: SPECIAL_LINES.gamer });
+    res(222, 72, 'phone', { faceUp: true });
+    res(384, 72, 'lean', { flip: true });
+    res(440, 190, 'smoke', { flip: true });
+    res(396, 160, 'sit');
+    res(150, 168, 'dance', { lines: SPECIAL_LINES.dancer });
+    res(176, 160, 'dance', { flip: true, lines: SPECIAL_LINES.dancer });
 
     this.interactions.push(
       { x: 144, y: 44, r: 30, label: 'Rentrer à l\'appart', action: () => this.go(SCENES.Hideout, { from: 'building' }) },

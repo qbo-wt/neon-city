@@ -22,6 +22,10 @@ export interface Stats {
   /** psychosis removed by one neuro-blocker */
   blockerAmount: number;
   bossBonusMult: number;
+  /** attack reach multiplier (katana) */
+  rangeMult: number;
+  /** golden pistols: fraction of damage fired as a bullet on each swing (0 = no gun) */
+  gunDamage: number;
 }
 
 export interface Implant {
@@ -29,6 +33,14 @@ export interface Implant {
   name: string;
   description: string;
   load: number;
+  modify: (s: Stats) => Stats;
+}
+
+export interface Relic {
+  id: string;
+  name: string;
+  description: string;
+  texture: string;
   modify: (s: Stats) => Stats;
 }
 

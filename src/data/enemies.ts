@@ -23,6 +23,6 @@ export const ENEMIES: Record<EnemyId, EnemyDef> = {
   drone: { id: 'drone', name: 'Drone de surveillance', hp: 14, speed: 75, damage: 6, behavior: 'burst', credits: 1, telegraphMs: 380, radius: 5 },
   bomber: { id: 'bomber', name: 'Kamikaze chimique', hp: 16, speed: 95, damage: 26, behavior: 'explode', credits: 1, telegraphMs: 480, radius: 6 },
   hacker: { id: 'hacker', name: 'Netrunner pirate', hp: 22, speed: 40, damage: 5, behavior: 'hack', credits: 2, telegraphMs: 700, radius: 6, psyOnHit: 8 },
-  warden: { id: 'warden', name: 'Lieutenant des Rats', hp: 320, speed: 58, damage: 15, behavior: 'boss', credits: 15, telegraphMs: 560, radius: 13 },
-  boss: { id: 'boss', name: 'Exécuteur Psy-Sec', hp: 520, speed: 60, damage: 18, behavior: 'boss', credits: 20, telegraphMs: 520, radius: 13 },
+  warden: { id: 'warden', name: 'Lieutenant des Rats', hp: 720, speed: 64, damage: 19, behavior: 'boss', credits: 15, telegraphMs: 480, radius: 13 },
+  boss: { id: 'boss', name: 'Exécuteur Psy-Sec', hp: 1250, speed: 68, damage: 23, behavior: 'boss', credits: 20, telegraphMs: 460, radius: 13 },
 };

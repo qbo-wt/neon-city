@@ -6,9 +6,12 @@ import type { RoomTemplate } from '../data/rooms';
 export interface BuiltRoom {
   walls: Phaser.Physics.Arcade.StaticGroup;
   start: { x: number; y: number };
-  /** Locked door tiles in the top wall, replaced by real doors when the room is cleared. */
+  /** World size in px. */
+  width: number;
+  height: number;
+  /** Locked exit doors, replaced by real doors when the room is cleared. */
   doorSlots: { x: number; y: number; locked: Phaser.GameObjects.GameObject }[];
-  /** Pixel centres of every letter tile other than # . o P (doors, elevator…), drawn as solid wall. */
+  /** Pixel centres of every letter tile other than # . o P D (interior doors, elevator…), drawn as solid wall. */
   marks: Record<string, { x: number; y: number; obj: Phaser.Physics.Arcade.Image }[]>;
 }
 
@@ -20,25 +23,29 @@ export interface RoomOptions {
   obstacleKey?: () => string;
 }
 
-export function doorColumns(count: number): number[] {
-  return count === 3 ? [3, 7, 11] : count === 2 ? [5, 9] : count === 1 ? [7] : [];
+/** Which of the 3 'D' slots (sorted left to right) become exits for a given door count. */
+export function doorPicks(count: number): number[] {
+  return count >= 3 ? [0, 1, 2] : count === 2 ? [0, 2] : count === 1 ? [1] : [];
 }
 
 export function buildRoom(scene: Phaser.Scene, template: RoomTemplate, doorCount: number, opts: RoomOptions = {}): BuiltRoom {
   const { floorKey = 'tile-floor', wallKey = 'tile-wall', streetLights = true, obstacleKey = () => 'tile-obstacle' } = opts;
   const walls = scene.physics.add.staticGroup();
-  const cols = doorColumns(doorCount);
-  const doorSlots: BuiltRoom['doorSlots'] = [];
   const marks: BuiltRoom['marks'] = {};
+  const doorTiles: { x: number; y: number }[] = [];
+  template.grid.forEach((row, ty) => [...row].forEach((ch, tx) => { if (ch === 'D') doorTiles.push({ x: tx, y: ty }); }));
+  doorTiles.sort((a, b) => a.x - b.x);
+  const exits = new Set(doorPicks(doorCount).map(i => doorTiles[i]).filter(Boolean));
+  const doorSlots: BuiltRoom['doorSlots'] = [];
 
   template.grid.forEach((row, ty) => [...row].forEach((ch, tx) => {
     const x = tx * TILE + TILE / 2, y = ty * TILE + TILE / 2;
-    if (ch === '#') {
-      if (ty === 0 && cols.includes(tx)) {
-        doorSlots.push({ x, y, locked: walls.create(x, y, 'door-locked') });
-      } else {
-        walls.create(x, y, wallKey);
-      }
+    if (ch === ' ') return; // void outside the map
+    if (ch === '#') { walls.create(x, y, wallKey); return; }
+    if (ch === 'D') {
+      const isExit = [...exits].some(d => d.x === tx && d.y === ty);
+      if (isExit) doorSlots.push({ x, y, locked: walls.create(x, y, 'door-locked') });
+      else walls.create(x, y, wallKey);
       return;
     }
     if (ch !== '.' && ch !== 'o' && ch !== 'P') {
@@ -52,6 +59,7 @@ export function buildRoom(scene: Phaser.Scene, template: RoomTemplate, doorCount
       (o.body as Phaser.Physics.Arcade.StaticBody).setSize(26, 24).setOffset(3, 5);
     }
   }));
+  doorSlots.sort((a, b) => a.x - b.x);
 
   // Neon light pools spilling from the walls onto the wet street.
   const neon = [COLORS.magenta, COLORS.cyan, COLORS.yellow];
@@ -62,5 +70,9 @@ export function buildRoom(scene: Phaser.Scene, template: RoomTemplate, doorCount
 
   const hasP = template.grid.some(r => r.includes('P'));
   const p = hasP ? findTile(template, 'P') : { x: 7, y: 6 };
-  return { walls, start: { x: p.x * TILE + TILE / 2, y: p.y * TILE + TILE / 2 }, doorSlots, marks };
+  return {
+    walls, doorSlots, marks,
+    start: { x: p.x * TILE + TILE / 2, y: p.y * TILE + TILE / 2 },
+    width: template.grid[0].length * TILE, height: template.grid.length * TILE,
+  };
 }

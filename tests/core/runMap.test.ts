@@ -41,19 +41,54 @@ describe('run generation', () => {
       });
     }
   });
-  it('templates are 15x8 with exactly one P', () => {
-    expect(ROOM_TEMPLATES.length).toBeGreaterThanOrEqual(5);
+  it('maps are big, varied in shape, closed and fully walkable from the start', () => {
+    expect(ROOM_TEMPLATES.length).toBeGreaterThanOrEqual(6);
     [...ROOM_TEMPLATES, BOSS_ROOM].forEach(t => {
-      expect(t.grid).toHaveLength(8);
-      t.grid.forEach(row => expect(row).toHaveLength(15));
-      expect(t.grid.join('').split('P').length - 1).toBe(1);
+      const g = t.grid, h = g.length, w = g[0].length;
+      g.forEach(row => expect(row).toHaveLength(w));
+      expect(w * h).toBeGreaterThanOrEqual(15 * 8 * 2); // at least twice the old screen-sized rooms
+      expect(g.join('').split('P').length - 1).toBe(1);
+      const at = (x: number, y: number) => (y < 0 || y >= h || x < 0 || x >= w ? ' ' : g[y][x]);
+      const walk = (c: string) => c === '.' || c === 'P' || c === 'o';
+      // Closed: no walkable tile touches the void or the edge.
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (walk(g[y][x]))
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => expect(at(x + dx, y + dy)).not.toBe(' '));
+      // Doors sit in a wall with floor right below.
+      const doors: number[][] = [];
+      g.forEach((row, y) => [...row].forEach((c, x) => { if (c === 'D') doors.push([x, y]); }));
+      expect(doors.length).toBe(3);
+      doors.forEach(([x, y]) => expect(walk(at(x, y + 1))).toBe(true));
+      // Every floor tile is reachable from P.
+      const p = g.findIndex(r => r.includes('P')), start = [g[p].indexOf('P'), p];
+      const seen = new Set([start.join()]), queue = [start];
+      while (queue.length) {
+        const [x, y] = queue.pop()!;
+        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+          const k = [x + dx, y + dy].join();
+          if (!seen.has(k) && (at(x + dx, y + dy) === '.' || at(x + dx, y + dy) === 'P')) { seen.add(k); queue.push([x + dx, y + dy]); }
+        });
+      }
+      const floor = g.join('').split('').filter(c => c === '.' || c === 'P').length;
+      expect(seen.size).toBe(floor);
+    });
+    // Not all rectangles: at least 3 templates contain void tiles.
+    expect(ROOM_TEMPLATES.filter(t => t.grid.join('').includes(' ')).length).toBeGreaterThanOrEqual(3);
+  });
+  it('spawn points skip blocked tiles', () => {
+    const t = ROOM_TEMPLATES[0];
+    const py = t.grid.findIndex(r => r.includes('P'));
+    const blocked = new Set<string>();
+    t.grid.forEach((row, y) => [...row].forEach((c, x) => { if (c === '.' && (x + y) % 2) blocked.add(`${x},${y}`); }));
+    spawnPoints(t, 20, { x: t.grid[py].indexOf('P'), y: py }, createRng(4), blocked).forEach(p => {
+      expect(blocked.has(`${Math.floor(p.x / TILE)},${Math.floor(p.y / TILE)}`)).toBe(false);
     });
   });
   it('spawn points are on floor and far from the player', () => {
     for (let seed = 0; seed < 200; seed++) {
       const rng = createRng(seed);
       const t = ROOM_TEMPLATES[seed % ROOM_TEMPLATES.length];
-      const player = { x: 7, y: 6 };
+      const py = t.grid.findIndex(r => r.includes('P'));
+      const player = { x: t.grid[py].indexOf('P'), y: py };
       const pts = spawnPoints(t, 4, player, rng);
       expect(pts).toHaveLength(4);
       pts.forEach(p => {

@@ -120,102 +120,142 @@ export function paintStreetGround(scene: Phaser.Scene, key: string, template: Ro
     f('#14101f', x, y, w, h);
     for (let i = 0; i < w * h / 90; i++) f(rng() < 0.5 ? '#191428' : '#100c1a', x + rng() * w, y + rng() * h, 2, 1);
   };
-  const sidewalk = (y: number, h: number) => {
-    f('#2a2438', 0, y, W, h);
-    for (let x = 0; x < W; x += 16) f('#221d30', x, y, 1, h);
-    f('#221d30', 0, y + h / 2, W, 1);
-  };
-  const curb = (y: number) => { f('#5a5578', 0, y, W, 2); f('#05030f', 0, y + 2, W, 1); };
 
-  const top = TILE, bot = H - TILE; // inner floor span (walls are drawn as tiles on top)
-  switch (style) {
-    case 'avenue': case 'crossroad': case 'checkpoint': {
-      asphalt(0, 0, W, H);
-      sidewalk(top, 28); curb(top + 28);
-      sidewalk(bot - 28, 28); curb(bot - 30);
-      const mid = (top + bot) / 2;
-      for (let x = 8; x < W; x += 28) f('#f5e663', x, mid - 1, 14, 2); // centre line
-      if (style === 'crossroad') {
-        asphalt(6 * TILE, top, 3 * TILE, bot - top);
-        for (let y = top + 34; y < bot - 34; y += 8) f('#e8e8ffcc', 6 * TILE - 12, y, 10, 4), f('#e8e8ffcc', 9 * TILE + 2, y, 10, 4);
-      }
-      if (style === 'checkpoint') {
-        for (let x = 0; x < W; x += 16) f(x % 32 ? '#05030f' : '#f5e663', x, top + 30, 16, 4), f(x % 32 ? '#f5e663' : '#05030f', x, bot - 34, 16, 4);
-        f('#ff2a6d22', 4 * TILE, top + 40, 7 * TILE, bot - top - 80);
-      }
-      break;
-    }
-    case 'alley':
-      asphalt(0, 0, W, H);
-      for (let i = 0; i < 6; i++) { // cracks
-        let x = rng() * W, y = top + rng() * (bot - top);
-        ctx.strokeStyle = '#05030f'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y);
-        for (let k = 0; k < 5; k++) { x += (rng() - 0.5) * 30; y += (rng() - 0.5) * 18; ctx.lineTo(x, y); }
-        ctx.stroke();
-      }
-      f('#39ff8814', 0, top, W, 6); // sickly light from a sign
-      break;
-    case 'market': case 'plaza':
-      f(style === 'market' ? '#2a1e2e' : '#262236', 0, 0, W, H);
-      for (let y = 0; y < H; y += 16) for (let x = (y / 16) % 2 ? 8 : 0; x < W; x += 16) f(style === 'market' ? '#33253a' : '#2e2a42', x, y, 15, 15);
-      if (style === 'plaza') { ctx.strokeStyle = '#00f0ff55'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(W / 2, H / 2, 46, 0, Math.PI * 2); ctx.stroke(); }
-      if (style === 'market') for (let x = 0; x < W; x += 40) f('#ff2a6d22', x, top, 20, bot - top);
-      break;
-    case 'parking':
-      asphalt(0, 0, W, H);
-      for (let x = TILE; x < W - TILE; x += 40) { f('#e8e8ffaa', x, top + 4, 2, 50); f('#e8e8ffaa', x, bot - 54, 2, 50); }
-      f('#e8e8ffaa', TILE, top + 54, W - 2 * TILE, 2); f('#e8e8ffaa', TILE, bot - 56, W - 2 * TILE, 2);
-      f('#f5e663', W / 2 - 10, H / 2 - 1, 20, 2); f('#f5e663', W / 2 + 6, H / 2 - 5, 4, 10);
-      break;
-    case 'docks':
-      f('#1e1e26', 0, 0, W, H);
-      for (let i = 0; i < 40; i++) f('#25252f', rng() * W, rng() * H, 6, 1);
-      for (let x = 0; x < W; x += 16) f(x % 32 ? '#05030f' : '#f5e663', x, top + 4, 16, 3);
-      for (let i = 0; i < 4; i++) { ctx.fillStyle = '#0a0a12'; ctx.beginPath(); ctx.ellipse(rng() * W, top + rng() * (bot - top), 14, 6, 0, 0, Math.PI * 2); ctx.fill(); } // oil
-      break;
+  // Map-aware painting: sidewalks hug the walls whatever the shape, markings run through the middle.
+  const g = template.grid, rows = g.length, cols = g[0].length;
+  const walkable = (x: number, y: number) => { const c = g[y]?.[x]; return c === '.' || c === 'P' || c === 'o'; };
+  const nearWall = (x: number, y: number) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !walkable(x + dx, y + dy));
+  const hasSidewalk = style === 'avenue' || style === 'crossroad' || style === 'checkpoint';
+  const isWalk = (x: number, y: number) => hasSidewalk && walkable(x, y) && nearWall(x, y);
+
+  // Base ground.
+  if (style === 'market') {
+    f('#2a1e2e', 0, 0, W, H);
+    for (let y = 0; y < H; y += 16) for (let x = (y / 16) % 2 ? 8 : 0; x < W; x += 16) f('#33253a', x, y, 15, 15);
+  } else if (style === 'docks') {
+    f('#1e1e26', 0, 0, W, H);
+    for (let i = 0; i < W * H / 400; i++) f('#25252f', rng() * W, rng() * H, 6, 1);
+  } else {
+    asphalt(0, 0, W, H);
   }
-  // Puddles reflecting the neon.
-  const puddles = style === 'alley' ? 7 : 4;
+
+  for (let ty = 0; ty < rows; ty++) for (let tx = 0; tx < cols; tx++) {
+    const x = tx * TILE, y = ty * TILE;
+    if (g[ty][tx] === ' ') { f('#0b0820', x, y, TILE, TILE); continue; }
+    if (!isWalk(tx, ty)) continue;
+    // Sidewalk slab, with a curb on every side that faces the road.
+    f('#2a2438', x, y, TILE, TILE);
+    f('#221d30', x + 15, y, 1, TILE); f('#221d30', x, y + 15, TILE, 1);
+    const curbTo = (dx: number, dy: number) => walkable(tx + dx, ty + dy) && !isWalk(tx + dx, ty + dy);
+    if (curbTo(0, 1)) { f('#5a5578', x, y + TILE - 3, TILE, 2); f('#05030f', x, y + TILE - 1, TILE, 1); }
+    if (curbTo(0, -1)) { f('#5a5578', x, y + 1, TILE, 2); f('#05030f', x, y, TILE, 1); }
+    if (curbTo(1, 0)) { f('#5a5578', x + TILE - 3, y, 2, TILE); f('#05030f', x + TILE - 1, y, 1, TILE); }
+    if (curbTo(-1, 0)) { f('#5a5578', x + 1, y, 2, TILE); f('#05030f', x, y, 1, TILE); }
+  }
+
+  const road = (tx: number, ty: number) => walkable(tx, ty) && !isWalk(tx, ty);
+  const midRow = Math.floor(rows / 2), midCol = Math.floor(cols / 2);
+  if (style === 'avenue' || style === 'crossroad' || style === 'checkpoint') {
+    for (let tx = 0; tx < cols; tx++) if (road(tx, midRow)) { f('#f5e663', tx * TILE + 4, midRow * TILE - 1, 12, 2); f('#f5e663', tx * TILE + 20, midRow * TILE - 1, 8, 2); }
+  }
+  if (style === 'crossroad') {
+    for (let ty = 0; ty < rows; ty++) if (road(midCol, ty)) f('#f5e663', midCol * TILE - 1, ty * TILE + 6, 2, 14);
+    // Zebra crossings on the four arms of the junction.
+    for (let ty = 0; ty < rows; ty++) for (let tx = 0; tx < cols; tx++) {
+      if (!road(tx, ty)) continue;
+      const dx = Math.abs(tx - midCol), dy = Math.abs(ty - midRow);
+      if (dx === 5 && dy <= 2) for (let k = 0; k < 4; k++) f('#e8e8ffbb', tx * TILE + 4, ty * TILE + 2 + k * 8, 24, 4);
+      if (dy === 4 && dx <= 3) for (let k = 0; k < 4; k++) f('#e8e8ffbb', tx * TILE + 2 + k * 8, ty * TILE + 4, 4, 24);
+    }
+  }
+  if (style === 'parking') {
+    for (let ty = 0; ty < rows; ty++) for (let tx = 0; tx < cols; tx++) {
+      if (!walkable(tx, ty)) continue;
+      if (ty % 5 === 2) f('#e8e8ffaa', tx * TILE, ty * TILE + 30, TILE, 2);
+      if (ty % 5 === 1 || ty % 5 === 3) f('#e8e8ffaa', tx * TILE, ty * TILE, 2, TILE);
+    }
+    f('#f5e663', W / 2 - 10, H - 3 * TILE, 20, 2);
+  }
+  if (style === 'checkpoint') {
+    // Containment circle painted on the asphalt, dashed yellow/black, with the Psy-Sec mark in the middle.
+    const cx = W / 2, cy = H / 2, R = 4.6 * TILE;
+    ctx.fillStyle = '#ff2a6d14'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = 6;
+    ctx.setLineDash([14, 14]); ctx.strokeStyle = '#f5e663'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineDashOffset = 14; ctx.strokeStyle = '#05030f'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    ctx.lineWidth = 2; ctx.strokeStyle = '#ff2a6d88'; ctx.beginPath(); ctx.arc(cx, cy, 34, 0, Math.PI * 2); ctx.stroke();
+    ctx.font = 'bold 14px monospace'; ctx.fillStyle = '#ff2a6d88'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('PSY-SEC', cx, cy);
+  }
+  if (style === 'docks') {
+    for (let ty = 0; ty < rows; ty++) for (let tx = 0; tx < cols; tx++) if (walkable(tx, ty) && !walkable(tx, ty - 1))
+      for (let k = 0; k < 4; k++) f(k % 2 ? '#05030f' : '#f5e663', tx * TILE + k * 8, ty * TILE + 3, 8, 3);
+    for (let i = 0; i < 6; i++) { ctx.fillStyle = '#0a0a12'; ctx.beginPath(); ctx.ellipse(rng() * W, rng() * H, 14, 6, 0, 0, Math.PI * 2); ctx.fill(); }
+  }
+  if (style === 'market') for (let tx = 1; tx < cols - 1; tx += 3) if (walkable(tx, midRow)) f('#ff2a6d22', tx * TILE, TILE, 20, H - 2 * TILE);
+  if (style === 'alley') {
+    for (let i = 0; i < 12; i++) {
+      let x = rng() * W, y = rng() * H;
+      ctx.strokeStyle = '#05030f'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y);
+      for (let k = 0; k < 5; k++) { x += (rng() - 0.5) * 30; y += (rng() - 0.5) * 18; ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+  }
+
+  // Puddles reflecting the neon, only on walkable ground.
+  const floorTiles: [number, number][] = [];
+  for (let ty = 0; ty < rows; ty++) for (let tx = 0; tx < cols; tx++) if (walkable(tx, ty)) floorTiles.push([tx, ty]);
+  const puddles = Math.round(floorTiles.length / (style === 'alley' ? 18 : 30));
   for (let i = 0; i < puddles; i++) {
-    const x = rng() * W, y = top + 10 + rng() * (bot - top - 20), w = 14 + rng() * 22;
+    const [tx, ty] = pick(rng, floorTiles);
+    const x = tx * TILE + 16, y = ty * TILE + 16, w = 14 + rng() * 22;
     ctx.fillStyle = '#1d2a4acc'; ctx.beginPath(); ctx.ellipse(x, y, w / 2, w / 5, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = pick(rng, ['#ff2a6d55', '#00f0ff55', '#f5e66344']); ctx.fillRect(x - w / 4, y - 1, w / 2, 1);
   }
   t.refresh();
 }
 
-/** Signs, graffiti, lamps, steam and litter: different on every sector. */
-export function decorateStreet(scene: Phaser.Scene, template: RoomTemplate, style: StreetStyle, rng: Rng, skipCols: number[]) {
-  const W = template.grid[0].length * TILE;
-  // Neon shop signs on the top facade, away from doors.
-  const cols = [1, 3, 5, 7, 9, 11, 13].filter(c => !skipCols.includes(c));
+/** Signs, graffiti, lamps, steam and litter: different on every sector, placed along the real walls. */
+export function decorateStreet(scene: Phaser.Scene, template: RoomTemplate, style: StreetStyle, rng: Rng) {
+  const g = template.grid;
+  const walkable = (x: number, y: number) => { const c = g[y]?.[x]; return c === '.' || c === 'P' || c === 'o'; };
   const neon = [COLORS.magenta, COLORS.cyan, COLORS.yellow, 0x39ff88];
-  cols.forEach(c => {
-    if (rng() < 0.35) return;
+
+  // Neon shop signs on facades that face the street from above, never on doors, spaced out.
+  let lastSign = { x: -9, y: -9 };
+  g.forEach((row, ty) => [...row].forEach((ch, tx) => {
+    if (ch !== '#' || !walkable(tx, ty + 1) || rng() < 0.55) return;
+    if (ty === lastSign.y && tx - lastSign.x < 3) return;
+    lastSign = { x: tx, y: ty };
     const col = pick(rng, neon), hexc = '#' + col.toString(16).padStart(6, '0');
     const label = style === 'checkpoint' ? pick(rng, ['PSY-SEC', 'ZONE FERMÉE', 'ARRÊT']) : pick(rng, SIGNS);
-    const sign = txt(scene, c * TILE + 16, 22, label, 6, hexc).setOrigin(0.5).setDepth(3);
-    scene.add.rectangle(c * TILE + 16, 22, sign.width + 6, 10, 0x05030f, 0.85).setStrokeStyle(1, col).setDepth(2.9);
-    scene.add.image(c * TILE + 16, 44, 'glow').setTint(col).setAlpha(0.28).setScale(1.2, 0.7).setBlendMode(Phaser.BlendModes.ADD).setDepth(1);
+    const cx = tx * TILE + 16, cy = ty * TILE + 22;
+    const sign = txt(scene, cx, cy, label, 6, hexc).setOrigin(0.5).setDepth(3);
+    scene.add.rectangle(cx, cy, sign.width + 6, 10, 0x05030f, 0.85).setStrokeStyle(1, col).setDepth(2.9);
+    scene.add.image(cx, cy + 22, 'glow').setTint(col).setAlpha(0.28).setScale(1.2, 0.7).setBlendMode(Phaser.BlendModes.ADD).setDepth(1);
     if (rng() < 0.3) scene.tweens.add({ targets: sign, alpha: 0.2, yoyo: true, repeat: -1, duration: 60, repeatDelay: 1500 + rng() * 3000 });
-  });
-  // Graffiti tags on the bottom facade.
-  for (let i = 0; i < 3; i++) {
-    const g = scene.add.graphics().setDepth(2);
-    g.lineStyle(2, pick(rng, neon), 0.6);
-    const x = 40 + rng() * (W - 80), y = template.grid.length * TILE - 18;
-    g.beginPath(); g.moveTo(x, y);
-    for (let k = 0; k < 6; k++) g.lineTo(x + k * 5, y + (k % 2 ? -6 : 4) * rng());
-    g.strokePath();
-  }
-  // Ground props on free floor tiles.
+  }));
+
+  // Graffiti tags on facades seen from below.
+  g.forEach((row, ty) => [...row].forEach((ch, tx) => {
+    if (ch !== '#' || !walkable(tx, ty - 1) || rng() > 0.18) return;
+    const gr = scene.add.graphics().setDepth(2);
+    gr.lineStyle(2, pick(rng, neon), 0.6);
+    const x = tx * TILE + 4, y = ty * TILE + 14;
+    gr.beginPath(); gr.moveTo(x, y);
+    for (let k = 0; k < 6; k++) gr.lineTo(x + k * 5, y + (k % 2 ? -6 : 4) * rng());
+    gr.strokePath();
+  }));
+
+  // Ground props on free floor tiles: about one per 18 tiles.
   const free: { x: number; y: number }[] = [];
-  template.grid.forEach((row, ty) => [...row].forEach((ch, tx) => { if (ch === '.' && ty > 1 && ty < 6) free.push({ x: tx, y: ty }); }));
-  const props = style === 'alley' ? 7 : 5;
+  g.forEach((row, ty) => [...row].forEach((ch, tx) => { if (ch === '.') free.push({ x: tx, y: ty }); }));
+  const props = Math.round(free.length / (style === 'alley' ? 12 : 18));
   for (let i = 0; i < props && free.length; i++) {
     const p = free.splice(Math.floor(rng() * free.length), 1)[0];
     const x = p.x * TILE + 8 + rng() * 16, y = p.y * TILE + 8 + rng() * 16;
-    const kind = pick(rng, style === 'checkpoint' ? ['cone', 'cone', 'manhole'] : ['manhole', 'cone', 'lamp', 'steam-vent']);
+    const kind = pick(rng, style === 'checkpoint' ? ['cone', 'cone', 'manhole', 'lamp'] : ['manhole', 'cone', 'lamp', 'steam-vent', 'lamp']);
     if (kind === 'manhole' || kind === 'steam-vent') {
       scene.add.image(x, y, 'manhole').setDepth(0.5);
       if (kind === 'steam-vent' || rng() < 0.5) {
@@ -231,4 +271,46 @@ export function decorateStreet(scene: Phaser.Scene, template: RoomTemplate, styl
       scene.add.image(x, y, 'cone').setDepth(0.6);
     }
   }
+}
+
+/** Breakables, relics, gold bullets and the blackout mask. */
+export function generateLootTextures(scene: Phaser.Scene, tex: CanvasTex, px: Px) {
+  tex(scene, 'br-crate', 22, 22, ctx => {
+    px(ctx, '#05030f', 0, 0, 22, 22); px(ctx, '#8a6a4a', 1, 1, 20, 20);
+    px(ctx, '#5a4a3a', 1, 1, 20, 2); px(ctx, '#5a4a3a', 1, 10, 20, 2); px(ctx, '#5a4a3a', 10, 1, 2, 20);
+    px(ctx, '#f5e663', 3, 15, 16, 2); // hazard tape
+  });
+  tex(scene, 'br-barrel', 16, 22, ctx => {
+    px(ctx, '#05030f', 1, 0, 14, 22); px(ctx, '#39a85a', 2, 1, 12, 20);
+    px(ctx, '#1d6a3a', 2, 6, 12, 1); px(ctx, '#1d6a3a', 2, 14, 12, 1);
+    px(ctx, '#f5e663', 5, 8, 6, 5); px(ctx, '#05030f', 7, 9, 2, 3); // toxic sign
+  });
+  tex(scene, 'br-vending', 20, 28, ctx => {
+    px(ctx, '#05030f', 0, 0, 20, 28); px(ctx, '#ff8c2a', 1, 1, 18, 26);
+    px(ctx, '#05030f', 3, 3, 10, 14);
+    for (let y = 4; y < 16; y += 4) for (let x = 4; x < 12; x += 4) px(ctx, (x + y) % 8 ? '#39ff88' : '#00f0ff', x, y, 2, 2);
+    px(ctx, '#e8e8ff', 15, 5, 2, 7); px(ctx, '#05030f', 4, 21, 9, 3);
+  });
+  tex(scene, 'br-trash', 16, 16, ctx => {
+    px(ctx, '#05030f', 1, 1, 14, 15); px(ctx, '#3a5a7a', 2, 2, 12, 13); px(ctx, '#5a7a9a', 2, 2, 12, 3);
+    px(ctx, '#e8e8ff', 5, 8, 6, 1); px(ctx, '#e8e8ff', 5, 11, 6, 1);
+  });
+  tex(scene, 'relic-katana', 26, 26, ctx => {
+    for (let i = 0; i < 20; i++) { px(ctx, '#e8e8ff', 4 + i, 21 - i, 2, 2); px(ctx, '#ff2a6d', 5 + i, 22 - i, 1, 1); }
+    px(ctx, '#f5e663', 3, 19, 5, 5); px(ctx, '#05030f', 4, 20, 3, 3);
+    px(ctx, '#8a1038', 0, 23, 4, 3);
+  });
+  tex(scene, 'relic-pistols', 26, 18, ctx => {
+    const gun = (x: number, y: number) => { px(ctx, '#05030f', x, y, 12, 6); px(ctx, '#f5e663', x + 1, y + 1, 10, 3); px(ctx, '#a89a2a', x + 2, y + 4, 3, 5); px(ctx, '#05030f', x + 2, y + 8, 3, 1); };
+    gun(1, 2); gun(13, 6);
+  });
+  tex(scene, 'bullet-gold', 5, 5, ctx => { px(ctx, '#a89a2a', 0, 1, 5, 3); px(ctx, '#f5e663', 1, 0, 3, 5); px(ctx, '#ffffff', 2, 2, 1, 1); });
+  // Blackout: everything dark except a soft circle around the player.
+  tex(scene, 'darkness', 1100, 700, ctx => {
+    const gr = ctx.createRadialGradient(550, 350, 30, 550, 350, 120);
+    gr.addColorStop(0, 'rgba(5,3,15,0)');
+    gr.addColorStop(1, 'rgba(5,3,15,0.94)');
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, 0, 1100, 700);
+  });
 }

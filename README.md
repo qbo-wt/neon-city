@@ -28,6 +28,10 @@ npm run build      # vérification des types + build statique dans dist/
 
 Appart (terminal = historique des runs) → couloir de l'immeuble (PNJ, clinique du charcudoc = arbre du **corps**, repaire de la netrunneuse = arbre de l'**esprit**) → ascenseur → run de 10 secteurs dans les rues (décor différent à chaque secteur, un boss seul aux secteurs 5 et 10) → mort ou victoire → les crédits sont gardés, les implants et la psychose sont perdus → retour à l'appart.
 
+**Rues** : 7 types de cartes plus grandes que l'écran (caméra qui suit), pas toutes rectangulaires (L, T, croix, U, ovale, marché à îlots). Objets cassables (caisses, barils, poubelles, distributeurs) qui lâchent de la vie, des crédits ou, très rarement, une relique (katana « Lune Rouge », pistolets jumeaux dorés). Événements de lumière : coupures de courant, orage, patrouille aérienne, alerte rouge, surtension néon.
+
+**Boss** : 3 phases (sous 50 % puis 25 % de vie), charge, éventail, barrage, onde de choc, anneaux de balles.
+
 **Psychose** : la jauge monte dès le premier combat (la ville use), plus vite avec chaque implant, et à chaque ennemi tué. À 50 % : glitchs visuels. À 75 % : la vie baisse lentement. À 100 % : crise de cyberpsychose (+50 % dégâts et vitesse, mais la vie fond).
 
 ## Structure

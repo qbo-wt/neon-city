@@ -1,6 +1,6 @@
 import { CONFIG } from '../config';
 import { SKILL_NODES } from '../data/skillNodes';
-import type { Implant, Stats } from './types';
+import type { Implant, Relic, Stats } from './types';
 
 export function baseStats(): Stats {
   return {
@@ -21,14 +21,17 @@ export function baseStats(): Stats {
     startBlockers: 0,
     blockerAmount: CONFIG.BLOCKER_AMOUNT,
     bossBonusMult: 1,
+    rangeMult: 1,
+    gunDamage: 0,
   };
 }
 
-/** Skill nodes apply first (permanent body), then run implants on top. */
-export function computeStats(implants: readonly Implant[], ownedNodes: readonly string[]): Stats {
+/** Skill nodes apply first (permanent body), then run implants, then relics. */
+export function computeStats(implants: readonly Implant[], ownedNodes: readonly string[], relics: readonly Relic[] = []): Stats {
   let s = baseStats();
   for (const node of SKILL_NODES) if (ownedNodes.includes(node.id)) s = node.modify(s);
   for (const imp of implants) s = imp.modify(s);
+  for (const r of relics) s = r.modify(s);
   s.psyResist = Math.min(0.9, Math.max(0, s.psyResist));
   return s;
 }

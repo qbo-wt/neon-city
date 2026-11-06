@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { baseStats, computeStats, totalLoad } from '../../src/core/stats';
 import { IMPLANTS } from '../../src/data/implants';
 import { SKILL_NODES } from '../../src/data/skillNodes';
+import { RELICS } from '../../src/data/relics';
 import type { Implant } from '../../src/core/types';
 
 const dmg5: Implant = { id: 't-dmg', name: 't', description: '', load: 10, modify: s => ({ ...s, damage: s.damage + 5 }) };
@@ -24,6 +25,19 @@ describe('stats', () => {
   });
   it('unknown node ids are ignored', () => {
     expect(computeStats([], ['nope'])).toEqual(baseStats());
+  });
+});
+
+describe('relics', () => {
+  it('katana adds damage and reach, pistols add a gun shot, neither adds psychosis load', () => {
+    const katana = RELICS.find(r => r.id === 'katana')!;
+    const pistols = RELICS.find(r => r.id === 'pistols')!;
+    const k = computeStats([], [], [katana]);
+    expect(k.damage).toBeGreaterThan(baseStats().damage);
+    expect(k.rangeMult).toBeGreaterThan(1);
+    expect(baseStats().gunDamage).toBe(0);
+    expect(computeStats([], [], [pistols]).gunDamage).toBeGreaterThan(0);
+    expect(totalLoad([], k)).toBe(0);
   });
 });
 
