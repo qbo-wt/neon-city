@@ -35,7 +35,7 @@ export const CONFIG = {
   BLOCKER_AMOUNT: 30,
   HEAL_FRACTION: 0.3,
 
-  BOSS_CREDIT_BONUS: 50,
+  BOSS_CREDIT_BONUS: 30,
   MIN_SPAWN_DIST: 64,
 } as const;
 

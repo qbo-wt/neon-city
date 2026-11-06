@@ -37,10 +37,10 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: play, alpha: 0.6, yoyo: true, repeat: -1, duration: 700 });
     play.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.button === 0) this.start(); });
     this.input.keyboard!.once('keydown-ENTER', () => this.start());
-    txt(this, W / 2, 196, 'ou ENTRÉE', 7, '#8a86b0').setOrigin(0.5);
+    txt(this, W / 2, 196, 'Ou appuie sur ENTRÉE', 7, '#8a86b0').setOrigin(0.5);
 
     new HelpOverlay(this);
-    txt(this, W - 24, H - 12, 'commandes', 7, '#8a86b0').setOrigin(1, 0.5);
+    txt(this, W - 24, H - 12, 'Commandes', 7, '#8a86b0').setOrigin(1, 0.5);
   }
 
   private started = false;

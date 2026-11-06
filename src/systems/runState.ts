@@ -27,9 +27,10 @@ export interface HudData {
 const KEY = 'run';
 
 export function newRun(seed: number, ownedNodes: string[]): RunState {
+  const base = computeStats([], ownedNodes);
   return {
     seed, rooms: generateRun(seed), roomIndex: 0, implants: [], ownedNodes,
-    psy: 0, hp: computeStats([], ownedNodes).maxHp, creditsEarned: 0, blockers: 0,
+    psy: 0, hp: base.maxHp, creditsEarned: 0, blockers: base.startBlockers,
   };
 }
 

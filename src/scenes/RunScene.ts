@@ -116,8 +116,8 @@ export class RunScene extends Phaser.Scene {
 
     if (this.controls.blocker() && this.run.blockers > 0) {
       this.run.blockers--;
-      this.run.psy = applyBlocker(this.run.psy, CONFIG.BLOCKER_AMOUNT);
-      floatText(this, this.player.x, this.player.y - 14, `-${CONFIG.BLOCKER_AMOUNT} PSY`, '#39ff88', 8);
+      this.run.psy = applyBlocker(this.run.psy, this.stats.blockerAmount);
+      floatText(this, this.player.x, this.player.y - 14, `-${this.stats.blockerAmount} PSY`, '#39ff88', 8);
     }
 
     this.run.hp = this.player.hp;
@@ -218,6 +218,11 @@ export class RunScene extends Phaser.Scene {
       return;
     }
     floatText(this, CONFIG.WIDTH / 2, 120, 'SECTEUR NETTOYÉ', '#00f0ff', 11);
+    if (this.stats.regenOnClear > 0) {
+      const before = this.player.hp;
+      this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + this.stats.maxHp * this.stats.regenOnClear);
+      floatText(this, this.player.x, this.player.y - 14, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 8);
+    }
     this.unlockDoors();
   }
 
@@ -255,14 +260,14 @@ export class RunScene extends Phaser.Scene {
       }
       reward = 'credits';
     }
-    if (reward === 'credits') this.run.creditsEarned += Math.round((20 + ri * 5) * this.stats.creditMult);
+    if (reward === 'credits') this.run.creditsEarned += Math.round((8 + ri * 2) * this.stats.creditMult);
     if (reward === 'heal') {
       const before = this.player.hp;
       this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + this.stats.maxHp * CONFIG.HEAL_FRACTION);
       floatText(this, this.player.x, this.player.y - 14, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 9);
     }
     if (reward === 'chest') {
-      this.run.creditsEarned += Math.round((10 + ri * 3) * this.stats.creditMult);
+      this.run.creditsEarned += Math.round((5 + ri * 2) * this.stats.creditMult);
       if (Math.random() < 0.5) this.run.blockers++;
     }
     this.nextRoom();
@@ -283,7 +288,7 @@ export class RunScene extends Phaser.Scene {
     this.player.setTint(COLORS.magenta);
     this.cameras.main.shake(300, 0.01);
     this.cameras.main.flash(300, 255, 0, 40);
-    txt(this, CONFIG.WIDTH / 2, 110, 'FLATLINE', 18, '#ff2a6d').setOrigin(0.5).setDepth(100);
+    txt(this, CONFIG.WIDTH / 2, 110, 'SIGNAL VITAL PERDU', 16, '#ff2a6d').setOrigin(0.5).setDepth(100);
     this.time.delayedCall(1300, () => this.finish(victory));
   }
 
@@ -291,7 +296,7 @@ export class RunScene extends Phaser.Scene {
   private finish(victory: boolean) {
     const storage = getStorage();
     const save = loadSave(storage);
-    const bonus = victory ? Math.round(CONFIG.BOSS_CREDIT_BONUS * this.stats.creditMult) : 0;
+    const bonus = victory ? Math.round(CONFIG.BOSS_CREDIT_BONUS * this.stats.creditMult * this.stats.bossBonusMult) : 0;
     const earned = this.run.creditsEarned + bonus;
     save.credits += earned;
     save.runs += 1;

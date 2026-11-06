@@ -3,14 +3,14 @@ import { CONFIG, COLORS } from '../config';
 import { txt } from './text';
 
 const KEYS: [string, string][] = [
-  ['ZQSD / WASD / flèches', 'se déplacer'],
-  ['ESPACE', 'dash (invulnérable)'],
-  ['CLIC GAUCHE', 'frapper vers le curseur (combo x3)'],
-  ['CLIC DROIT', 'parer juste avant l\'impact'],
-  ['F', 'neuro-bloqueur (-30 psychose)'],
-  ['E', 'interagir'],
-  ['1 / 2 / 3', 'choisir un implant'],
-  ['I', 'afficher / cacher cette aide'],
+  ['ZQSD / WASD / flèches', 'Se déplacer'],
+  ['ESPACE', 'Dash (invulnérable)'],
+  ['CLIC GAUCHE', 'Frapper vers le curseur (combo x3)'],
+  ['CLIC DROIT', 'Parer juste avant l\'impact'],
+  ['F', 'Neuro-bloqueur (réduit la psychose)'],
+  ['E', 'Interagir'],
+  ['1 / 2 / 3', 'Choisir un implant'],
+  ['I', 'Afficher / cacher cette aide'],
 ];
 
 /** An "i" button in a screen corner; click it (or press I) to toggle the list of controls. */

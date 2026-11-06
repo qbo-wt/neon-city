@@ -8,6 +8,20 @@ export interface Stats {
   psyResist: number;
   creditMult: number;
   implantLoadMult: number;
+  /** incoming damage multiplier (armor) */
+  damageTakenMult: number;
+  /** fraction of max HP healed when a sector is cleared */
+  regenOnClear: number;
+  /** damage multiplier of the 3rd combo hit */
+  finisherMult: number;
+  dashCooldownMult: number;
+  /** extra ms added to the parry window */
+  parryBonusMs: number;
+  counterMult: number;
+  startBlockers: number;
+  /** psychosis removed by one neuro-blocker */
+  blockerAmount: number;
+  bossBonusMult: number;
 }
 
 export interface Implant {
@@ -24,7 +38,8 @@ export interface SkillNode {
   description: string;
   cost: number;
   requires?: string;
-  /** 0 = body column, 1 = mind column (UI layout only) */
-  column: 0 | 1;
+  tree: 'body' | 'mind';
+  /** 0-3 body branches, 4-5 mind branches; each branch is one UI column */
+  branch: number;
   modify: (s: Stats) => Stats;
 }

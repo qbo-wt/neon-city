@@ -12,6 +12,15 @@ export function baseStats(): Stats {
     psyResist: 0,
     creditMult: 1,
     implantLoadMult: 1,
+    damageTakenMult: 1,
+    regenOnClear: 0,
+    finisherMult: CONFIG.FINISHER_MULT,
+    dashCooldownMult: 1,
+    parryBonusMs: 0,
+    counterMult: CONFIG.COUNTER_MULT,
+    startBlockers: 0,
+    blockerAmount: CONFIG.BLOCKER_AMOUNT,
+    bossBonusMult: 1,
   };
 }
 

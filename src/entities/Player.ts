@@ -53,6 +53,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   isDashing(now: number) { return now < this.dashUntil; }
+  private get parryWindow() { return CONFIG.PARRY_WINDOW_MS + this.stats.parryBonusMs; }
 
   tick(now: number) {
     const body = this.body as Phaser.Physics.Arcade.Body;
@@ -61,7 +62,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // Dash charges refill one at a time.
     if (this.dashCharges < this.stats.dashCharges && now >= this.dashRechargeAt) {
       this.dashCharges++;
-      if (this.dashCharges < this.stats.dashCharges) this.dashRechargeAt = now + CONFIG.DASH_COOLDOWN_MS;
+      if (this.dashCharges < this.stats.dashCharges) this.dashRechargeAt = now + CONFIG.DASH_COOLDOWN_MS * this.stats.dashCooldownMult;
     }
 
     // A parry window that closes without catching a hit is a whiff: brief lockout.
@@ -120,7 +121,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   private startDash(now: number, dir: { x: number; y: number }) {
-    if (this.dashCharges === this.stats.dashCharges) this.dashRechargeAt = now + CONFIG.DASH_COOLDOWN_MS;
+    if (this.dashCharges === this.stats.dashCharges) this.dashRechargeAt = now + CONFIG.DASH_COOLDOWN_MS * this.stats.dashCooldownMult;
     this.dashCharges--;
     this.dashDir = dir;
     this.dashUntil = now + CONFIG.DASH_DURATION_MS;
@@ -134,7 +135,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   private startParry(now: number) {
     this.parryStartMs = now;
-    this.parryUntil = now + CONFIG.PARRY_WINDOW_MS;
+    this.parryUntil = now + this.parryWindow;
     this.parryPending = true;
     this.setTint(COLORS.cyan);
     const ring = this.scene.add.circle(this.x, this.y, 10).setStrokeStyle(1, COLORS.cyan).setDepth(11);
@@ -159,7 +160,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     const ev: AttackEvent = {
       x: hx, y: hy, radius: finisher ? 18 : 14, comboIndex: this.comboIndex,
-      mult: finisher ? CONFIG.FINISHER_MULT : 1, dirX: aim.x, dirY: aim.y,
+      mult: finisher ? this.stats.finisherMult : 1, dirX: aim.x, dirY: aim.y,
     };
     this.scene.events.emit(PLAYER_ATTACK, ev);
   }
@@ -167,7 +168,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   receiveHit(amount: number, now: number, fromX: number, fromY: number): HitResult {
     if (now < this.dashUntil) return 'ignored';
     // Parry is checked before post-hit invulnerability, otherwise a parry right after taking a hit always whiffs.
-    if (this.parryPending && resolveParry(this.parryStartMs, now) === 'parried') {
+    if (this.parryPending && resolveParry(this.parryStartMs, now, this.parryWindow) === 'parried') {
       this.parryPending = false;
       this.clearTint();
       this.invulnUntil = now + 200;
@@ -176,7 +177,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       return 'parried';
     }
     if (now < this.invulnUntil) return 'ignored';
-    this.hp = Math.max(0, this.hp - amount);
+    this.hp = Math.max(0, this.hp - amount * this.stats.damageTakenMult);
     this.invulnUntil = now + CONFIG.HIT_INVULN_MS;
     const dx = this.x - fromX, dy = this.y - fromY, len = Math.hypot(dx, dy) || 1;
     this.lungeDir = { x: dx / len * 1.6, y: dy / len * 1.6 };

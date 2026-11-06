@@ -91,7 +91,7 @@ export class HideoutScene extends Phaser.Scene {
   }
 
   private refreshInfo() {
-    this.info.setText(`${this.save.credits}¢   runs ${this.save.runs}   record secteur ${this.save.bestRoom}`);
+    this.info.setText(`${this.save.credits}¢   Runs : ${this.save.runs}   Record : secteur ${this.save.bestRoom}`);
     this.player?.setStats(computeStats([], this.save.ownedNodes));
   }
 
@@ -107,10 +107,10 @@ export class HideoutScene extends Phaser.Scene {
 
     const near = (p: { x: number; y: number }, r: number) => Phaser.Math.Distance.Between(this.player.x, this.player.y, p.x, p.y) < r;
     if (near(this.terminal, 30)) {
-      this.prompt.setText('[E] terminal du doc').setPosition(this.terminal.x, this.terminal.y + 14);
+      this.prompt.setText('[E] Terminal du doc').setPosition(this.terminal.x, this.terminal.y + 14);
       if (this.controls.interact()) this.panel.open();
     } else if (near(this.door, 50)) {
-      this.prompt.setText('[E] sortir dans Neon City').setPosition(this.door.x, this.door.y + 30);
+      this.prompt.setText('[E] Sortir dans Neon City').setPosition(this.door.x, this.door.y + 30);
       if (this.controls.interact() && !this.leaving) {
         this.leaving = true;
         this.cameras.main.fadeOut(250, 11, 8, 32);

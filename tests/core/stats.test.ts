@@ -33,10 +33,30 @@ describe('content data', () => {
     IMPLANTS.forEach(i => expect(i.load).toBeGreaterThan(0));
     expect(new Set(IMPLANTS.map(i => i.id)).size).toBe(8);
   });
-  it('has 8 skill nodes with unique ids and valid prerequisites', () => {
-    expect(SKILL_NODES).toHaveLength(8);
+  it('has 16 body and 8 mind nodes with unique ids and valid prerequisites', () => {
+    expect(SKILL_NODES.filter(n => n.tree === 'body')).toHaveLength(16);
+    expect(SKILL_NODES.filter(n => n.tree === 'mind')).toHaveLength(8);
     const ids = new Set(SKILL_NODES.map(n => n.id));
-    expect(ids.size).toBe(8);
+    expect(ids.size).toBe(24);
     SKILL_NODES.forEach(n => { if (n.requires) expect(ids.has(n.requires)).toBe(true); });
+  });
+  it('each of the 6 branches is a 4-node chain with rising costs', () => {
+    for (let b = 0; b < 6; b++) {
+      const chain = SKILL_NODES.filter(n => n.branch === b);
+      expect(chain).toHaveLength(4);
+      expect(chain[0].requires).toBeUndefined();
+      for (let i = 1; i < 4; i++) {
+        expect(chain[i].requires).toBe(chain[i - 1].id);
+        expect(chain[i].cost).toBeGreaterThan(chain[i - 1].cost);
+      }
+    }
+  });
+  it('keeps the ids of earlier saves so purchases are not lost', () => {
+    const ids = new Set(SKILL_NODES.map(n => n.id));
+    ['body-hp-1', 'body-dmg-1', 'body-dash-1', 'body-hp-2', 'mind-resist-1', 'mind-credits-1', 'mind-load-1', 'mind-resist-2']
+      .forEach(id => expect(ids.has(id)).toBe(true));
+  });
+  it('full tree costs at least 5000 credits (long-term progression)', () => {
+    expect(SKILL_NODES.reduce((sum, n) => sum + n.cost, 0)).toBeGreaterThanOrEqual(5000);
   });
 });

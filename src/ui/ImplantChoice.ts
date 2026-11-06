@@ -14,7 +14,7 @@ export class ImplantChoice {
     this.root = scene.add.container(0, 0).setScrollFactor(0).setDepth(200);
     this.root.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x05030f, 0.82));
     this.root.add(txt(scene, W / 2, 40, 'CLINIQUE CLANDESTINE — CHOISIS UN IMPLANT', 10, '#00f0ff').setOrigin(0.5));
-    this.root.add(txt(scene, W / 2, 56, 'chaque implant augmente ta charge de psychose', 7, '#8a86b0').setOrigin(0.5));
+    this.root.add(txt(scene, W / 2, 56, 'Chaque implant augmente ta charge de psychose', 7, '#8a86b0').setOrigin(0.5));
 
     const cw = 136, gap = 12, total = options.length * cw + (options.length - 1) * gap;
     options.forEach((imp, i) => {
@@ -27,7 +27,7 @@ export class ImplantChoice {
       this.root.add(scene.add.image(x, y - 34, 'implant-pickup').setScale(2));
       this.root.add(txt(scene, x, y - 8, imp.name, 8, '#e8e8ff').setOrigin(0.5).setWordWrapWidth(cw - 10).setAlign('center'));
       this.root.add(txt(scene, x, y + 16, imp.description, 7, '#f5e663').setOrigin(0.5).setWordWrapWidth(cw - 10).setAlign('center'));
-      this.root.add(txt(scene, x, y + 40, `charge psy +${imp.load}`, 7, '#ff2a6d').setOrigin(0.5));
+      this.root.add(txt(scene, x, y + 40, `Charge psy +${imp.load}`, 7, '#ff2a6d').setOrigin(0.5));
       this.root.add(txt(scene, x, y + 52, `[${i + 1}]`, 6, '#8a86b0').setOrigin(0.5));
     });
     // Children must be camera-fixed too, or their hit areas are offset by the camera scroll.
