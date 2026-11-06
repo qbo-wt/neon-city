@@ -15,8 +15,8 @@ export interface EnemyDef {
 }
 
 export const ENEMIES: Record<EnemyId, EnemyDef> = {
-  runner: { id: 'runner', name: 'Punk à lame', hp: 24, speed: 70, damage: 8, behavior: 'melee', credits: 3, telegraphMs: 320, radius: 6 },
-  gunner: { id: 'gunner', name: 'Tireur des Rats', hp: 18, speed: 45, damage: 7, behavior: 'ranged', credits: 4, telegraphMs: 450, radius: 6 },
-  brute: { id: 'brute', name: 'Colosse chromé', hp: 60, speed: 40, damage: 16, behavior: 'charge', credits: 8, telegraphMs: 600, radius: 9 },
-  boss: { id: 'boss', name: 'Exécuteur Psy-Sec', hp: 420, speed: 55, damage: 14, behavior: 'boss', credits: 40, telegraphMs: 550, radius: 13 },
+  runner: { id: 'runner', name: 'Punk à lame', hp: 26, speed: 82, damage: 12, behavior: 'melee', credits: 3, telegraphMs: 300, radius: 6 },
+  gunner: { id: 'gunner', name: 'Tireur des Rats', hp: 20, speed: 50, damage: 10, behavior: 'ranged', credits: 4, telegraphMs: 420, radius: 6 },
+  brute: { id: 'brute', name: 'Colosse chromé', hp: 70, speed: 46, damage: 22, behavior: 'charge', credits: 8, telegraphMs: 560, radius: 9 },
+  boss: { id: 'boss', name: 'Exécuteur Psy-Sec', hp: 520, speed: 60, damage: 18, behavior: 'boss', credits: 40, telegraphMs: 520, radius: 13 },
 };

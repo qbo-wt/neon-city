@@ -13,7 +13,7 @@ export function psyTier(v: number): PsyTier {
 
 export function tickPsychosis(v: number, load: number, dtMs: number, resist: number): number {
   const dtSec = Math.min(dtMs, CONFIG.MAX_DT_MS) / 1000;
-  return clamp(v + load * CONFIG.PSY_RATE_PER_LOAD * (1 - resist) * dtSec);
+  return clamp(v + (CONFIG.PSY_BASE_RATE + load * CONFIG.PSY_RATE_PER_LOAD) * (1 - resist) * dtSec);
 }
 
 export function psyOnKill(v: number, resist: number): number {

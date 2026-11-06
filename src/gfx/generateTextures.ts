@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
 import { createRng } from '../core/rng';
-import { PALETTE, SPRITES } from './sprites';
+import { BACK_VIEWS, PALETTE, SPRITES } from './sprites';
+import { generateHideoutArt } from './hideoutArt';
+
+export type CanvasTex = (scene: Phaser.Scene, key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) => void;
+export type Px = (ctx: CanvasRenderingContext2D, c: string, x: number, y: number, w?: number, h?: number) => void;
 
 function canvasTexture(scene: Phaser.Scene, key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) {
   if (scene.textures.exists(key)) return;
@@ -33,6 +37,20 @@ export function generateTextures(scene: Phaser.Scene): void {
 
   // Dash afterimage: player silhouette in cyan.
   gridTexture(scene, 'player-dash', SPRITES.player.map(r => r.replace(/[^.]/g, 'c')));
+
+  for (const [key, { rows, to }] of Object.entries(BACK_VIEWS)) {
+    gridTexture(scene, `${key}-back`, SPRITES[key].map((r, i) => rows.includes(i) ? r.replace(/[^.k]/g, to) : r));
+  }
+
+  // Soft ground shadow under characters.
+  canvasTexture(scene, 'shadow', 14, 6, ctx => {
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(7, 3, 7, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  generateHideoutArt(scene, canvasTexture, px);
 
   const rng = createRng(1337);
 

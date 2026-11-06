@@ -14,7 +14,7 @@ export function doorColumns(count: number): number[] {
   return count === 3 ? [3, 7, 11] : count === 2 ? [5, 9] : count === 1 ? [7] : [];
 }
 
-export function buildRoom(scene: Phaser.Scene, template: RoomTemplate, doorCount: number): BuiltRoom {
+export function buildRoom(scene: Phaser.Scene, template: RoomTemplate, doorCount: number, floorKey = 'tile-floor', streetLights = true, wallKey = 'tile-wall'): BuiltRoom {
   const walls = scene.physics.add.staticGroup();
   const cols = doorColumns(doorCount);
   const doorSlots: BuiltRoom['doorSlots'] = [];
@@ -26,11 +26,11 @@ export function buildRoom(scene: Phaser.Scene, template: RoomTemplate, doorCount
         const locked = walls.create(x, y, 'door-locked');
         doorSlots.push({ x, y, locked });
       } else {
-        walls.create(x, y, 'tile-wall');
+        walls.create(x, y, wallKey);
       }
       return;
     }
-    scene.add.image(x, y, 'tile-floor').setDepth(0);
+    scene.add.image(x, y, floorKey).setDepth(0);
     if (ch === 'o') {
       const o = walls.create(x, y, 'tile-obstacle') as Phaser.Physics.Arcade.Image;
       (o.body as Phaser.Physics.Arcade.StaticBody).setSize(26, 24).setOffset(3, 5);
@@ -39,7 +39,7 @@ export function buildRoom(scene: Phaser.Scene, template: RoomTemplate, doorCount
 
   // Neon light pools spilling from the walls onto the wet street.
   const neon = [COLORS.magenta, COLORS.cyan, COLORS.yellow];
-  for (let tx = 1; tx < 14; tx += 3) {
+  for (let tx = 1; streetLights && tx < 14; tx += 3) {
     scene.add.image(tx * TILE + 16, 40, 'glow').setTint(neon[tx % 3]).setAlpha(0.22).setScale(1.4, 0.8)
       .setBlendMode(Phaser.BlendModes.ADD).setDepth(1);
   }

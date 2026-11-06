@@ -11,11 +11,12 @@ describe('psychosis', () => {
     expect(psyTier(99.9)).toBe('drain');
     expect(psyTier(100)).toBe('crisis');
   });
-  it('zero load does not rise', () => {
-    expect(tickPsychosis(10, 0, 1000, 0)).toBe(10);
+  it('rises by the base rate even with no implants (the city wears you down)', () => {
+    expect(tickPsychosis(10, 0, 50, 0)).toBeCloseTo(10 + CONFIG.PSY_BASE_RATE * 0.05);
+    expect(CONFIG.PSY_BASE_RATE).toBeGreaterThan(0);
   });
-  it('rises by load * rate * dtSec', () => {
-    expect(tickPsychosis(0, 10, 50, 0)).toBeCloseTo(10 * CONFIG.PSY_RATE_PER_LOAD * 0.05);
+  it('rises by (base + load * rate) * dtSec', () => {
+    expect(tickPsychosis(0, 10, 50, 0)).toBeCloseTo((CONFIG.PSY_BASE_RATE + 10 * CONFIG.PSY_RATE_PER_LOAD) * 0.05);
   });
   it('clamps huge dt to MAX_DT_MS', () => {
     expect(tickPsychosis(0, 10, 100000, 0)).toBe(tickPsychosis(0, 10, CONFIG.MAX_DT_MS, 0));

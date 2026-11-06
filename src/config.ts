@@ -24,9 +24,11 @@ export const CONFIG = {
   HIT_INVULN_MS: 500,
 
   ROOMS_PER_RUN: 8,
-  PSY_RATE_PER_LOAD: 0.02,
-  PSY_PER_KILL: 0.6,
-  PSY_DRAIN_SLOW: 2,
+  /** psychosis per second in combat, even with no implant: Neon City wears you down */
+  PSY_BASE_RATE: 0.35,
+  PSY_RATE_PER_LOAD: 0.035,
+  PSY_PER_KILL: 1,
+  PSY_DRAIN_SLOW: 3,
   PSY_DRAIN_FAST: 8,
   CRISIS_DAMAGE_MULT: 1.5,
   CRISIS_SPEED_MULT: 1.5,

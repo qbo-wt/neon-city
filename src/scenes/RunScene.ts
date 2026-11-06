@@ -79,7 +79,7 @@ export class RunScene extends Phaser.Scene {
     this.hooks = {
       player: this.player,
       fireBullet: (x, y, a, s, d) => this.bullets.fire(x, y, a, s, d),
-      summon: (id, x, y) => this.spawnEnemy(id, Phaser.Math.Clamp(x, 48, 432), Phaser.Math.Clamp(y, 48, 208)),
+      summon: id => this.summon(id),
       onDeath: e => this.onEnemyDeath(e),
     };
 
@@ -109,6 +109,8 @@ export class RunScene extends Phaser.Scene {
     if (this.roomActive) {
       this.run.psy = tickPsychosis(this.run.psy, totalLoad(this.run.implants, this.stats), dt, this.stats.psyResist);
       this.player.hp = Math.max(0, this.player.hp - hpDrainPerSec(tier) * dt / 1000);
+      // Death wins over a simultaneous room clear.
+      if (this.player.hp <= 0) { this.endRun(false); return; }
       if (this.pendingSpawns === 0 && this.enemies.countActive() === 0) this.onWaveCleared();
     }
 
@@ -165,10 +167,25 @@ export class RunScene extends Phaser.Scene {
         warn.destroy();
         this.pendingSpawns--;
         if (this.ending) return;
-        const e = this.spawnEnemy(ids[i], pt.x, pt.y);
+        // The player may have moved onto the point during the telegraph: re-pick if too close.
+        const p = Phaser.Math.Distance.Between(pt.x, pt.y, this.player.x, this.player.y) < CONFIG.MIN_SPAWN_DIST ? this.freePoint() : pt;
+        const e = this.spawnEnemy(ids[i], p.x, p.y);
         if (ids[i] === 'boss') this.boss = e;
       });
     });
+  }
+
+  /** A floor point away from the player's current position. */
+  private freePoint() {
+    const tile = { x: Math.floor(this.player.x / TILE), y: Math.floor(this.player.y / TILE) };
+    return spawnPoints(this.room.template, 1, tile, Math.random)[0];
+  }
+
+  private summon(id: EnemyId) {
+    const live = this.enemies.getChildren().filter(e => (e as Enemy).summoned).length;
+    if (live >= 4) return;
+    const p = this.freePoint();
+    this.spawnEnemy(id, p.x, p.y).summoned = true;
   }
 
   private spawnEnemy(id: EnemyId, x: number, y: number): Enemy {
@@ -180,9 +197,10 @@ export class RunScene extends Phaser.Scene {
 
   private onEnemyDeath(e: Enemy) {
     this.run.psy = psyOnKill(this.run.psy, this.stats.psyResist);
-    const gain = Math.round(e.def.credits * this.stats.creditMult);
+    // Boss summons pay nothing, so stalling the boss to farm them is pointless.
+    const gain = e.summoned ? 0 : Math.round(e.def.credits * this.stats.creditMult);
     this.run.creditsEarned += gain;
-    floatText(this, e.x, e.y - 4, `+${gain}¢`, '#f5e663', 7);
+    if (gain) floatText(this, e.x, e.y - 4, `+${gain}¢`, '#f5e663', 7);
     if (e === this.boss) this.boss = undefined;
   }
 
@@ -193,6 +211,7 @@ export class RunScene extends Phaser.Scene {
     this.bullets.group.clear(true, true);
     if (this.room.isBoss) {
       this.ending = true;
+      (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
       this.cameras.main.flash(400, 255, 42, 109);
       txt(this, CONFIG.WIDTH / 2, 110, 'CIBLE NEUTRALISÉE', 14, '#f5e663').setOrigin(0.5).setDepth(100);
       this.time.delayedCall(1500, () => this.finish(true));
@@ -223,10 +242,12 @@ export class RunScene extends Phaser.Scene {
       const options = shuffle(createRng(this.run.seed + ri * 13), IMPLANTS.filter(i => !owned.has(i.id))).slice(0, 3);
       if (options.length) {
         this.physics.pause();
+    (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
         this.choice = new ImplantChoice(this, options, this.controls, imp => {
           this.run.implants.push(imp);
           const next = computeStats(this.run.implants, this.run.ownedNodes);
-          this.run.hp = Math.min(next.maxHp, this.player.hp + Math.max(0, next.maxHp - this.stats.maxHp));
+          // Set the live HP: update() copies player.hp into run.hp every frame.
+          this.player.hp = this.run.hp = Math.min(next.maxHp, this.player.hp + Math.max(0, next.maxHp - this.stats.maxHp));
           this.choice = undefined;
           this.nextRoom();
         });
@@ -235,7 +256,11 @@ export class RunScene extends Phaser.Scene {
       reward = 'credits';
     }
     if (reward === 'credits') this.run.creditsEarned += Math.round((20 + ri * 5) * this.stats.creditMult);
-    if (reward === 'heal') this.run.hp = Math.min(this.stats.maxHp, this.player.hp + this.stats.maxHp * CONFIG.HEAL_FRACTION);
+    if (reward === 'heal') {
+      const before = this.player.hp;
+      this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + this.stats.maxHp * CONFIG.HEAL_FRACTION);
+      floatText(this, this.player.x, this.player.y - 14, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 9);
+    }
     if (reward === 'chest') {
       this.run.creditsEarned += Math.round((10 + ri * 3) * this.stats.creditMult);
       if (Math.random() < 0.5) this.run.blockers++;
@@ -254,6 +279,7 @@ export class RunScene extends Phaser.Scene {
     this.ending = true;
     this.roomActive = false;
     this.physics.pause();
+    (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     this.player.setTint(COLORS.magenta);
     this.cameras.main.shake(300, 0.01);
     this.cameras.main.flash(300, 255, 0, 40);

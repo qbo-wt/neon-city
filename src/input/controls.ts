@@ -11,6 +11,7 @@ export class Controls {
   private attackAt = -Infinity;
   private parryAt = -Infinity;
   private static BUFFER_MS = 150;
+  private static PARRY_STALE_MS = 100;
 
   constructor(private scene: Phaser.Scene) {
     this.k = scene.input.keyboard!.addKeys('Z,Q,S,D,W,A,UP,DOWN,LEFT,RIGHT,SPACE,E,F,ESC,ONE,TWO,THREE') as Record<string, K>;
@@ -63,9 +64,12 @@ export class Controls {
     return buffered || this.scene.input.activePointer.leftButtonDown();
   }
 
-  /** Parry is not buffered: it must happen exactly when clicked, or it would break the timing window. */
+  /**
+   * A right-click starts a parry on the next frame it is allowed. Only stale clicks (older than
+   * PARRY_STALE_MS, e.g. made mid-dash) are dropped; the check must not depend on frame rate.
+   */
   wantsParry(now: number): boolean {
-    const fresh = now - this.parryAt <= 34;
+    const fresh = now - this.parryAt <= Controls.PARRY_STALE_MS;
     this.parryAt = -Infinity;
     return fresh;
   }

@@ -30,6 +30,8 @@ export class ImplantChoice {
       this.root.add(txt(scene, x, y + 40, `charge psy +${imp.load}`, 7, '#ff2a6d').setOrigin(0.5));
       this.root.add(txt(scene, x, y + 52, `[${i + 1}]`, 6, '#8a86b0').setOrigin(0.5));
     });
+    // Children must be camera-fixed too, or their hit areas are offset by the camera scroll.
+    this.root.setScrollFactor(0, 0, true);
   }
 
   /** Call every frame while open. */

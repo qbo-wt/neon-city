@@ -68,5 +68,7 @@ export class SkillTreePanel {
       }
     });
     root.add(txt(s, W / 2, H - 12, '[ÉCHAP] fermer', 7, '#8a86b0').setOrigin(0.5));
+    // Children must be camera-fixed too, or their hit areas are offset by the camera scroll.
+    root.setScrollFactor(0, 0, true);
   }
 }

@@ -96,7 +96,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       body.setVelocity(move.x * sp, move.y * sp);
     }
 
-    this.setFlipX(aim.x < 0);
+    this.updateLook(now, aim);
+  }
+
+  private shadow?: Phaser.GameObjects.Image;
+  private reticle?: Phaser.GameObjects.Image;
+
+  /** Body faces the cursor (back view when aiming up); a cyan chevron shows exactly where the next hit lands. */
+  private updateLook(now: number, aim: { x: number; y: number }) {
+    this.shadow ??= this.scene.add.image(this.x, this.y, 'shadow').setDepth(4);
+    this.reticle ??= this.scene.add.image(this.x, this.y, 'chevron').setTint(COLORS.cyan).setDepth(9).setAlpha(0.9);
+    this.setTexture(aim.y < -0.5 ? 'player-back' : 'player').setFlipX(aim.x < 0);
+    this.shadow.setPosition(this.x, this.y + 7);
+    this.reticle.setPosition(this.x + aim.x * 14, this.y + 3 + aim.y * 14).setRotation(Math.atan2(aim.y, aim.x));
     this.setAlpha(now < this.invulnUntil && Math.floor(now / 60) % 2 === 0 ? 0.35 : 1);
   }
 
@@ -153,7 +165,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   receiveHit(amount: number, now: number, fromX: number, fromY: number): HitResult {
-    if (now < this.dashUntil || now < this.invulnUntil) return 'ignored';
+    if (now < this.dashUntil) return 'ignored';
+    // Parry is checked before post-hit invulnerability, otherwise a parry right after taking a hit always whiffs.
     if (this.parryPending && resolveParry(this.parryStartMs, now) === 'parried') {
       this.parryPending = false;
       this.clearTint();
@@ -162,6 +175,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.scene.cameras.main.flash(80, 0, 240, 255, false);
       return 'parried';
     }
+    if (now < this.invulnUntil) return 'ignored';
     this.hp = Math.max(0, this.hp - amount);
     this.invulnUntil = now + CONFIG.HIT_INVULN_MS;
     const dx = this.x - fromX, dy = this.y - fromY, len = Math.hypot(dx, dy) || 1;

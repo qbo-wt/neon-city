@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
-import { CONFIG, SCENES } from '../config';
+import { CONFIG, COLORS, SCENES } from '../config';
 import { Rain } from '../fx/effects';
 import { txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
+import { HelpOverlay } from '../ui/HelpOverlay';
 
 export class MenuScene extends Phaser.Scene {
   private rain!: Rain;
@@ -27,17 +28,27 @@ export class MenuScene extends Phaser.Scene {
 
     this.ghost = txt(this, W / 2, 70, 'NEON CITY', 40, '#00f0ff').setOrigin(0.5).setAlpha(0.6);
     this.title = txt(this, W / 2, 70, 'NEON CITY', 40, '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 4);
-    txt(this, W / 2, 104, 'chrome · sang · psychose', 9, '#f5e663').setOrigin(0.5);
+    txt(this, W / 2, 104, 'Plus de chrome. Moins d\'humain.', 10, '#f5e663').setOrigin(0.5);
 
-    const start = txt(this, W / 2, 170, '[ clique pour jouer ]', 10, '#e8e8ff').setOrigin(0.5);
-    this.tweens.add({ targets: start, alpha: 0.2, yoyo: true, repeat: -1, duration: 600 });
-    txt(this, W / 2, 230, 'ZQSD / flèches : bouger   ESPACE : dash   CLIC G : frapper   CLIC D : parer', 7, '#8a86b0').setOrigin(0.5);
-    txt(this, W / 2, 242, 'F : neuro-bloqueur   E : interagir', 7, '#8a86b0').setOrigin(0.5);
+    const play = this.add.container(W / 2, 170, [
+      this.add.rectangle(0, 0, 120, 22, 0x140f2b, 0.9).setStrokeStyle(1, COLORS.cyan),
+      txt(this, 0, 0, 'JOUER', 11, '#e8e8ff').setOrigin(0.5),
+    ]).setSize(120, 22).setInteractive({ useHandCursor: true });
+    this.tweens.add({ targets: play, alpha: 0.6, yoyo: true, repeat: -1, duration: 700 });
+    play.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.button === 0) this.start(); });
+    this.input.keyboard!.once('keydown-ENTER', () => this.start());
+    txt(this, W / 2, 196, 'ou ENTRÉE', 7, '#8a86b0').setOrigin(0.5);
 
-    this.input.once('pointerdown', () => {
-      this.cameras.main.fadeOut(250, 11, 8, 32);
-      this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start(SCENES.Hideout));
-    });
+    new HelpOverlay(this);
+    txt(this, W - 24, H - 12, 'commandes', 7, '#8a86b0').setOrigin(1, 0.5);
+  }
+
+  private started = false;
+  private start() {
+    if (this.started) return;
+    this.started = true;
+    this.cameras.main.fadeOut(250, 11, 8, 32);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start(SCENES.Hideout));
   }
 
   update(_t: number, dt: number) {

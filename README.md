@@ -21,13 +21,14 @@ npm run build      # vérification des types + build statique dans dist/
 | Parer (fenêtre de 150 ms) | Clic droit |
 | Neuro-bloqueur (-30 psychose) | F |
 | Interagir (planque) | E |
+| Aide des commandes | I ou bouton « i » |
 | Choisir un implant | Clic ou 1 / 2 / 3 |
 
 ## Boucle de jeu
 
 Planque → run de 8 secteurs (le dernier est un boss) → mort ou victoire → les crédits sont gardés, les implants et la psychose sont perdus → arbre de compétences au terminal de la planque.
 
-**Psychose** : chaque implant ajoute de la charge. La jauge monte avec le temps passé en combat et à chaque ennemi tué. À 50 % : glitchs visuels. À 75 % : la vie baisse lentement. À 100 % : crise de cyberpsychose (+50 % dégâts et vitesse, mais la vie fond).
+**Psychose** : la jauge monte dès le premier combat (la ville use), plus vite avec chaque implant, et à chaque ennemi tué. À 50 % : glitchs visuels. À 75 % : la vie baisse lentement. À 100 % : crise de cyberpsychose (+50 % dégâts et vitesse, mais la vie fond).
 
 ## Structure
 

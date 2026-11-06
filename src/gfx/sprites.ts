@@ -167,4 +167,21 @@ export const SPRITES: Record<string, string[]> = {
     '.cc.',
   ],
   'fx-spark': ['ww', 'ww'],
+  // Facing indicator drawn pointing right, rotated at runtime.
+  chevron: [
+    'ww....',
+    '.www..',
+    '..wwww',
+    '.www..',
+    'ww....',
+  ],
+};
+
+/** Back views: the face rows are painted over with hair/helmet so you can tell who looks away. */
+export const BACK_VIEWS: Record<string, { rows: number[]; to: string }> = {
+  player: { rows: [2, 3], to: 'w' },
+  'enemy-runner': { rows: [3, 4], to: 'm' },
+  'enemy-gunner': { rows: [2, 3], to: 'P' },
+  'enemy-brute': { rows: [2], to: 'g' },
+  'enemy-boss': { rows: [3], to: 'y' },
 };

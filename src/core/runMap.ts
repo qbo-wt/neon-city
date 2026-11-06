@@ -18,8 +18,8 @@ export interface RoomPlan {
 const REWARDS: Reward[] = ['implant', 'credits', 'heal', 'chest'];
 
 function makeWave(rng: Rng, index: number): EnemyId[] {
-  const size = 2 + Math.floor(index / 2) + randInt(rng, 0, 1);
-  const pool: EnemyId[] = index < 2 ? ['runner', 'runner', 'gunner'] : ['runner', 'runner', 'gunner', 'gunner', 'brute'];
+  const size = 3 + Math.floor(index / 2) + randInt(rng, 0, 1);
+  const pool: EnemyId[] = index < 1 ? ['runner', 'runner', 'gunner'] : ['runner', 'runner', 'gunner', 'gunner', 'brute'];
   return Array.from({ length: size }, () => pick(rng, pool));
 }
 
