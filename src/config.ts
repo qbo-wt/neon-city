@@ -1,6 +1,8 @@
 /** Every tuning number lives here. Scenes and entities never hardcode gameplay values. */
 export const CONFIG = {
   WIDTH: 480,
+  /** Internal canvas is WIDTH*ZOOM; cameras zoom so world units stay 480x270 and text renders sharp. */
+  ZOOM: 2,
   HEIGHT: 270,
   MAX_DT_MS: 50,
 
@@ -22,8 +24,8 @@ export const CONFIG = {
   HIT_INVULN_MS: 500,
 
   ROOMS_PER_RUN: 8,
-  PSY_RATE_PER_LOAD: 0.08,
-  PSY_PER_KILL: 1.5,
+  PSY_RATE_PER_LOAD: 0.02,
+  PSY_PER_KILL: 0.6,
   PSY_DRAIN_SLOW: 2,
   PSY_DRAIN_FAST: 8,
   CRISIS_DAMAGE_MULT: 1.5,
