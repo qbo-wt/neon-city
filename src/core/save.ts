@@ -1,4 +1,5 @@
 import { SKILL_NODES } from '../data/skillNodes';
+import { HISTORY_CAP, isRunRecord, type RunRecord } from './history';
 
 export interface SaveData {
   version: 1;
@@ -6,12 +7,14 @@ export interface SaveData {
   ownedNodes: string[];
   runs: number;
   bestRoom: number;
+  /** oldest first, capped at HISTORY_CAP */
+  history: RunRecord[];
 }
 
 export const SAVE_KEY = 'neon-city-save';
 
 export function defaultSave(): SaveData {
-  return { version: 1, credits: 0, ownedNodes: [], runs: 0, bestRoom: 0 };
+  return { version: 1, credits: 0, ownedNodes: [], runs: 0, bestRoom: 0, history: [] };
 }
 
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
@@ -31,6 +34,8 @@ export function loadSave(storage: Pick<Storage, 'getItem'>): SaveData {
       ownedNodes: d.ownedNodes.filter((id: unknown): id is string => typeof id === 'string' && known.has(id)),
       runs: Math.floor(d.runs),
       bestRoom: Math.floor(d.bestRoom),
+      // Optional: saves from before the history existed simply start with an empty one.
+      history: Array.isArray(d.history) ? d.history.filter(isRunRecord).slice(-HISTORY_CAP) : [],
     };
   } catch {
     return defaultSave();

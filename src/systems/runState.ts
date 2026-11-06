@@ -14,6 +14,11 @@ export interface RunState {
   hp: number;
   creditsEarned: number;
   blockers: number;
+  // Tracked for the run history shown on the apartment terminal.
+  kills: number;
+  damageDealt: number;
+  hpHealed: number;
+  timeMs: number;
 }
 
 /** Live values the HUD draws each frame. */
@@ -31,6 +36,7 @@ export function newRun(seed: number, ownedNodes: string[]): RunState {
   return {
     seed, rooms: generateRun(seed), roomIndex: 0, implants: [], ownedNodes,
     psy: 0, hp: base.maxHp, creditsEarned: 0, blockers: base.startBlockers,
+    kills: 0, damageDealt: 0, hpHealed: 0, timeMs: 0,
   };
 }
 

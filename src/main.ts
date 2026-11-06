@@ -6,6 +6,9 @@ import { HideoutScene } from './scenes/HideoutScene';
 import { RunScene } from './scenes/RunScene';
 import { HudScene } from './scenes/HudScene';
 import { DeathScene } from './scenes/DeathScene';
+import { BuildingScene } from './scenes/BuildingScene';
+import { RipperdocScene } from './scenes/RipperdocScene';
+import { NetrunnerScene } from './scenes/NetrunnerScene';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -18,7 +21,7 @@ const game = new Phaser.Game({
   disableContextMenu: true,
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   physics: { default: 'arcade', arcade: { debug: false } },
-  scene: [BootScene, MenuScene, HideoutScene, RunScene, HudScene, DeathScene],
+  scene: [BootScene, MenuScene, HideoutScene, BuildingScene, RipperdocScene, NetrunnerScene, RunScene, HudScene, DeathScene],
 });
 
 // Test hook: `?debug` exposes the game instance for automated smoke tests.

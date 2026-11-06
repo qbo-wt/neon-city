@@ -54,4 +54,7 @@ export const SCENES = {
   Run: 'Run',
   Hud: 'Hud',
   Death: 'Death',
+  Building: 'Building',
+  Ripperdoc: 'Ripperdoc',
+  Netrunner: 'Netrunner',
 } as const;

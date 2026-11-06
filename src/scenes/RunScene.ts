@@ -15,7 +15,9 @@ import { Enemy, type EnemyHooks } from '../entities/Enemy';
 import { PLAYER_ATTACK, Player, type AttackEvent } from '../entities/Player';
 import { Rain, floatText, sparks } from '../fx/effects';
 import { Controls } from '../input/controls';
-import { buildRoom, type BuiltRoom } from '../systems/roomBuilder';
+import { buildRoom, doorColumns, type BuiltRoom } from '../systems/roomBuilder';
+import { STREET_NAMES, decorateStreet, obstacleFor, paintStreetGround, streetStyle } from '../gfx/streetArt';
+import { addRecord } from '../core/history';
 import { getRun, newRun, setRun, type HudData, type RunState } from '../systems/runState';
 import { ImplantChoice } from '../ui/ImplantChoice';
 import { txt } from '../ui/text';
@@ -61,7 +63,14 @@ export class RunScene extends Phaser.Scene {
     cam.fadeIn(220, 11, 8, 32);
 
     this.room = this.run.rooms[this.run.roomIndex];
-    this.built = buildRoom(this, this.room.template, this.room.doorRewards.length);
+    // Every sector is a different street: ground, obstacles and props are drawn from the run seed.
+    const style = streetStyle(this.room.template);
+    const rng = createRng(this.run.seed * 31 + this.run.roomIndex * 7919);
+    paintStreetGround(this, 'street-ground', this.room.template, style, rng);
+    this.add.image(0, 0, 'street-ground').setOrigin(0).setDepth(0);
+    this.built = buildRoom(this, this.room.template, this.room.doorRewards.length, { floorKey: null, streetLights: false, obstacleKey: () => obstacleFor(style, rng) });
+    decorateStreet(this, this.room.template, style, rng, doorColumns(this.room.doorRewards.length));
+    const streetName = STREET_NAMES[style][this.run.roomIndex % 2];
     this.stats = computeStats(this.run.implants, this.run.ownedNodes);
     this.controls = new Controls(this);
     this.player = new Player(this, this.built.start.x, this.built.start.y, this.stats, this.controls);
@@ -89,8 +98,9 @@ export class RunScene extends Phaser.Scene {
     this.rain = new Rain(this, CONFIG.WIDTH, 256, 60);
     if (!this.scene.isActive(SCENES.Hud)) this.scene.launch(SCENES.Hud);
 
-    const label = this.room.isBoss ? 'ALERTE — CIBLE PRIORITAIRE' : `SECTEUR ${this.run.roomIndex + 1} / ${CONFIG.ROOMS_PER_RUN}`;
-    const banner = txt(this, CONFIG.WIDTH / 2, 110, label, 12, this.room.isBoss ? '#ff2a6d' : '#00f0ff').setOrigin(0.5).setDepth(100);
+    const label = this.room.isBoss ? 'ALERTE — CIBLE PRIORITAIRE' : `SECTEUR ${this.run.roomIndex + 1} / ${CONFIG.ROOMS_PER_RUN}
+${streetName.toUpperCase()}`;
+    const banner = txt(this, CONFIG.WIDTH / 2, 110, label, 12, this.room.isBoss ? '#ff2a6d' : '#00f0ff').setOrigin(0.5).setAlign('center').setDepth(100).setStroke('#05030f', 4);
     this.tweens.add({ targets: banner, alpha: 0, delay: 600, duration: 400, onComplete: () => banner.destroy() });
     this.time.delayedCall(700, () => { this.roomActive = true; this.spawnWave(); });
   }
@@ -100,6 +110,7 @@ export class RunScene extends Phaser.Scene {
     this.rain.update(dt);
     if (this.ending) return;
     if (this.choice) { this.choice.tick(); this.publishHud(); return; }
+    this.run.timeMs += dt;
 
     const tier = psyTier(this.run.psy);
     this.player.speedMult = crisisMultipliers(tier).speed;
@@ -134,6 +145,7 @@ export class RunScene extends Phaser.Scene {
       if (e.dead || Phaser.Math.Distance.Between(ev.x, ev.y, e.x, e.y) > ev.radius + e.def.radius) continue;
       const countered = e.consumeVulnerable();
       const { amount, crit } = computeHitDamage(this.stats, { countered, tier, roll: Math.random(), mult: ev.mult });
+      this.run.damageDealt += Math.min(amount, Math.max(0, e.hp));
       e.takeHit(amount, crit, countered, this.player.x, this.player.y, ev.comboIndex === CONFIG.COMBO_HITS);
       if (countered || ev.comboIndex === CONFIG.COMBO_HITS) this.cameras.main.shake(70, 0.004);
     }
@@ -148,7 +160,9 @@ export class RunScene extends Phaser.Scene {
 
   private bulletHitsEnemy(b: Phaser.Physics.Arcade.Image, e: Enemy) {
     if (!b.active || b.getData('owner') !== 'player' || e.dead) return;
-    e.takeHit(Math.round(b.getData('damage')), false, false, b.x, b.y, true);
+    const dmg = Math.round(b.getData('damage'));
+    this.run.damageDealt += Math.min(dmg, Math.max(0, e.hp));
+    e.takeHit(dmg, false, false, b.x, b.y, true);
     b.destroy();
   }
 
@@ -196,6 +210,7 @@ export class RunScene extends Phaser.Scene {
   }
 
   private onEnemyDeath(e: Enemy) {
+    this.run.kills++;
     this.run.psy = psyOnKill(this.run.psy, this.stats.psyResist);
     // Boss summons pay nothing, so stalling the boss to farm them is pointless.
     const gain = e.summoned ? 0 : Math.round(e.def.credits * this.stats.creditMult);
@@ -221,6 +236,7 @@ export class RunScene extends Phaser.Scene {
     if (this.stats.regenOnClear > 0) {
       const before = this.player.hp;
       this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + this.stats.maxHp * this.stats.regenOnClear);
+      this.run.hpHealed += this.player.hp - before;
       floatText(this, this.player.x, this.player.y - 14, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 8);
     }
     this.unlockDoors();
@@ -264,6 +280,7 @@ export class RunScene extends Phaser.Scene {
     if (reward === 'heal') {
       const before = this.player.hp;
       this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + this.stats.maxHp * CONFIG.HEAL_FRACTION);
+      this.run.hpHealed += this.player.hp - before;
       floatText(this, this.player.x, this.player.y - 14, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 9);
     }
     if (reward === 'chest') {
@@ -301,6 +318,10 @@ export class RunScene extends Phaser.Scene {
     save.credits += earned;
     save.runs += 1;
     save.bestRoom = Math.max(save.bestRoom, this.run.roomIndex + 1);
+    save.history = addRecord(save.history, {
+      date: Date.now(), victory, sector: this.run.roomIndex + 1, kills: this.run.kills,
+      damageDealt: Math.round(this.run.damageDealt), hpHealed: Math.round(this.run.hpHealed), credits: earned, timeMs: Math.round(this.run.timeMs),
+    });
     writeSave(storage, save);
     this.registry.remove('run');
     this.scene.stop(SCENES.Hud);

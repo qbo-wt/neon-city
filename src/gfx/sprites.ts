@@ -5,7 +5,7 @@ export const PALETTE: Record<string, string> = {
   m: '#ff2a6d', M: '#8a1038', // magenta / dark magenta
   y: '#f5e663', Y: '#a89a2a', // yellow / dark yellow
   w: '#e8e8ff', g: '#3a3550', G: '#221d35',
-  s: '#c98f6b', r: '#ff3b3b', p: '#6a2cff', P: '#36167f', e: '#39ff88',
+  s: '#c98f6b', S: '#8a5a3a', h: '#e8b896', r: '#ff3b3b', p: '#6a2cff', P: '#36167f', e: '#39ff88',
 };
 
 export const SPRITES: Record<string, string[]> = {
@@ -175,6 +175,18 @@ export const SPRITES: Record<string, string[]> = {
     '.www..',
     'ww....',
   ],
+};
+
+/** Civilian looks: palette swaps of the player sprite (jacket c/C, hair w, accent y, skin s). */
+export const NPC_LOOKS: Record<string, Record<string, string>> = {
+  'npc-0': { c: 'm', C: 'M', w: 'k' },
+  'npc-1': { c: 'y', C: 'Y', w: 'r', s: 'S' },
+  'npc-2': { c: 'p', C: 'P', w: 'y' },
+  'npc-3': { c: 'e', C: 'G', w: 'm', s: 'h' },
+  'npc-4': { c: 'g', C: 'G', w: 'w', s: 'S' },
+  'npc-5': { c: 'r', C: 'M', w: 'c', s: 'h' },
+  'npc-doc': { c: 'w', C: 'g', w: 'G', y: 'r' },
+  'npc-netrunner': { c: 'e', C: 'G', w: 'k', y: 'e', s: 'S' },
 };
 
 /** Back views: the face rows are painted over with hair/helmet so you can tell who looks away. */

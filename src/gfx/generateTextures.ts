@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { createRng } from '../core/rng';
-import { BACK_VIEWS, PALETTE, SPRITES } from './sprites';
+import { BACK_VIEWS, NPC_LOOKS, PALETTE, SPRITES } from './sprites';
+import { generateInteriorArt } from './interiorArt';
+import { generateStreetTextures } from './streetArt';
 import { generateHideoutArt } from './hideoutArt';
 
 export type CanvasTex = (scene: Phaser.Scene, key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) => void;
@@ -50,7 +52,17 @@ export function generateTextures(scene: Phaser.Scene): void {
     ctx.fill();
   });
 
+  // Civilians: recoloured player sprite, front and back.
+  const back = BACK_VIEWS.player;
+  for (const [key, map] of Object.entries(NPC_LOOKS)) {
+    const front = SPRITES.player.map(r => [...r].map(ch => map[ch] ?? ch).join(''));
+    gridTexture(scene, key, front);
+    gridTexture(scene, `${key}-back`, front.map((r, i) => back.rows.includes(i) ? r.replace(/[^.k]/g, map.w ?? back.to) : r));
+  }
+
   generateHideoutArt(scene, canvasTexture, px);
+  generateInteriorArt(scene, canvasTexture, px);
+  generateStreetTextures(scene, canvasTexture, px);
 
   const rng = createRng(1337);
 

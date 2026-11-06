@@ -36,7 +36,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private lungeUntil = 0;
   private lungeDir = { x: 0, y: 0 };
 
-  constructor(scene: Phaser.Scene, x: number, y: number, public stats: Stats, private controls: Controls) {
+  constructor(scene: Phaser.Scene, x: number, y: number, public stats: Stats, private controls: Controls, private mode: 'combat' | 'explore' = 'combat') {
     super(scene, x, y, 'player');
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -79,11 +79,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const aim = this.aimDir();
 
     // Priority: parry > dash > attack. Dash is allowed during attacks and whiff lock, never during an active parry.
-    if (!dashing && !parrying && !locked && this.controls.wantsParry(now)) {
+    if (this.mode === 'combat' && !dashing && !parrying && !locked && this.controls.wantsParry(now)) {
       this.startParry(now);
     } else if (!parrying && this.dashCharges > 0 && this.controls.dash()) {
       this.startDash(now, move.x || move.y ? move : aim);
-    } else if (!dashing && !parrying && !locked && now >= this.nextAttackAt && this.controls.wantsAttack(now)) {
+    } else if (this.mode === 'combat' && !dashing && !parrying && !locked && now >= this.nextAttackAt && this.controls.wantsAttack(now)) {
       this.attack(now, aim);
     }
 
@@ -97,9 +97,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       body.setVelocity(move.x * sp, move.y * sp);
     }
 
-    this.updateLook(now, aim);
+    // Outside a run there is nothing to aim at: face where you walk.
+    if (move.x || move.y) this.walkDir = move;
+    this.updateLook(now, this.mode === 'combat' ? aim : this.walkDir);
   }
 
+  private walkDir = { x: 0, y: 1 };
   private shadow?: Phaser.GameObjects.Image;
   private reticle?: Phaser.GameObjects.Image;
 
@@ -109,7 +112,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.reticle ??= this.scene.add.image(this.x, this.y, 'chevron').setTint(COLORS.cyan).setDepth(9).setAlpha(0.9);
     this.setTexture(aim.y < -0.5 ? 'player-back' : 'player').setFlipX(aim.x < 0);
     this.shadow.setPosition(this.x, this.y + 7);
-    this.reticle.setPosition(this.x + aim.x * 14, this.y + 3 + aim.y * 14).setRotation(Math.atan2(aim.y, aim.x));
+    this.reticle.setPosition(this.x + aim.x * 14, this.y + 3 + aim.y * 14).setRotation(Math.atan2(aim.y, aim.x))
+      .setVisible(this.mode === 'combat');
     this.setAlpha(now < this.invulnUntil && Math.floor(now / 60) % 2 === 0 ? 0.35 : 1);
   }
 

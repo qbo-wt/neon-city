@@ -6,7 +6,8 @@ function fake(init?: string) {
   if (init !== undefined) m.set(SAVE_KEY, init);
   return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
 }
-const valid = { version: 1 as const, credits: 120, ownedNodes: ['body-hp-1'], runs: 3, bestRoom: 5 };
+const record = { date: 1700000000000, victory: true, sector: 8, kills: 40, damageDealt: 1200, hpHealed: 30, credits: 150, timeMs: 420000 };
+const valid = { version: 1 as const, credits: 120, ownedNodes: ['body-hp-1'], runs: 3, bestRoom: 5, history: [record] };
 
 describe('save', () => {
   it('round-trips', () => {
@@ -27,6 +28,16 @@ describe('save', () => {
   });
   it('filters unknown node ids', () => {
     expect(loadSave(fake(JSON.stringify({ ...valid, ownedNodes: ['body-hp-1', 'ghost'] }))).ownedNodes).toEqual(['body-hp-1']);
+  });
+  it('keeps progress from saves made before run history existed', () => {
+    const { history: _h, ...old } = valid;
+    const s = loadSave(fake(JSON.stringify(old)));
+    expect(s.credits).toBe(120);
+    expect(s.history).toEqual([]);
+  });
+  it('drops malformed history entries but keeps the valid ones', () => {
+    const s = loadSave(fake(JSON.stringify({ ...valid, history: [record, { date: 'x' }, null, { ...record, kills: -1 }] })));
+    expect(s.history).toEqual([record]);
   });
   it('falls back when storage throws', () => {
     expect(loadSave({ getItem: () => { throw new Error('blocked'); } })).toEqual(defaultSave());
