@@ -1,0 +1,25 @@
+import Phaser from 'phaser';
+import { CONFIG, SCENES } from '../config';
+import { Rain } from '../fx/effects';
+import { txt } from '../ui/text';
+import { setupCamera } from '../ui/camera';
+
+export class DeathScene extends Phaser.Scene {
+  private rain!: Rain;
+  constructor() { super(SCENES.Death); }
+
+  create(data: { victory: boolean; creditsEarned: number; roomReached: number }) {
+    const W = CONFIG.WIDTH;
+    setupCamera(this).fadeIn(300, 11, 8, 32);
+    this.rain = new Rain(this, W, CONFIG.HEIGHT, 80);
+    txt(this, W / 2, 70, data.victory ? 'DISTRICT NETTOYÉ' : 'FLATLINE', 26, data.victory ? '#f5e663' : '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 4);
+    txt(this, W / 2, 104, data.victory ? 'le contrat est rempli.' : 'ton corps a lâché. ton chrome reste sur le trottoir.', 8, '#8a86b0').setOrigin(0.5);
+    txt(this, W / 2, 140, `secteur atteint : ${data.roomReached} / ${CONFIG.ROOMS_PER_RUN}`, 9).setOrigin(0.5);
+    txt(this, W / 2, 156, `crédits rapatriés : ${data.creditsEarned}¢`, 9, '#f5e663').setOrigin(0.5);
+    const back = txt(this, W / 2, 210, '[ clique pour revenir à la planque ]', 9, '#00f0ff').setOrigin(0.5);
+    this.tweens.add({ targets: back, alpha: 0.2, yoyo: true, repeat: -1, duration: 600 });
+    this.time.delayedCall(500, () => this.input.once('pointerdown', () => this.scene.start(SCENES.Hideout)));
+  }
+
+  update(_t: number, dt: number) { this.rain.update(dt); }
+}
