@@ -16,7 +16,8 @@ import { IMPLANTS } from '../data/implants';
 import { RELICS } from '../data/relics';
 import { Bullets } from '../entities/Bullets';
 import { Enemy, type EnemyHooks } from '../entities/Enemy';
-import { PLAYER_ATTACK, Player, type AttackEvent } from '../entities/Player';
+import { PLAYER_ATTACK, PLAYER_HURT, PLAYER_PARRY, Player, type AttackEvent } from '../entities/Player';
+import { audio } from '../audio/audio';
 import { Rain, floatText, sparks } from '../fx/effects';
 import { LIGHT_LABELS, Lighting, pickLightEvents } from '../fx/lighting';
 import { STREET_NAMES, decorateStreet, obstacleFor, paintStreetGround, streetStyle, type StreetStyle } from '../gfx/streetArt';
@@ -76,8 +77,39 @@ export class RunScene extends Phaser.Scene {
   private roomActive = false;
   private leaving = false;
   private ending = false;
+  /**
+   * Simulation clock: what the player and enemies see as "now". It freezes during hit-stop and runs
+   * slower during the parry slow-motion; input buffers keep using the real clock.
+   */
+  private simNow = 0;
+  private freezeUntil = 0;
+  private slowUntil = 0;
+  private slowScale = 1;
+  private curScale = 1;
+  private frozenByFx = false;
 
   constructor() { super(SCENES.Run); }
+
+  /** Freeze the action for a few ms: the impact frame of a hit. */
+  private hitstop(ms: number) { this.freezeUntil = Math.max(this.freezeUntil, this.game.loop.time + ms); }
+  /** Slow motion at `scale` for `ms` of real time. */
+  private slowmo(ms: number, scale: number) { this.slowUntil = Math.max(this.slowUntil, this.game.loop.time + ms); this.slowScale = scale; }
+
+  private applyTimeScale(real: number) {
+    const s = real < this.freezeUntil ? 0 : real < this.slowUntil ? this.slowScale : 1;
+    if (s === this.curScale) return s;
+    this.curScale = s;
+    this.time.timeScale = s;
+    this.tweens.timeScale = s;
+    this.anims.globalTimeScale = s;
+    const world = this.physics.world;
+    if (s === 0) { if (!world.isPaused) { world.pause(); this.frozenByFx = true; } }
+    else {
+      if (this.frozenByFx) { if (!this.ending) world.resume(); this.frozenByFx = false; }
+      world.timeScale = 1 / s;
+    }
+    return s;
+  }
 
   init(data: { seed?: number }) {
     if (data?.seed !== undefined) setRun(this.registry, newRun(data.seed, loadSave(getStorage()).ownedNodes));
@@ -86,6 +118,10 @@ export class RunScene extends Phaser.Scene {
     this.pendingSpawns = 0;
     this.roomActive = this.leaving = this.ending = false;
     this.boss = this.choice = undefined;
+    this.simNow = this.time.now;
+    this.freezeUntil = this.slowUntil = 0;
+    this.curScale = 1;
+    this.frozenByFx = false;
     this.blockedTiles = new Set();
     this.navBlocked = new Set();
   }
@@ -142,10 +178,23 @@ export class RunScene extends Phaser.Scene {
       onDeath: e => this.onEnemyDeath(e),
       steer: (x, y) => this.steer(x, y),
       occupied: (x, y) => this.navBlocked.has(`${Math.floor(x / TILE)},${Math.floor(y / TILE)}`),
+      now: () => this.simNow,
     };
 
     this.events.on(PLAYER_ATTACK, this.onPlayerAttack, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off(PLAYER_ATTACK, this.onPlayerAttack, this));
+    this.events.on(PLAYER_PARRY, this.onParry, this);
+    this.events.on(PLAYER_HURT, this.onHurt, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.events.off(PLAYER_ATTACK, this.onPlayerAttack, this);
+      this.events.off(PLAYER_PARRY, this.onParry, this);
+      this.events.off(PLAYER_HURT, this.onHurt, this);
+      // Time scales are shared with other systems: always leave them at normal speed.
+      this.anims.globalTimeScale = 1;
+      this.time.timeScale = 1;
+      this.tweens.timeScale = 1;
+    });
+    audio.setMusic(this.room.isBoss ? 'boss' : 'run');
+    audio.setIntensity(0.3);
 
     this.rain = new Rain(this, CONFIG.WIDTH, CONFIG.HEIGHT, 60);
     const light = pickLightEvents(rng, this.room.isBoss);
@@ -177,21 +226,27 @@ export class RunScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number) {
-    const dt = Math.min(delta, CONFIG.MAX_DT_MS);
-    this.rain.update(dt);
-    this.lighting.update(time, dt);
-    if (this.ending) return;
+    const real = Math.min(delta, CONFIG.MAX_DT_MS);
+    this.rain.update(real);
+    this.lighting.update(time, real);
+    // Keep time scales moving while the run ends, or a freeze at the killing blow would never thaw.
+    if (this.ending) { this.applyTimeScale(time); return; }
     if (this.choice) { this.choice.tick(); this.publishHud(); return; }
-    this.run.timeMs += dt;
+    this.run.timeMs += real;
+    const dt = real * this.applyTimeScale(time);
+    this.simNow += dt;
+    const now = this.simNow;
 
     const tier = psyTier(this.run.psy);
     this.player.speedMult = crisisMultipliers(tier).speed;
-    this.player.tick(time);
-    this.updateFlow(time);
-    this.enemies.getChildren().forEach(e => (e as Enemy).tick(time));
-    this.separateEnemies();
+    this.player.tick(now);
+    this.updateFlow(now);
+    if (dt > 0) {
+      this.enemies.getChildren().forEach(e => (e as Enemy).tick(now));
+      this.separateEnemies();
+    }
     this.magnetPickups();
-    this.followCamera(dt);
+    this.followCamera(real);
 
     if (this.roomActive) {
       this.run.psy = tickPsychosis(this.run.psy, totalLoad(this.run.implants, this.stats), dt, this.stats.psyResist);
@@ -204,6 +259,7 @@ export class RunScene extends Phaser.Scene {
     if (this.controls.blocker() && this.run.blockers > 0) {
       this.run.blockers--;
       this.run.psy = applyBlocker(this.run.psy, this.stats.blockerAmount);
+      audio.sfx('blocker');
       floatText(this, this.player.x, this.player.y - 14, `-${this.stats.blockerAmount} PSY`, '#39ff88', 8);
     }
 
@@ -299,6 +355,7 @@ export class RunScene extends Phaser.Scene {
     b.setData('hp', hp);
     this.tweens.add({ targets: b, x: b.x + 2, duration: 40, yoyo: true, repeat: 1 });
     sparks(this, b.x, b.y, COLORS.yellow, 3, 8);
+    audio.sfx(hp > 0 ? 'hit' : 'break', { pitch: 1.4, vol: 0.6 });
     if (hp > 0) return;
     // Burst into debris and roll the loot.
     for (let i = 0; i < 8; i++) {
@@ -355,11 +412,13 @@ export class RunScene extends Phaser.Scene {
       const gain = Math.round(loot.amount * this.stats.creditMult);
       this.run.creditsEarned += gain;
       floatText(this, k.x, k.y - 6, `+${gain}¢`, '#f5e663', 7);
+      audio.sfx('credit');
     } else if (loot.kind === 'heal') {
       const before = this.player.hp;
       this.player.hp = Math.min(this.stats.maxHp, before + loot.amount);
       this.run.hpHealed += Math.max(0, this.player.hp - before);
       floatText(this, k.x, k.y - 6, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 7);
+      audio.sfx('heal');
     } else if (loot.kind === 'relic') {
       const relic = k.getData('relic') as Relic;
       this.run.relics.push(relic);
@@ -368,6 +427,7 @@ export class RunScene extends Phaser.Scene {
       this.player.setStats(this.stats);
       this.player.hp = Math.min(this.stats.maxHp, this.player.hp + Math.max(0, this.stats.maxHp - prevMax));
       this.cameras.main.flash(250, 255, 59, 59);
+      audio.sfx('relic');
       const t = this.screenText(`${relic.name.toUpperCase()}\n${relic.description}`, 9, '#ff3b3b', 80);
       this.tweens.add({ targets: t, alpha: 0, delay: 2200, duration: 500, onComplete: () => t.destroy() });
       (k.getData('halo') as Phaser.GameObjects.Image | undefined)?.destroy();
@@ -379,15 +439,22 @@ export class RunScene extends Phaser.Scene {
 
   private onPlayerAttack(ev: AttackEvent) {
     const tier = psyTier(this.run.psy);
+    // Hit-stop length grows with the weight of the blow: plain hit < crit < finisher < counter, +kill.
+    let stop = 0, sound: 'hit' | 'crit' | null = null;
     for (const obj of [...this.enemies.getChildren()]) {
       const e = obj as Enemy;
       if (e.dead || Phaser.Math.Distance.Between(ev.x, ev.y, e.x, e.y) > ev.radius + e.def.radius) continue;
       const countered = e.consumeVulnerable();
       const { amount, crit } = computeHitDamage(this.stats, { countered, tier, roll: Math.random(), mult: ev.mult });
       this.run.damageDealt += Math.min(amount, Math.max(0, e.hp));
-      e.takeHit(amount, crit, countered, this.player.x, this.player.y, ev.comboIndex === CONFIG.COMBO_HITS);
-      if (countered || ev.comboIndex === CONFIG.COMBO_HITS) this.cameras.main.shake(70, 0.004);
+      const finisher = ev.comboIndex === CONFIG.COMBO_HITS;
+      e.takeHit(amount, crit, countered, this.player.x, this.player.y, finisher);
+      if (countered || finisher) this.cameras.main.shake(70, 0.004);
+      stop = Math.max(stop, countered ? 85 : finisher ? 55 : crit ? 45 : 28) + (e.dead ? 30 : 0);
+      sound = crit || countered || sound === 'crit' ? 'crit' : 'hit';
     }
+    if (stop) this.hitstop(stop);
+    if (sound) audio.sfx(sound, { pitch: ev.comboIndex === CONFIG.COMBO_HITS ? 0.85 : 1 });
     for (const obj of [...this.breakables.getChildren()]) {
       const b = obj as Phaser.Physics.Arcade.Image;
       if (Phaser.Math.Distance.Between(ev.x, ev.y, b.x, b.y) <= ev.radius + 10) this.damageBreakable(b, this.stats.damage * ev.mult);
@@ -401,7 +468,7 @@ export class RunScene extends Phaser.Scene {
 
   private bulletHitsPlayer(b: Phaser.Physics.Arcade.Image) {
     if (!b.active || b.getData('owner') !== 'enemy') return;
-    const res = this.player.receiveHit(b.getData('damage'), this.time.now, b.x, b.y);
+    const res = this.player.receiveHit(b.getData('damage'), this.simNow, b.x, b.y);
     if (res === 'parried') this.bullets.reflect(b);
     else if (res === 'hit') {
       // Quickhack: the shot also pushes psychosis up.
@@ -419,7 +486,24 @@ export class RunScene extends Phaser.Scene {
     const dmg = Math.round(b.getData('damage'));
     this.run.damageDealt += Math.min(dmg, Math.max(0, e.hp));
     e.takeHit(dmg, false, false, b.x, b.y, true);
+    audio.sfx('hit', { pitch: 1.3, vol: 0.7 });
+    this.hitstop(e.dead ? 40 : 18);
     b.destroy();
+  }
+
+  /** Perfect parry: a freeze, then slow motion, a shock ring and a chromatic flash on the HUD. */
+  private onParry(x: number, y: number) {
+    audio.sfx('parry');
+    this.hitstop(70);
+    this.slowmo(380, 0.3);
+    this.registry.set('parryAt', this.game.loop.time);
+    const ring = this.add.circle(x, y, 6).setStrokeStyle(2, COLORS.cyan).setDepth(40);
+    this.tweens.add({ targets: ring, scale: 5, alpha: 0, duration: 260, onComplete: () => ring.destroy() });
+  }
+
+  private onHurt() {
+    this.hitstop(60);
+    this.registry.set('hurtAt', this.game.loop.time);
   }
 
   // ---------- room flow ----------
@@ -428,6 +512,7 @@ export class RunScene extends Phaser.Scene {
 
   private spawnWave() {
     const ids = this.room.waves[this.waveIndex];
+    audio.setIntensity(1);
     const rng = createRng(this.run.seed + this.run.roomIndex * 101 + this.waveIndex * 7);
     spawnPoints(this.room.template, ids.length, this.playerTile(), rng, this.blockedTiles).forEach((pt, i) => {
       this.pendingSpawns++;
@@ -444,7 +529,8 @@ export class RunScene extends Phaser.Scene {
         const p = isBoss ? { x: this.built.width / 2, y: this.built.height / 2 - TILE }
           : Phaser.Math.Distance.Between(pt.x, pt.y, this.player.x, this.player.y) < CONFIG.MIN_SPAWN_DIST ? this.freePoint() : pt;
         const e = this.spawnEnemy(ids[i], p.x, p.y);
-        if (e.def.behavior === 'boss') this.boss = e;
+        audio.sfx('spawn');
+        if (e.def.behavior === 'boss') { this.boss = e; audio.sfx('bossRoar'); this.cameras.main.shake(500, 0.006); }
       });
     });
   }
@@ -469,8 +555,13 @@ export class RunScene extends Phaser.Scene {
     const gain = Math.round(e.def.credits * this.stats.creditMult);
     this.run.creditsEarned += gain;
     if (gain) floatText(this, e.x, e.y - 4, `+${gain}¢`, '#f5e663', 7);
-    // Bosses always leave something behind.
-    if (e.def.behavior === 'boss') for (let i = 0; i < 3; i++) this.dropLoot(e.x + (i - 1) * 12, e.y);
+    // Bosses always leave something behind, and go down in slow motion.
+    if (e.def.behavior === 'boss') {
+      for (let i = 0; i < 3; i++) this.dropLoot(e.x + (i - 1) * 12, e.y);
+      audio.sfx('explode');
+      this.hitstop(160);
+      this.slowmo(1400, 0.25);
+    }
   }
 
   private onWaveCleared() {
@@ -478,6 +569,7 @@ export class RunScene extends Phaser.Scene {
     if (this.waveIndex < this.room.waves.length) { this.spawnWave(); return; }
     this.roomActive = false;
     this.bullets.group.clear(true, true);
+    audio.setIntensity(0.2);
     if (this.room.isBoss && !this.room.doorRewards.length) {
       this.ending = true;
       (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
@@ -507,11 +599,13 @@ export class RunScene extends Phaser.Scene {
       this.add.image(slot.x, slot.y + 20, 'glow').setTint(COLORS.cyan).setAlpha(0.4).setBlendMode(Phaser.BlendModes.ADD).setDepth(1);
       this.physics.add.overlap(this.player, door, () => this.takeDoor(reward));
     });
+    audio.sfx('door');
   }
 
   private takeDoor(reward: Reward) {
     if (this.leaving) return;
     this.leaving = true;
+    audio.sfx('door', { pitch: 1.3 });
     const ri = this.run.roomIndex;
     if (reward === 'implant') {
       const owned = new Set(this.run.implants.map(i => i.id));
@@ -519,7 +613,9 @@ export class RunScene extends Phaser.Scene {
       if (options.length) {
         this.physics.pause();
         (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+        audio.sfx('uiOpen');
         this.choice = new ImplantChoice(this, options, this.controls, imp => {
+          audio.sfx('implant');
           this.run.implants.push(imp);
           const next = this.computeStats();
           // Set the live HP: update() copies player.hp into run.hp every frame.
@@ -558,7 +654,7 @@ export class RunScene extends Phaser.Scene {
     this.physics.pause();
     (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     this.player.setTint(COLORS.magenta);
-    if (!victory) this.player.collapse();
+    if (!victory) { this.player.collapse(); audio.sfx('kill', { pitch: 0.5 }); audio.setMusic('off'); }
     this.cameras.main.shake(300, 0.01);
     this.cameras.main.flash(300, 255, 0, 40);
     this.screenText('SIGNAL VITAL PERDU', 16, '#ff2a6d');

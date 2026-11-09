@@ -14,16 +14,17 @@ export class Controls {
   private static PARRY_STALE_MS = 100;
 
   constructor(private scene: Phaser.Scene) {
-    this.k = scene.input.keyboard!.addKeys('Z,Q,S,D,W,A,UP,DOWN,LEFT,RIGHT,SPACE,E,F,ESC,ONE,TWO,THREE') as Record<string, K>;
+    this.k = scene.input.keyboard!.addKeys('Z,Q,S,D,W,A,UP,DOWN,LEFT,RIGHT,SPACE,E,F,ESC,ONE,TWO,THREE,FOUR,SHIFT,TAB') as Record<string, K>;
+    // Input timing uses the real clock: the run's simulation clock slows down on parries and freezes on hits.
     scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (p.button === 2) this.parryAt = scene.time.now;
-      else if (p.button === 0) this.attackAt = scene.time.now;
+      if (p.button === 2) this.parryAt = this.real();
+      else if (p.button === 0) this.attackAt = this.real();
     });
     // Discrete actions are event-buffered: a tap shorter than one frame would be missed by JustDown.
     const kb = scene.input.keyboard!;
-    const keys = ['SPACE', 'E', 'F', 'ESC', 'ONE', 'TWO', 'THREE'];
+    const keys = ['SPACE', 'E', 'F', 'ESC', 'ONE', 'TWO', 'THREE', 'FOUR', 'SHIFT', 'TAB'];
     const handlers = keys.map(key => {
-      const h = (e: KeyboardEvent) => { if (!e.repeat) this.pressed.set(key, scene.time.now); };
+      const h = (e: KeyboardEvent) => { if (!e.repeat) this.pressed.set(key, this.real()); };
       kb.on(`keydown-${key}`, h);
       return h;
     });
@@ -31,11 +32,12 @@ export class Controls {
   }
 
   private pressed = new Map<string, number>();
+  private real() { return this.scene.game.loop.time; }
 
   private took(key: string): boolean {
     const t = this.pressed.get(key);
     this.pressed.delete(key);
-    return t !== undefined && this.scene.time.now - t <= Controls.BUFFER_MS;
+    return t !== undefined && this.real() - t <= Controls.BUFFER_MS;
   }
 
   move(): { x: number; y: number } {
@@ -48,18 +50,22 @@ export class Controls {
 
   dash() { return this.took('SPACE'); }
   interact() { return this.took('E'); }
+  /** Weapon special in a run: E or Shift. */
+  special() { return this.took('E') || this.took('SHIFT'); }
+  tab() { return this.took('TAB'); }
   blocker() { return this.took('F'); }
   escape() { return this.took('ESC'); }
   numberPressed(): number {
     if (this.took('ONE')) return 1;
     if (this.took('TWO')) return 2;
     if (this.took('THREE')) return 3;
+    if (this.took('FOUR')) return 4;
     return 0;
   }
 
   /** True if an attack click is buffered or the left button is held. Consumes the buffer. */
-  wantsAttack(now: number): boolean {
-    const buffered = now - this.attackAt <= Controls.BUFFER_MS;
+  wantsAttack(_now?: number): boolean {
+    const buffered = this.real() - this.attackAt <= Controls.BUFFER_MS;
     if (buffered) this.attackAt = -Infinity;
     return buffered || this.scene.input.activePointer.leftButtonDown();
   }
@@ -68,8 +74,8 @@ export class Controls {
    * A right-click starts a parry on the next frame it is allowed. Only stale clicks (older than
    * PARRY_STALE_MS, e.g. made mid-dash) are dropped; the check must not depend on frame rate.
    */
-  wantsParry(now: number): boolean {
-    const fresh = now - this.parryAt <= Controls.PARRY_STALE_MS;
+  wantsParry(_now?: number): boolean {
+    const fresh = this.real() - this.parryAt <= Controls.PARRY_STALE_MS;
     this.parryAt = -Infinity;
     return fresh;
   }

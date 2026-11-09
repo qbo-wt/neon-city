@@ -7,9 +7,11 @@ const KEYS: [string, string][] = [
   ['ESPACE', 'Dash (invulnérable)'],
   ['CLIC GAUCHE', 'Frapper vers le curseur (combo x3)'],
   ['CLIC DROIT', 'Parer juste avant l\'impact'],
+  ['E / MAJ (en run)', 'Capacité spéciale de l\'arme'],
   ['F', 'Neuro-bloqueur (réduit la psychose)'],
   ['E', 'Interagir'],
-  ['1 / 2 / 3', 'Choisir un implant'],
+  ['1 / 2 / 3 / 4', 'Choisir une option'],
+  ['M', 'Couper / remettre le son'],
   ['I', 'Afficher / cacher cette aide'],
 ];
 

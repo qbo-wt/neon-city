@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG, COLORS, SCENES } from '../config';
 import { psyTier } from '../core/psychosis';
+import { audio } from '../audio/audio';
 import type { HudData } from '../systems/runState';
 import { txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
@@ -67,6 +68,21 @@ export class HudScene extends Phaser.Scene {
     } else this.bossText.setText('');
 
     this.drawPsychosisFx(time, tier);
+    this.drawImpactFx();
+  }
+
+  /** Parry: the frame splits into cyan / magenta edges for a moment. Hurt: a quick red edge. */
+  private drawImpactFx() {
+    const fx = this.fx, W = CONFIG.WIDTH, H = CONFIG.HEIGHT, now = this.game.loop.time;
+    const parry = now - ((this.registry.get('parryAt') as number | undefined) ?? -1e9);
+    if (parry < 220) {
+      const a = 1 - parry / 220, o = 2 + 3 * a;
+      fx.lineStyle(3, COLORS.cyan, 0.6 * a).strokeRect(o, o, W - 2 * o, H - 2 * o);
+      fx.lineStyle(3, COLORS.magenta, 0.5 * a).strokeRect(-o + 4, o + 1, W - 2 * o, H - 2 * o);
+      for (let i = 0; i < 3; i++) fx.fillStyle(i % 2 ? COLORS.magenta : COLORS.cyan, 0.12 * a).fillRect(0, Math.random() * H, W, 2);
+    }
+    const hurt = now - ((this.registry.get('hurtAt') as number | undefined) ?? -1e9);
+    if (hurt < 180) for (let i = 0; i < 4; i++) fx.lineStyle(4, 0xff3b3b, (0.35 - i * 0.08) * (1 - hurt / 180)).strokeRect(i * 4, i * 4, W - i * 8, H - i * 8);
   }
 
   private drawPsychosisFx(time: number, tier: ReturnType<typeof psyTier>) {
@@ -81,6 +97,7 @@ export class HudScene extends Phaser.Scene {
       this.nextGlitchAt = time + (tier === 'glitch' ? 2500 : tier === 'drain' ? 1400 : 700) * (0.5 + Math.random());
       const run = this.scene.get(SCENES.Run);
       run?.cameras?.main?.shake(80, tier === 'crisis' ? 0.006 : 0.002);
+      audio.sfx('glitch', { vol: tier === 'crisis' ? 1 : 0.6 });
     }
     if (time < this.glitchUntil) {
       for (let i = 0; i < 4; i++) {

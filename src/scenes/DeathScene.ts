@@ -3,6 +3,7 @@ import { CONFIG, SCENES } from '../config';
 import { Rain } from '../fx/effects';
 import { txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
+import { audio } from '../audio/audio';
 
 export class DeathScene extends Phaser.Scene {
   private rain!: Rain;
@@ -11,6 +12,8 @@ export class DeathScene extends Phaser.Scene {
   create(data: { victory: boolean; creditsEarned: number; roomReached: number }) {
     const W = CONFIG.WIDTH;
     setupCamera(this).fadeIn(300, 11, 8, 32);
+    audio.setMusic(data.victory ? 'hub' : 'off');
+    if (data.victory) audio.sfx('relic');
     this.rain = new Rain(this, W, CONFIG.HEIGHT, 80);
     txt(this, W / 2, 70, data.victory ? 'DISTRICT NETTOYÉ' : 'SIGNAL VITAL PERDU', 22, data.victory ? '#f5e663' : '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 4);
     txt(this, W / 2, 104, data.victory ? 'Le contrat est rempli.' : 'Ton corps a lâché, ton chrome reste sur le trottoir.', 8, '#8a86b0').setOrigin(0.5);

@@ -4,6 +4,7 @@ import { Rain } from '../fx/effects';
 import { txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
+import { audio } from '../audio/audio';
 
 export class MenuScene extends Phaser.Scene {
   private rain!: Rain;
@@ -40,6 +41,7 @@ export class MenuScene extends Phaser.Scene {
     txt(this, W / 2, 196, 'Ou appuie sur ENTRÉE', 7, '#8a86b0').setOrigin(0.5);
 
     new HelpOverlay(this);
+    audio.setMusic('hub');
     txt(this, W - 24, H - 12, 'Commandes', 7, '#8a86b0').setOrigin(1, 0.5);
   }
 
@@ -47,6 +49,7 @@ export class MenuScene extends Phaser.Scene {
   private start() {
     if (this.started) return;
     this.started = true;
+    audio.sfx('uiOpen');
     this.cameras.main.fadeOut(250, 11, 8, 32);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start(SCENES.Hideout));
   }

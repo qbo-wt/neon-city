@@ -4,6 +4,7 @@ import { resolveParry } from '../core/combat';
 import type { Stats } from '../core/types';
 import type { Controls } from '../input/controls';
 import { sparks } from '../fx/effects';
+import { audio } from '../audio/audio';
 import { PLAYER_ORIGIN_Y, playerKey, type Facing } from '../gfx/playerArt';
 
 export type HitResult = 'parried' | 'hit' | 'ignored';
@@ -15,6 +16,9 @@ export interface AttackEvent {
 }
 
 export const PLAYER_ATTACK = 'player-attack';
+/** Emitted with (x, y) on a successful parry, and on taking a hit. */
+export const PLAYER_PARRY = 'player-parry';
+export const PLAYER_HURT = 'player-hurt';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   hp: number;
@@ -76,6 +80,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.parryPending = false;
       this.lockUntil = now + CONFIG.PARRY_WHIFF_LOCK_MS;
       this.clearTint();
+      audio.sfx('whiff');
     }
 
     const dashing = now < this.dashUntil;
@@ -174,6 +179,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.dashCharges--;
     this.dashDir = dir;
     this.dashUntil = now + CONFIG.DASH_DURATION_MS;
+    audio.sfx('dash');
     for (let i = 0; i < 5; i++) {
       const puff = this.scene.add.circle(this.x - dir.x * 4 + (Math.random() - 0.5) * 8, this.y + 7, 1.5, 0x8a86b0, 0.5).setDepth(4.5);
       this.scene.tweens.add({ targets: puff, scale: 3, alpha: 0, x: puff.x - dir.x * 8, duration: 360, onComplete: () => puff.destroy() });
@@ -205,6 +211,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.nextAttackAt = now + CONFIG.ATTACK_COOLDOWN_MS + (finisher ? 120 : 0);
     this.lungeDir = aim;
     this.lungeUntil = now + 70;
+    audio.sfx('swing', { pitch: finisher ? 0.8 : 1 + this.comboIndex * 0.06 });
 
     const reach = CONFIG.ATTACK_RANGE * 0.7 * this.stats.rangeMult;
     const hx = this.x + aim.x * reach, hy = this.y + aim.y * reach;
@@ -231,6 +238,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.invulnUntil = now + 200;
       sparks(this.scene, (this.x + fromX) / 2, (this.y + fromY) / 2, COLORS.cyan, 10, 20);
       this.scene.cameras.main.flash(80, 0, 240, 255, false);
+      this.scene.events.emit(PLAYER_PARRY, (this.x + fromX) / 2, (this.y + fromY) / 2);
       return 'parried';
     }
     if (now < this.invulnUntil) return 'ignored';
@@ -242,6 +250,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.lungeUntil = now + 90;
     this.scene.cameras.main.shake(120, 0.006);
     sparks(this.scene, this.x, this.y, COLORS.magenta, 8);
+    audio.sfx('hurt');
+    this.scene.events.emit(PLAYER_HURT, this.x, this.y);
     return 'hit';
   }
 }

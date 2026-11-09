@@ -11,6 +11,7 @@ import { buildRoom, type BuiltRoom, type RoomOptions } from '../systems/roomBuil
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
 import { txt } from '../ui/text';
+import { audio } from '../audio/audio';
 
 export const HUD_H = 14;
 
@@ -59,6 +60,7 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.npcs = [];
     this.save = loadSave(getStorage());
     setupCamera(this, -HUD_H).fadeIn(250, 11, 8, 32);
+    audio.setMusic('hub');
 
     this.built = buildRoom(this, this.grid, 0, this.roomOptions);
     this.npcGroup = this.physics.add.group({ immovable: true });
@@ -121,6 +123,7 @@ export abstract class InteriorScene extends Phaser.Scene {
   protected go(key: string, data: Record<string, unknown> = {}, banner?: string) {
     if (this.leaving) return;
     this.leaving = true;
+    audio.sfx('door');
     if (banner) txt(this, CONFIG.WIDTH / 2, 120, banner, 10, '#f5e663').setOrigin(0.5).setDepth(300).setStroke('#05030f', 4);
     this.cameras.main.fadeOut(banner ? 600 : 250, 11, 8, 32);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start(key, data));
@@ -148,7 +151,7 @@ export abstract class InteriorScene extends Phaser.Scene {
       .sort((a, b) => a.d - b.d)[0]?.i;
     if (near) {
       this.prompt.setText(`[E] ${near.label}`).setPosition(Phaser.Math.Clamp(this.player.x, 60, CONFIG.WIDTH - 60), this.player.y - 18);
-      if (this.controls.interact() && !this.leaving) near.action();
+      if (this.controls.interact() && !this.leaving) { audio.sfx('ui'); near.action(); }
     } else {
       this.prompt.setText('');
     }

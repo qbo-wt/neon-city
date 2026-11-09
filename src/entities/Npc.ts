@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { floatText } from '../fx/effects';
 import { txt } from '../ui/text';
+import { audio } from '../audio/audio';
 import { facingOf, type Facing } from '../gfx/rig';
 
 export type NpcActivity = 'wander' | 'smoke' | 'talk' | 'sit' | 'phone' | 'idle' | 'eat' | 'play' | 'cook' | 'lean' | 'dance';
@@ -85,6 +86,7 @@ export class Npc extends Phaser.Physics.Arcade.Sprite {
   speak() {
     this.bubble?.destroy();
     const line = this.lines[this.lineIndex++ % this.lines.length];
+    audio.sfx('talk');
     const t = txt(this.scene, 0, 0, line, 6, '#e8e8ff').setOrigin(0.5).setWordWrapWidth(150).setAlign('center');
     const bg = this.scene.add.rectangle(0, 0, t.width + 8, t.height + 6, 0x05030f, 0.92).setStrokeStyle(1, 0x8a86b0);
     const name = txt(this.scene, -bg.width / 2 + 2, -bg.height / 2 - 7, this.name, 5, '#f5e663');
