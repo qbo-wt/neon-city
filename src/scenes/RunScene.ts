@@ -18,7 +18,8 @@ import { applyOffer, offerImplants } from '../core/implantOffer';
 import { RELICS } from '../data/relics';
 import { Bullets } from '../entities/Bullets';
 import { Enemy, type EnemyHooks } from '../entities/Enemy';
-import { PLAYER_ATTACK, PLAYER_HURT, PLAYER_PARRY, Player, type AttackEvent } from '../entities/Player';
+import { PLAYER_ATTACK, PLAYER_HURT, PLAYER_PARRY, PLAYER_SHOOT, PLAYER_SPECIAL, Player, type AttackEvent, type ShootEvent, type SpecialEvent } from '../entities/Player';
+import { WEAPONS, type Weapon } from '../data/weapons';
 import { audio } from '../audio/audio';
 import { Rain, floatText, sparks } from '../fx/effects';
 import { LIGHT_LABELS, Lighting, pickLightEvents } from '../fx/lighting';
@@ -137,7 +138,7 @@ export class RunScene extends Phaser.Scene {
   }
 
   init(data: { seed?: number }) {
-    if (data?.seed !== undefined) setRun(this.registry, newRun(data.seed, loadSave(getStorage()).ownedNodes));
+    if (data?.seed !== undefined) { const sv = loadSave(getStorage()); setRun(this.registry, newRun(data.seed, sv.ownedNodes, sv.weapon)); }
     this.run = getRun(this.registry);
     this.waveIndex = 0;
     this.pendingSpawns = 0;
@@ -153,7 +154,11 @@ export class RunScene extends Phaser.Scene {
     this.navBlocked = new Set();
   }
 
-  private computeStats() { return computeStats(this.run.implants, this.run.ownedNodes, this.run.relics); }
+  private get weapon(): Weapon { return WEAPONS[this.run.weapon] ?? WEAPONS.blade; }
+  private computeStats() {
+    const s = computeStats(this.run.implants, this.run.ownedNodes, this.run.relics);
+    return this.weapon.modify ? this.weapon.modify(s) : s;
+  }
 
   create() {
     setupCamera(this, -HUD_H).fadeIn(220, 11, 8, 32);
@@ -177,6 +182,7 @@ export class RunScene extends Phaser.Scene {
     this.controls = new Controls(this);
     this.player = new Player(this, this.built.start.x, this.built.start.y, this.stats, this.controls);
     this.player.hp = Math.min(this.run.hp, this.stats.maxHp);
+    this.player.setWeapon(this.weapon);
 
     this.enemies = this.physics.add.group();
     this.pickups = this.physics.add.group();
@@ -212,10 +218,14 @@ export class RunScene extends Phaser.Scene {
 
     this.events.on(PLAYER_ATTACK, this.onPlayerAttack, this);
     this.events.on(PLAYER_PARRY, this.onParry, this);
+    this.events.on(PLAYER_SHOOT, this.onShoot, this);
+    this.events.on(PLAYER_SPECIAL, this.onSpecial, this);
     this.events.on(PLAYER_HURT, this.onHurt, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.events.off(PLAYER_ATTACK, this.onPlayerAttack, this);
       this.events.off(PLAYER_PARRY, this.onParry, this);
+      this.events.off(PLAYER_SHOOT, this.onShoot, this);
+      this.events.off(PLAYER_SPECIAL, this.onSpecial, this);
       this.events.off(PLAYER_HURT, this.onHurt, this);
       // Time scales are shared with other systems: always leave them at normal speed.
       this.anims.globalTimeScale = 1;
@@ -233,6 +243,7 @@ export class RunScene extends Phaser.Scene {
 
     const event = this.room.kind === 'event';
     if (event) this.setupEvent(rng);
+    this.player.specialEnabled = !event;
     // A contract signed with a fixer runs in the next combat sector.
     if (!event && !this.room.isBoss && this.run.contract && this.run.contract.room === undefined) this.run.contract.room = this.run.roomIndex;
     const label = this.room.isBoss ? 'ALERTE — CIBLE PRIORITAIRE'
@@ -435,6 +446,17 @@ export class RunScene extends Phaser.Scene {
 
   /** Tranchant Cinétique: enemies you dash through take a cut, once per dash. */
   private dashCuts() {
+    // Tranche-vent: the blade special cuts everything on its path once.
+    if (this.player.isCutting(this.simNow)) {
+      for (const obj of [...this.enemies.getChildren()]) {
+        const e = obj as Enemy;
+        if (e.dead || e.getData('windcut') === this.player.cutSerial) continue;
+        if (Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) > e.def.radius + 14) continue;
+        e.setData('windcut', this.player.cutSerial);
+        this.strike(e, 1.6 * this.weapon.damageMult, 1.5);
+        this.hitstop(40);
+      }
+    }
     if (this.stats.dashDamage <= 0 || !this.player.isDashing(this.simNow)) return;
     for (const obj of [...this.enemies.getChildren()]) {
       const e = obj as Enemy;
@@ -629,14 +651,15 @@ export class RunScene extends Phaser.Scene {
       const { amount, crit } = computeHitDamage(this.stats, { countered, tier, roll: Math.random(), mult: ev.mult, psy: this.run.psy, hpRatio: this.player.hp / this.stats.maxHp });
       this.addPsy(this.stats.hitPsy + (crit ? this.stats.critPsy : 0));
       this.run.damageDealt += Math.min(amount, Math.max(0, e.hp));
-      const finisher = ev.comboIndex === CONFIG.COMBO_HITS;
-      e.takeHit(amount, crit, countered, this.player.x, this.player.y, finisher);
+      const finisher = ev.finisher;
+      e.takeHit(amount, crit, countered, this.player.x, this.player.y, finisher, ev.knock);
+      if (ev.daze && !e.dead) e.daze(this.simNow, ev.daze);
       if (countered || finisher) this.cameras.main.shake(70, 0.004);
       stop = Math.max(stop, countered ? 85 : finisher ? 55 : crit ? 45 : 28) + (e.dead ? 30 : 0);
       sound = crit || countered || sound === 'crit' ? 'crit' : 'hit';
     }
     if (stop) this.hitstop(stop);
-    if (sound) audio.sfx(sound, { pitch: ev.comboIndex === CONFIG.COMBO_HITS ? 0.85 : 1 });
+    if (sound) audio.sfx(sound, { pitch: ev.finisher ? 0.85 : 1 });
     for (const obj of [...this.breakables.getChildren()]) {
       const b = obj as Phaser.Physics.Arcade.Image;
       if (Phaser.Math.Distance.Between(ev.x, ev.y, b.x, b.y) <= ev.radius + 10) this.damageBreakable(b, this.stats.damage * ev.mult);
@@ -645,6 +668,80 @@ export class RunScene extends Phaser.Scene {
     if (this.stats.gunDamage > 0) {
       this.bullets.fire(this.player.x + ev.dirX * 8, this.player.y + ev.dirY * 8, Math.atan2(ev.dirY, ev.dirX), 330,
         this.stats.damage * this.stats.gunDamage, 'player', { key: 'bullet-gold' });
+    }
+  }
+
+  /** One weapon blow on an enemy (specials): damage with crits and psychosis bonuses, tracked. */
+  private strike(e: Enemy, mult: number, knock = 1) {
+    if (e.dead) return;
+    const { amount, crit } = computeHitDamage(this.stats, { countered: e.consumeVulnerable(), tier: psyTier(this.run.psy), roll: Math.random(), mult, psy: this.run.psy, hpRatio: this.player.hp / this.stats.maxHp });
+    this.run.damageDealt += Math.min(amount, Math.max(0, e.hp));
+    e.takeHit(amount, crit, false, this.player.x, this.player.y, true, knock);
+    audio.sfx(crit ? 'crit' : 'hit');
+  }
+
+  /** Every enemy (and breakable) within r of (x, y). */
+  private aoe(x: number, y: number, r: number, mult: number, daze = 0) {
+    for (const obj of [...this.enemies.getChildren()]) {
+      const e = obj as Enemy;
+      if (e.dead || Phaser.Math.Distance.Between(x, y, e.x, e.y) > r + e.def.radius) continue;
+      this.strike(e, mult, 1.4);
+      if (daze && !e.dead) e.daze(this.simNow, daze);
+    }
+    for (const obj of [...this.breakables.getChildren()]) {
+      const b = obj as Phaser.Physics.Arcade.Image;
+      if (Phaser.Math.Distance.Between(x, y, b.x, b.y) <= r + 10) this.damageBreakable(b, this.stats.damage * mult);
+    }
+  }
+
+  private ring(x: number, y: number, r: number, color: number) {
+    const c = this.add.circle(x, y, r).setStrokeStyle(3, color).setFillStyle(color, 0.12).setScale(0.2).setDepth(40);
+    this.tweens.add({ targets: c, scale: 1, alpha: 0, duration: 280, onComplete: () => c.destroy() });
+  }
+
+  private onShoot(ev: ShootEvent) {
+    this.bullets.fire(ev.x, ev.y, ev.angle, ev.speed, this.stats.damage * ev.mult, 'player', { key: ev.charged ? 'bullet-gold' : 'bullet-player' });
+    const fl = this.add.image(ev.x, ev.y, 'glow').setTint(COLORS.yellow).setScale(ev.charged ? 0.5 : 0.3).setBlendMode(Phaser.BlendModes.ADD).setDepth(30);
+    this.tweens.add({ targets: fl, alpha: 0, duration: 90, onComplete: () => fl.destroy() });
+  }
+
+  /** Weapon specials (E / Shift). Tranche-vent and the leap's flight are handled by the player itself. */
+  private onSpecial(ev: SpecialEvent) {
+    const W = this.weapon;
+    if (ev.id === 'leap-land') {
+      this.aoe(ev.x, ev.y, 40, 2 * W.damageMult);
+      this.ring(ev.x, ev.y, 40, COLORS.magenta);
+      this.cameras.main.shake(140, 0.007);
+      audio.sfx('quake', { vol: 0.6, pitch: 1.4 });
+      this.hitstop(60);
+    } else if (ev.id === 'shockwave') {
+      this.aoe(ev.x, ev.y, 62, 1.5, 900);
+      this.ring(ev.x, ev.y, 62, COLORS.white);
+      sparks(this, ev.x, ev.y, COLORS.white, 16, 50);
+      this.cameras.main.shake(200, 0.01);
+      audio.sfx('quake');
+      this.hitstop(80);
+    } else if (ev.id === 'garrote') {
+      const g = this.add.graphics().setDepth(39);
+      for (const obj of [...this.enemies.getChildren()]) {
+        const e = obj as Enemy;
+        const d = Phaser.Math.Distance.Between(ev.x, ev.y, e.x, e.y);
+        if (e.dead || d > 110) continue;
+        g.lineStyle(1, COLORS.cyan, 0.9).lineBetween(ev.x, ev.y, e.x, e.y);
+        e.yank((ev.x - e.x) * 4, (ev.y - e.y) * 4, 200);
+        this.strike(e, 0.8 * W.damageMult, 0);
+        if (!e.dead) e.daze(this.simNow, 600);
+      }
+      this.tweens.add({ targets: g, alpha: 0, duration: 260, onComplete: () => g.destroy() });
+      audio.sfx('hack', { pitch: 0.6 });
+    } else if (ev.id === 'volley') {
+      const base = Math.atan2(ev.dirY, ev.dirX);
+      for (let i = 0; i < 7; i++) this.bullets.fire(ev.x + ev.dirX * 8, ev.y + ev.dirY * 8, base - 0.45 + i * 0.15, 360, this.stats.damage * 0.7, 'player', { key: 'bullet-player' });
+      audio.sfx('playerShoot', { pitch: 0.6 });
+      this.cameras.main.shake(80, 0.004);
+    } else if (ev.id === 'windcut') {
+      const t = this.add.image(ev.x, ev.y, 'slash').setRotation(Math.atan2(ev.dirY, ev.dirX)).setScale(2.4, 0.8).setTint(COLORS.cyan).setDepth(12).setAlpha(0.8);
+      this.tweens.add({ targets: t, x: ev.x + ev.dirX * 80, y: ev.y + ev.dirY * 80, alpha: 0, duration: 200, onComplete: () => t.destroy() });
     }
   }
 
@@ -930,6 +1027,8 @@ export class RunScene extends Phaser.Scene {
       notice: this.run.contract && this.run.contract.room === this.run.roomIndex ? contractProgress(this.run.contract, this.tally)
         : this.run.contract ? 'CONTRAT EN ATTENTE' : this.room.elite ? `ÉLITE — ${ELITE_LABELS[this.room.elite]}` : undefined,
       boss: this.boss && !this.boss.dead ? { hp: this.boss.hp, max: this.boss.maxHp, name: this.boss.def.name } : undefined,
+      special: { name: this.weapon.special.name, charge: this.player.specialCharge(this.simNow) },
+      weapon: this.weapon.name,
     };
     this.registry.set('hud', hud);
   }

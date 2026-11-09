@@ -1,6 +1,8 @@
 import { COLORS, SCENES } from '../config';
 import type { RoomTemplate } from '../data/rooms';
 import { HistoryPanel } from '../ui/HistoryPanel';
+import { WeaponPanel } from '../ui/WeaponPanel';
+import { WEAPONS } from '../data/weapons';
 import { txt } from '../ui/text';
 import { InteriorScene } from './InteriorScene';
 
@@ -25,6 +27,7 @@ export class HideoutScene extends InteriorScene {
   ] };
   protected readonly roomOptions = { floorKey: 'floor-home', wallKey: 'wall-home', capKey: 'cap-home', faceVariants: ['wall-home-shelf', 'wall-home-poster'], streetLights: false };
   private history!: HistoryPanel;
+  private weapons!: WeaponPanel;
 
   constructor() { super(SCENES.Hideout); }
 
@@ -46,14 +49,20 @@ export class HideoutScene extends InteriorScene {
 
     this.history = new HistoryPanel(this, () => this.save.history);
     this.modals.push(this.history);
+    this.add.image(300, 16, 'gun-rack').setDepth(1.5);
+    this.glow(300, 34, COLORS.yellow, 0.25, 1.2, 0.6);
+    this.weapons = new WeaponPanel(this, () => this.save, s => this.persistSave(s));
+    this.modals.push(this.weapons);
     this.interactions.push(
       { x: 80, y: 74, r: 30, label: 'Terminal — historique des runs', action: () => this.history.open() },
       { x: 240, y: 40, r: 40, label: 'Sortir dans le couloir', action: () => this.go(SCENES.Building, { from: 'apartment' }) },
+      { x: 300, y: 44, r: 24, label: `Râtelier d'armes (${WEAPONS[this.save.weapon].name})`, action: () => this.weapons.open() },
     );
   }
 
   protected onModalTick() {
     const n = this.controls.numberPressed();
+    if (this.weapons.isOpen) { if (n) this.weapons.select(n - 1); return; }
     if (n === 1) this.history.setFilter('recent');
     if (n === 2) this.history.setFilter('best');
   }

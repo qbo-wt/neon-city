@@ -19,6 +19,7 @@ export class HudScene extends Phaser.Scene {
   private psyBonusText!: Phaser.GameObjects.Text;
   private synergyText!: Phaser.GameObjects.Text;
   private noticeText!: Phaser.GameObjects.Text;
+  private specialText!: Phaser.GameObjects.Text;
   private glitchUntil = 0;
   private nextGlitchAt = 0;
 
@@ -37,6 +38,7 @@ export class HudScene extends Phaser.Scene {
     this.psyBonusText = txt(this, 178, 15, '', 5, '#f5e663');
     this.synergyText = txt(this, 4, CONFIG.HEIGHT - 19, '', 6, '#39ff88');
     this.noticeText = txt(this, CONFIG.WIDTH - 4, 16, '', 6, '#f5e663').setOrigin(1, 0).setStroke('#05030f', 3);
+    this.specialText = txt(this, 338, 3, '', 6, '#f5e663');
   }
 
   update(time: number) {
@@ -63,8 +65,14 @@ export class HudScene extends Phaser.Scene {
     for (let i = 0; i < d.dashMax; i++) {
       g.fillStyle(i < d.dash ? COLORS.cyan : 0x221d35).fillRect(268 + i * 8, 4, 6, 6);
     }
+    // Weapon special: a gauge that fills; bright when ready (E / Shift).
+    const ready = d.special.charge >= 1;
+    g.fillStyle(0x221d35).fillRect(300, 4, 34, 6);
+    g.fillStyle(ready ? COLORS.yellow : 0x8a6a2a).fillRect(300, 4, 34 * d.special.charge, 6);
+    g.lineStyle(1, ready ? COLORS.yellow : 0x05030f).strokeRect(300, 4, 34, 6);
+    this.specialText.setText(ready ? 'E' : '').setPosition(338, 3);
     this.rightText.setText(`NEURO[F] ${d.blockers}   ${d.credits}¢   SECTEUR ${d.room}/${d.rooms}`);
-    const parts = [d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
+    const parts = [d.weapon.toUpperCase() + ' — ' + d.special.name, d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
     this.implantsText.setText(parts.filter(Boolean).join('   |   '));
     this.synergyText.setText(d.synergies.length ? 'SYNERGIES : ' + d.synergies.join(' · ') : '');
     this.noticeText.setText(d.notice ?? '').setColor(d.notice?.includes('ÉCHOUÉ') ? '#ff2a6d' : d.notice?.startsWith('ÉLITE') ? '#ff2a6d' : '#f5e663');

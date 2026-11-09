@@ -5,7 +5,8 @@ import type { Stats } from '../core/types';
 import type { Controls } from '../input/controls';
 import { sparks } from '../fx/effects';
 import { audio } from '../audio/audio';
-import { PLAYER_ORIGIN_Y, playerKey, type Facing } from '../gfx/playerArt';
+import { PLAYER_ORIGIN_Y, artSuffix, playerKey, type Facing } from '../gfx/playerArt';
+import { WEAPONS, type SpecialId, type Weapon } from '../data/weapons';
 
 export type HitResult = 'parried' | 'hit' | 'ignored';
 
@@ -13,9 +14,21 @@ export interface AttackEvent {
   x: number; y: number; radius: number;
   comboIndex: number; mult: number;
   dirX: number; dirY: number;
+  /** last hit of the weapon's combo */
+  finisher: boolean;
+  /** knockback multiplier, and a daze (ms) the finisher puts on light enemies */
+  knock: number;
+  daze: number;
 }
 
+/** Ranged weapon: a shot request. */
+export interface ShootEvent { x: number; y: number; angle: number; speed: number; mult: number; charged: boolean }
+/** Weapon special: started (or, for the leap, landed). */
+export interface SpecialEvent { id: SpecialId | 'leap-land'; x: number; y: number; dirX: number; dirY: number }
+
 export const PLAYER_ATTACK = 'player-attack';
+export const PLAYER_SHOOT = 'player-shoot';
+export const PLAYER_SPECIAL = 'player-special';
 /** Emitted with (x, y) on a successful parry, and on taking a hit. */
 export const PLAYER_PARRY = 'player-parry';
 export const PLAYER_HURT = 'player-hurt';
@@ -42,6 +55,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private lungeDir = { x: 0, y: 0 };
   /** Increments on every dash: enemies remember which dash already cut them (Tranchant Cinétique). */
   dashSerial = 0;
+  weapon: Weapon = WEAPONS.blade;
+  /** off in street-event sectors, where E talks */
+  specialEnabled = true;
+  private specialReadyAt = 0;
+  /** Special moves that carry the body (Tranche-vent, Bond de mante). */
+  private motionUntil = 0;
+  private motionVel = { x: 0, y: 0 };
+  private motionKind?: SpecialId;
+  cutSerial = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, public stats: Stats, private controls: Controls, private mode: 'combat' | 'explore' = 'combat') {
     super(scene, x, y, playerKey('d', 'idle0'));
@@ -65,6 +87,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   isDashing(now: number) { return now < this.dashUntil; }
+  /** Tranche-vent in progress: enemies on the path get cut. */
+  isCutting(now: number) { return now < this.motionUntil && this.motionKind === 'windcut'; }
+  /** 0..1 how recharged the weapon special is. */
+  specialCharge(now: number) { return Math.min(1, Math.max(0, 1 - (this.specialReadyAt - now) / this.weapon.special.cooldownMs)); }
+  setWeapon(w: Weapon) { this.weapon = w; }
   private get parryWindow() { return CONFIG.PARRY_WINDOW_MS + this.stats.parryBonusMs; }
 
   tick(now: number) {
@@ -96,9 +123,24 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.startParry(now);
     } else if (!parrying && this.dashCharges > 0 && this.controls.dash()) {
       this.startDash(now, move.x || move.y ? move : aim);
+    } else if (this.mode === 'combat' && this.specialEnabled && !dashing && !parrying && now >= this.specialReadyAt && now >= this.motionUntil && this.controls.special()) {
+      this.startSpecial(now, aim);
     } else if (this.mode === 'combat' && !dashing && !parrying && !locked && now >= this.nextAttackAt && this.controls.wantsAttack(now)) {
       this.attack(now, aim);
     }
+
+    if (now < this.motionUntil) {
+      body.setVelocity(this.motionVel.x, this.motionVel.y);
+      if (now >= this.nextAfterimageAt) this.afterimage(now);
+      const l = Math.hypot(this.motionVel.x, this.motionVel.y) || 1;
+      this.updateLook(now, { x: this.motionVel.x / l, y: this.motionVel.y / l }, true);
+      return;
+    }
+    if (this.motionKind === 'leap') {
+      // Landed: the scene deals the impact.
+      this.motionKind = undefined;
+      this.scene.events.emit(PLAYER_SPECIAL, { id: 'leap-land', x: this.x, y: this.y, dirX: aim.x, dirY: aim.y } satisfies SpecialEvent);
+    } else this.motionKind = undefined;
 
     if (now < this.dashUntil) {
       body.setVelocity(this.dashDir.x * CONFIG.DASH_SPEED, this.dashDir.y * CONFIG.DASH_SPEED);
@@ -142,13 +184,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   /** Picks the pose: knocked down > hurt > dash > guard > slash > walk > idle. */
   private animate(now: number, look: { x: number; y: number }, moving: boolean) {
-    const dir = now < this.dashUntil ? this.dashDir : look;
+    const moving2 = now < this.motionUntil;
+    const dir = now < this.dashUntil ? this.dashDir : moving2 ? this.motionVel : look;
     const facing: Facing = dir.y < -0.6 ? 'u' : Math.abs(dir.x) > 0.55 ? 's' : 'd';
     this.setFlipX(dir.x < 0);
     this.facing = facing;
-    const red = this.stats.rangeMult > 1 ? '-r' : '';
+    const red = artSuffix(this.weapon.art === 'blade' && this.stats.rangeMult > 1 ? 'red' : this.weapon.art);
     const since = now - this.attackAt;
-    const still = this.hp <= 0 ? 'down' : now < this.hurtUntil ? 'hurt' : now < this.dashUntil ? 'dash'
+    const still = this.hp <= 0 ? 'down' : now < this.hurtUntil ? 'hurt' : now < this.dashUntil || moving2 ? 'dash'
       : this.parryPending ? 'guard' + red : since < 90 ? 'atk0' + red : since < 190 ? 'atk1' + red : null;
     if (still) {
       this.anims.stop();
@@ -206,30 +249,72 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   private attack(now: number, aim: { x: number; y: number }) {
-    const chained = now - this.lastAttackAt <= CONFIG.COMBO_RESET_MS + CONFIG.ATTACK_COOLDOWN_MS;
-    this.comboIndex = chained ? (this.comboIndex % CONFIG.COMBO_HITS) + 1 : 1;
+    const w = this.weapon;
+    const chained = now - this.lastAttackAt <= CONFIG.COMBO_RESET_MS + w.cooldownMs;
+    this.comboIndex = chained ? (this.comboIndex % w.combo) + 1 : 1;
     this.lastAttackAt = now;
     this.attackAt = now;
-    const finisher = this.comboIndex === CONFIG.COMBO_HITS;
-    this.nextAttackAt = now + (CONFIG.ATTACK_COOLDOWN_MS + (finisher ? 120 : 0)) / this.stats.attackSpeed;
-    this.lungeDir = aim;
-    this.lungeUntil = now + 70;
-    audio.sfx('swing', { pitch: finisher ? 0.8 : 1 + this.comboIndex * 0.06 });
+    const finisher = this.comboIndex === w.combo;
+    this.nextAttackAt = now + (w.cooldownMs + (finisher ? w.finisherMs : 0)) / this.stats.attackSpeed;
 
-    const reach = CONFIG.ATTACK_RANGE * 0.7 * this.stats.rangeMult;
+    if (w.shot) {
+      // Ranged: a shot toward the cursor, every last shot of the cycle is charged; slight recoil.
+      const mult = w.damageMult * (finisher ? w.shot.charged : 1);
+      this.lungeDir = { x: -aim.x * 0.5, y: -aim.y * 0.5 };
+      this.lungeUntil = now + 40;
+      audio.sfx('playerShoot', { pitch: finisher ? 0.7 : 1 });
+      this.scene.events.emit(PLAYER_SHOOT, { x: this.x + aim.x * 10, y: this.y + aim.y * 10, angle: Math.atan2(aim.y, aim.x), speed: w.shot.speed, mult, charged: finisher } satisfies ShootEvent);
+      return;
+    }
+
+    this.lungeDir = aim;
+    this.lungeUntil = now + (w.id === 'gorilla' ? 110 : 70);
+    audio.sfx(w.id === 'gorilla' ? 'swingHeavy' : 'swing', { pitch: finisher ? 0.8 : (w.id === 'mantis' ? 1.3 : 1) + this.comboIndex * 0.06 });
+
+    const reach = w.reach * this.stats.rangeMult;
     const hx = this.x + aim.x * reach, hy = this.y + aim.y * reach;
-    const slash = this.scene.add.image(this.x + aim.x * 8, this.y + aim.y * 8, 'slash')
-      .setRotation(Math.atan2(aim.y, aim.x)).setDepth(12).setScale((finisher ? 1.3 : 1) * this.stats.rangeMult)
-      .setFlipY(this.comboIndex === 2);
-    if (this.stats.rangeMult > 1) slash.setTint(0xff3b3b); // katana: red moon arc
+    const [sx, sy] = w.arc.scale;
+    const slash = this.scene.add.image(this.x + aim.x * (8 + reach / 3), this.y + aim.y * (8 + reach / 3), 'slash')
+      .setRotation(Math.atan2(aim.y, aim.x)).setDepth(12).setScale(sx * (finisher ? 1.3 : 1) * this.stats.rangeMult, sy * (finisher ? 1.3 : 1) * this.stats.rangeMult)
+      .setFlipY(this.comboIndex % 2 === 0);
+    if (w.id === 'blade' && this.stats.rangeMult > 1) slash.setTint(0xff3b3b); // katana: red moon arc
     else if (finisher) slash.setTint(COLORS.magenta);
-    this.scene.tweens.add({ targets: slash, alpha: 0, duration: 140, onComplete: () => slash.destroy() });
+    else if (w.arc.tint) slash.setTint(w.arc.tint);
+    this.scene.tweens.add({ targets: slash, alpha: 0, duration: w.id === 'mantis' ? 90 : 140, onComplete: () => slash.destroy() });
+    if (w.id === 'gorilla' && finisher) this.scene.cameras.main.shake(90, 0.005);
 
     const ev: AttackEvent = {
-      x: hx, y: hy, radius: (finisher ? 18 : 14) * this.stats.rangeMult, comboIndex: this.comboIndex,
-      mult: finisher ? this.stats.finisherMult : 1, dirX: aim.x, dirY: aim.y,
+      x: hx, y: hy, radius: w.radius[finisher ? 1 : 0] * this.stats.rangeMult, comboIndex: this.comboIndex,
+      mult: w.damageMult * (finisher ? this.stats.finisherMult : 1), dirX: aim.x, dirY: aim.y,
+      finisher, knock: w.knock, daze: finisher ? w.finisherStun : 0,
     };
     this.scene.events.emit(PLAYER_ATTACK, ev);
+  }
+
+  private startSpecial(now: number, aim: { x: number; y: number }) {
+    const sp = this.weapon.special;
+    this.specialReadyAt = now + sp.cooldownMs;
+    audio.sfx('special');
+    if (sp.id === 'windcut') {
+      this.motionKind = 'windcut';
+      this.motionVel = { x: aim.x * 520, y: aim.y * 520 };
+      this.motionUntil = now + 170;
+      this.invulnUntil = Math.max(this.invulnUntil, now + 230);
+      this.cutSerial++;
+    } else if (sp.id === 'leap') {
+      // Leap to the cursor, at most 110 px away, untouchable in the air.
+      const p = this.controls.pointerWorld();
+      let dx = p.x - this.x, dy = p.y - this.y;
+      const d = Math.hypot(dx, dy) || 1, k = Math.min(1, 110 / d);
+      dx *= k; dy *= k;
+      this.motionKind = 'leap';
+      this.motionVel = { x: dx / 0.22, y: dy / 0.22 };
+      this.motionUntil = now + 220;
+      this.invulnUntil = Math.max(this.invulnUntil, now + 260);
+    } else {
+      this.lockUntil = now + 180;
+    }
+    this.scene.events.emit(PLAYER_SPECIAL, { id: sp.id, x: this.x, y: this.y, dirX: aim.x, dirY: aim.y } satisfies SpecialEvent);
   }
 
   receiveHit(amount: number, now: number, fromX: number, fromY: number): HitResult {

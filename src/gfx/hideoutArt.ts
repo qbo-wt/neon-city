@@ -82,6 +82,18 @@ export function generateHideoutArt(scene: Phaser.Scene, tex: CanvasTex, px: Px) 
     px(ctx, '#00f0ff', 1, 23, 110, 1);
   });
 
+  tex(scene, 'gun-rack', 60, 22, ctx => {
+    px(ctx, '#05030f', 0, 0, 60, 22);
+    px(ctx, '#2a2140', 1, 1, 58, 20);
+    px(ctx, '#3a3058', 1, 1, 58, 1);
+    for (let x = 6; x < 58; x += 11) px(ctx, '#5a5578', x, 3, 2, 1); // hooks
+    px(ctx, '#e8e8ff', 6, 4, 1, 15); px(ctx, '#00f0ff', 7, 4, 1, 15); px(ctx, '#f5e663', 5, 16, 3, 1); // mono-blade
+    px(ctx, '#e8e8ff', 16, 5, 1, 9); px(ctx, '#ff2a6d', 17, 5, 1, 9); px(ctx, '#e8e8ff', 19, 7, 1, 8); px(ctx, '#ff2a6d', 20, 7, 1, 8); // mantis
+    px(ctx, '#a8a6d8', 27, 6, 6, 7); px(ctx, '#e8e8ff', 27, 6, 6, 2); px(ctx, '#3a3550', 28, 13, 4, 4); // titan fist
+    for (let i = 0; i < 4; i++) px(ctx, '#00f0ff', 39 + i, 6 + i * 3, 3, 1); px(ctx, '#e8e8ff', 42, 15, 2, 2); // wire coil
+    px(ctx, '#3a3550', 49, 8, 7, 3); px(ctx, '#a8a6d8', 49, 8, 7, 1); px(ctx, '#3a3550', 50, 11, 2, 5); // pistol
+  });
+
   tex(scene, 'rack', 18, 72, ctx => {
     px(ctx, '#05030f', 0, 0, 18, 72);
     px(ctx, '#221d35', 1, 1, 16, 70);

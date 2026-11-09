@@ -159,7 +159,24 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.scene.tweens.add({ targets: fl, alpha: 0, scale: 0.6, duration: 110, onComplete: () => fl.destroy() });
   }
 
-  takeHit(amount: number, crit: boolean, countered: boolean, fromX: number, fromY: number, stagger: boolean) {
+  /** Dazed: stunned without opening a counter (heavy fists, shockwave, garrote). Bosses shrug most of it off. */
+  daze(now: number, ms: number) {
+    if (this.dead || this.ai === 'stunned') return;
+    const t = this.def.behavior === 'boss' ? ms * 0.3 : ms;
+    this.ai = 'stunned';
+    this.aiUntil = now + t;
+    (this.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+    if (!this.stars.length) this.stars = [0, 1, 2].map(i => this.scene.add.rectangle(this.x, this.y, 2, 2, i === 1 ? COLORS.white : COLORS.yellow).setDepth(30));
+  }
+
+  /** Yanked by a mono-wire: thrown at (vx, vy) for `ms`. */
+  yank(vx: number, vy: number, ms: number) {
+    if (this.dead || this.def.behavior === 'boss') return;
+    (this.body as Phaser.Physics.Arcade.Body).setVelocity(vx, vy);
+    this.enter('recover', ms);
+  }
+
+  takeHit(amount: number, crit: boolean, countered: boolean, fromX: number, fromY: number, stagger: boolean, knock = 1) {
     if (this.dead) return;
     if (this.shield > 0) {
       // The shield soaks the blow; what is left goes through once it breaks.
@@ -183,7 +200,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
     const charging = this.ai === 'attack' && this.heavy;
     if (!charging && !this.shieldRing) {
-      const dx = this.x - fromX, dy = this.y - fromY, len = Math.hypot(dx, dy) || 1, k = this.heavy ? 50 : 150;
+      const dx = this.x - fromX, dy = this.y - fromY, len = Math.hypot(dx, dy) || 1, k = (this.heavy ? 50 : 150) * knock;
       (this.body as Phaser.Physics.Arcade.Body).setVelocity(dx / len * k, dy / len * k);
       // Hitstun lets the knockback play out instead of being overwritten by the chase on the same frame.
       // A windup is only interrupted on light enemies by a combo finisher, so parry timing stays readable.
