@@ -82,11 +82,11 @@ export class BuildingScene extends InteriorScene {
     this.glow(40, 112, 0xff3b3b, 0.45, 1.2, 1.4);
     this.sign(428, 78, 'NET//DEN', 0x39ff88, 6);
     this.glow(440, 112, 0x39ff88, 0.4, 1.2, 1.4);
-    txt(this, 352, 3, 'RUE ▼', 5, '#f5e663').setOrigin(0.5).setDepth(3);
+    this.plate(352, 3, 'RUE ▼', '#f5e663', 0xf5e663);
     this.sign(236, 140, 'RAMEN DE MAMIE LO', 0xff3b3b, 5);
     this.glow(236, 170, 0xff3b3b, 0.3, 1.6, 1);
     this.glow(288, 60, 0x6a2cff, 0.4, 1.4, 1);
-    txt(this, 144, 3, '3712', 5, '#00f0ff').setOrigin(0.5).setDepth(3);
+    this.plate(144, 3, '3712', '#00f0ff', 0x00f0ff);
 
     // Advert screen on the bottom wall, scrolling.
     this.add.image(288, 16, 'ad-screen').setDepth(1.5);
@@ -138,5 +138,11 @@ export class BuildingScene extends InteriorScene {
       { x: 432, y: 112, r: 32, label: 'Repaire de Nyx, netrunneuse (esprit)', action: () => this.go(SCENES.Netrunner) },
       { x: 352, y: 46, r: 34, label: 'Ascenseur — descendre dans la rue', action: () => this.go(SCENES.Run, { seed: Date.now() >>> 0 }, '▼ REZ-DE-CHAUSSÉE — NEON CITY') },
     );
+  }
+
+  /** Small lit label above a door: its own dark plate hides the texture's indicator bar underneath. */
+  private plate(x: number, y: number, label: string, color: string, border: number) {
+    const t = txt(this, x, y, label, 5, color).setOrigin(0.5).setDepth(3);
+    this.add.rectangle(x, y, Math.ceil(t.width) + 6, Math.ceil(t.height) + 1, 0x05030f).setStrokeStyle(1, border, 0.6).setDepth(2.9);
   }
 }
