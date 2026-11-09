@@ -12,6 +12,10 @@ import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
 import { txt } from '../ui/text';
 import { audio } from '../audio/audio';
+import { nextLine } from '../core/story';
+import type { StoryNpc } from '../data/story';
+import { ENEMIES, type EnemyId } from '../data/enemies';
+import { floatText } from '../fx/effects';
 
 export const HUD_H = 14;
 
@@ -89,6 +93,22 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.save = s;
     writeSave(getStorage(), s);
     this.refreshInfo();
+  }
+
+  /**
+   * Dialogue for an NPC that remembers you: a reaction to your last run, then their story one beat
+   * per run (the last beat gives credits), then their usual lines.
+   */
+  protected storyTalk(npc: StoryNpc, ambient: string[]): () => string {
+    return () => {
+      const r = nextLine(npc, this.save, ambient, Math.random, id => ENEMIES[id as EnemyId]?.name);
+      if (r.save !== this.save) this.persistSave(r.save);
+      if (r.gift) {
+        floatText(this, this.player.x, this.player.y - 20, `+${r.gift}¢`, '#f5e663', 9);
+        audio.sfx('buy');
+      }
+      return r.line;
+    };
   }
 
   /** Static, solid prop centred at (x, y). */

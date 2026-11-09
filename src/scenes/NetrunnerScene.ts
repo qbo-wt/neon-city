@@ -44,7 +44,7 @@ export class NetrunnerScene extends InteriorScene {
       } });
     }
 
-    const nyx = this.npc('npc-nyx', 252, 104, 'sit', { faceUp: true, name: 'Nyx', lines: SPECIAL_LINES.nyx });
+    const nyx = this.npc('npc-nyx', 252, 104, 'sit', { faceUp: true, name: 'Nyx', lines: SPECIAL_LINES.nyx, talk: this.storyTalk('nyx', SPECIAL_LINES.nyx) });
     nyx.setDepth(9);
     const shop = new SkillTreePanel(this, () => this.save, s => this.persistSave(s), [4, 5], NET_THEME);
     this.modals.push(shop);

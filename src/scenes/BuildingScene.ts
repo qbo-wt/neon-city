@@ -117,8 +117,9 @@ export class BuildingScene extends InteriorScene {
     let r = 0;
     const res = (x: number, y: number, activity: NpcActivity, extra: NpcOpts = {}) => {
       const i = r++;
+      const lines = extra.lines ?? [RUMORS[(i * 7) % RUMORS.length], RUMORS[(i * 7 + 3) % RUMORS.length]];
       return this.npc(`res-${i % RESIDENTS}`, x, y, activity, {
-        name: NAMES[i % NAMES.length], lines: [RUMORS[(i * 7) % RUMORS.length], RUMORS[(i * 7 + 3) % RUMORS.length]], ...extra,
+        name: NAMES[i % NAMES.length], ...extra, lines, talk: this.storyTalk('resident', lines),
       });
     };
     res(120, 110, 'wander', { bounds: lane });
@@ -131,7 +132,7 @@ export class BuildingScene extends InteriorScene {
     res(160, 204, 'sit');
     res(296, 204, 'sit');
     res(312, 204, 'talk', { flip: true });
-    this.npc('npc-lo', 236, 146, 'cook', { name: 'Mamie Lo', lines: SPECIAL_LINES.lo });
+    this.npc('npc-lo', 236, 146, 'cook', { name: 'Mamie Lo', lines: SPECIAL_LINES.lo, talk: this.storyTalk('lo', SPECIAL_LINES.lo) });
     res(220, 196, 'eat', { faceUp: true });
     res(252, 196, 'eat', { faceUp: true });
     res(276, 72, 'play', { faceUp: true, lines: SPECIAL_LINES.gamer });

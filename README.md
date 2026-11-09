@@ -1,6 +1,6 @@
 # Neon City
 
-Rogue-lite d'action en vue de dessus, dans le navigateur. Pixel art cyberpunk entièrement généré par le code (aucun fichier image).
+Rogue-lite d'action en vue de dessus, dans le navigateur. Pixel art cyberpunk, bruitages et musique entièrement générés par le code (aucun fichier image ni son).
 
 ## Lancer
 
@@ -17,38 +17,52 @@ npm run build      # vérification des types + build statique dans dist/
 |---|---|
 | Bouger | ZQSD, WASD ou flèches |
 | Dash (invulnérable) | Espace |
-| Frapper (combo x3, vers le curseur) | Clic gauche (maintenir = enchaîner) |
+| Frapper vers le curseur (maintenir = enchaîner) | Clic gauche |
 | Parer (fenêtre de 150 ms) | Clic droit |
+| Capacité spéciale de l'arme | E ou Maj (en run) |
 | Neuro-bloqueur (-30 psychose) | F |
-| Interagir (planque) | E |
+| Interagir | E |
+| Choisir une option | Clic ou 1 à 7 |
+| Couper / remettre le son | M |
 | Aide des commandes | I ou bouton « i » |
-| Choisir un implant | Clic ou 1 / 2 / 3 |
 
 ## Boucle de jeu
 
-Appart (terminal = historique des runs) → couloir de l'immeuble (PNJ, clinique du charcudoc = arbre du **corps**, repaire de la netrunneuse = arbre de l'**esprit**) → ascenseur → run de 10 secteurs dans les rues (décor différent à chaque secteur, un boss seul aux secteurs 5 et 10) → mort ou victoire → les crédits sont gardés, les implants et la psychose sont perdus → retour à l'appart.
+Appart → couloir de l'immeuble → ascenseur → run de 10 secteurs → mort ou victoire → les crédits sont gardés, les implants et la psychose sont perdus → retour à l'appart.
 
-**Rues** : 7 types de cartes plus grandes que l'écran (caméra qui suit), pas toutes rectangulaires (L, T, croix, U, ovale, marché à îlots). Objets cassables (caisses, barils, poubelles, distributeurs) qui lâchent de la vie, des crédits ou, très rarement, une relique (katana « Lune Rouge », pistolets jumeaux dorés). Événements de lumière : coupures de courant, orage, patrouille aérienne, alerte rouge, surtension néon.
+- **Appart** : terminal (historique des runs, meilleures runs, runs du jour), serveur (bestiaire), râtelier d'armes.
+- **Couloir** : PNJ animés qui se souviennent de ta dernière run, clinique du charcudoc (arbre du **corps**), repaire de la netrunneuse (arbre de l'**esprit**).
+- **Ascenseur** : run normale, run du jour (même ville pour tout le monde à une date donnée), avis de recherche (notoriété).
 
-**Boss** : 3 phases (sous 50 % puis 25 % de vie), charge, éventail, barrage, onde de choc, anneaux de balles.
+## Systèmes
 
-**Psychose** : la jauge monte dès le premier combat (la ville use), plus vite avec chaque implant, et à chaque ennemi tué. À 50 % : glitchs visuels. À 75 % : la vie baisse lentement. À 100 % : crise de cyberpsychose (+50 % dégâts et vitesse, mais la vie fond).
+- **Sensations** : hitstop selon le poids du coup, ralenti et flash chromatique sur parade parfaite, boss abattus au ralenti. Bruitages synthétisés et musique synthwave qui suit l'action (planque, combat, rue nettoyée, boss).
+- **Armes** (râtelier de l'appart) : Lame-mono, Lames mantes, Poings Titan, Fil-mono, Pistolet « Vautour », chacune avec son rythme et sa capacité spéciale.
+- **Implants** : 24 implants, 4 familles (chrome, neural, sang, optique), 3 raretés plus le marché noir (gros bonus, vrai défaut). Retrouver un implant l'améliore (jusqu'au niveau III). 2 et 3 implants d'une famille débloquent une synergie.
+- **Psychose** : la jauge monte pendant les combats, plus vite avec la charge des implants et à chaque ennemi tué. C'est aussi une force : +10 % de dégâts à 50 %, +25 % et +10 % de vitesse à 75 % (mais la vie baisse), x1,5 en crise (la vie fond, chaque élimination soigne un peu).
+- **Route** : chaque porte annonce sa récompense (implant d'une famille, soin, crédits, coffre), une **rencontre** (fixer et ses contrats, charcudoc de rue, pari de netrunner, marchande ambulante) ou un **secteur d'élite** (boucliers, explosifs, camouflés ou enragés, meilleur butin).
+- **Rues** : 7 types de cartes plus grandes que l'écran, objets cassables (vie, crédits, rarement une relique), événements de lumière.
+- **Boss** : secteurs 5 et 10, 3 phases, répliques selon ton historique avec eux.
+- **Notoriété** (après une première victoire) : 7 handicaps à rangs, +10 % de crédits par point, prime pour chaque nouveau record.
+- **Récit** : Mamie Lo, le Doc Kessler et Nyx réagissent à ta dernière run et racontent leur histoire, une étape par run, avec un cadeau à la fin. Bestiaire débloqué par les éliminations (description, tactique, secret).
 
 ## Structure
 
 ```
 src/
-  config.ts        tous les réglages chiffrés
-  core/            logique pure, testée, sans Phaser (stats, psychose, parade, arbre, sauvegarde, génération)
-  data/            contenu : implants, ennemis, nœuds de l'arbre, salles
-  entities/        Player, Enemy, Bullets
-  scenes/          Boot, Menu, Hideout, Run, Hud, Death
-  gfx/             sprites en grilles de caractères + génération des textures
+  config.ts        réglages chiffrés
+  audio/           moteur WebAudio : bruitages et séquenceur de musique
+  core/            logique pure, testée, sans Phaser (stats, psychose, offres d'implants, contrats,
+                   sauvegarde, run du jour, dialogues, génération)
+  data/            contenu : implants, synergies, armes, ennemis, notoriété, récit, bestiaire, salles
+  entities/        Player, Enemy, Npc, Bullets
+  scenes/          Boot, Menu, Hideout, Building, Ripperdoc, Netrunner, Run, Hud, Death
+  gfx/             rig de personnages animés, décors et textures générés
   systems/ ui/ fx/ input/
 tests/core/        tests Vitest
 docs/              conception et plan
 ```
 
-Ajouter un implant, un ennemi ou un nœud = ajouter une entrée dans `src/data/`.
+Ajouter un implant, une arme, un ennemi, un pacte de notoriété ou une réplique = ajouter une entrée dans `src/data/`.
 
 Debug : `?debug` dans l'URL expose l'instance du jeu sur `window.__NEON__`.

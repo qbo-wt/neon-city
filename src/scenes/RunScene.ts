@@ -22,6 +22,9 @@ import { PLAYER_ATTACK, PLAYER_HURT, PLAYER_PARRY, PLAYER_SHOOT, PLAYER_SPECIAL,
 import { WEAPONS, type Weapon } from '../data/weapons';
 import { heatCreditMult, heatEffects, heatRecordBonus } from '../data/heat';
 import { dailySeed, dateKey, recordDaily } from '../core/daily';
+import { bossIntro } from '../core/story';
+import { BOSS_LINES } from '../data/story';
+import type { SaveData } from '../core/save';
 import { audio } from '../audio/audio';
 import { Rain, floatText, sparks } from '../fx/effects';
 import { LIGHT_LABELS, Lighting, pickLightEvents } from '../fx/lighting';
@@ -99,6 +102,10 @@ export class RunScene extends Phaser.Scene {
   private eventPrompt?: Phaser.GameObjects.Text;
   /** Measured for fixer contracts. */
   private tally: SectorTally = { hitsTaken: 0, timeMs: 0, parries: 0 };
+  /** The save as it was when this sector started: your history with the bosses. */
+  private meta!: SaveData;
+  private bossPhase = 0;
+  private bossLine?: Phaser.GameObjects.Text;
   private waveIndex = 0;
   private pendingSpawns = 0;
   /** Psychosis only ticks while enemies are live in the room — never during transitions. */
@@ -153,6 +160,9 @@ export class RunScene extends Phaser.Scene {
     this.boss = this.choice = this.panel = this.eventNpc = this.eventId = undefined;
     this.eventDone = false;
     this.tally = { hitsTaken: 0, timeMs: 0, parries: 0 };
+    this.meta = loadSave(getStorage());
+    this.bossPhase = 0;
+    this.bossLine = undefined;
     this.simNow = this.time.now;
     this.freezeUntil = this.slowUntil = 0;
     this.curScale = 1;
@@ -410,6 +420,7 @@ export class RunScene extends Phaser.Scene {
     this.magnetPickups();
     this.dashCuts();
     this.updateEvent();
+    this.bossPhases();
     if (this.roomActive) this.tally.timeMs += real;
     this.followCamera(real);
 
@@ -827,7 +838,10 @@ export class RunScene extends Phaser.Scene {
           : Phaser.Math.Distance.Between(pt.x, pt.y, this.player.x, this.player.y) < CONFIG.MIN_SPAWN_DIST ? this.freePoint() : pt;
         const e = this.spawnEnemy(ids[i], p.x, p.y);
         audio.sfx('spawn');
-        if (e.def.behavior === 'boss') { this.boss = e; audio.sfx('bossRoar'); this.cameras.main.shake(500, 0.006); }
+        if (e.def.behavior === 'boss') {
+          this.boss = e; audio.sfx('bossRoar'); this.cameras.main.shake(500, 0.006);
+          if (e.def.id === 'warden' || e.def.id === 'boss') this.time.delayedCall(700, () => this.bossSay(e, bossIntro(e.def.id as 'warden' | 'boss', this.meta)));
+        }
       });
     });
   }
@@ -849,7 +863,29 @@ export class RunScene extends Phaser.Scene {
     return e;
   }
 
+  /** A boss line on screen, under its health bar. */
+  private bossSay(_e: Enemy, line: string) {
+    // One line at a time: a new one replaces whatever the boss was saying.
+    this.bossLine?.destroy();
+    const t = this.screenText(`« ${line} »`, 8, '#ff2a6d', 52);
+    this.bossLine = t;
+    audio.sfx('talk', { pitch: 0.55 });
+    this.tweens.add({ targets: t, alpha: 0, delay: 2600, duration: 500, onComplete: () => { t.destroy(); if (this.bossLine === t) this.bossLine = undefined; } });
+  }
+
+  /** Bosses speak up when they change phase. */
+  private bossPhases() {
+    const b = this.boss;
+    if (!b || b.dead || (b.def.id !== 'warden' && b.def.id !== 'boss')) return;
+    const phase = b.frenzy ? 2 : b.enraged ? 1 : 0;
+    if (phase <= this.bossPhase) return;
+    this.bossPhase = phase;
+    const l = BOSS_LINES[b.def.id as 'warden' | 'boss'];
+    this.bossSay(b, phase === 2 ? l.frenzy : l.enraged);
+  }
+
   private onEnemyDeath(e: Enemy) {
+    if (e === this.boss && (e.def.id === 'warden' || e.def.id === 'boss')) this.bossSay(e, BOSS_LINES[e.def.id as 'warden' | 'boss'].death);
     if (e === this.boss) this.boss = undefined;
     if (e.exploded) return; // blew itself up: no kill, no credits
     this.run.kills++;

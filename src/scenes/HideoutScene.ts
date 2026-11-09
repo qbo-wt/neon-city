@@ -2,6 +2,7 @@ import { COLORS, SCENES } from '../config';
 import type { RoomTemplate } from '../data/rooms';
 import { HistoryPanel } from '../ui/HistoryPanel';
 import { WeaponPanel } from '../ui/WeaponPanel';
+import { CodexPanel } from '../ui/CodexPanel';
 import { WEAPONS } from '../data/weapons';
 import { txt } from '../ui/text';
 import { InteriorScene } from './InteriorScene';
@@ -28,6 +29,7 @@ export class HideoutScene extends InteriorScene {
   protected readonly roomOptions = { floorKey: 'floor-home', wallKey: 'wall-home', capKey: 'cap-home', faceVariants: ['wall-home-shelf', 'wall-home-poster'], streetLights: false };
   private history!: HistoryPanel;
   private weapons!: WeaponPanel;
+  private codex!: CodexPanel;
 
   constructor() { super(SCENES.Hideout); }
 
@@ -53,9 +55,12 @@ export class HideoutScene extends InteriorScene {
     this.glow(300, 34, COLORS.yellow, 0.25, 1.2, 0.6);
     this.weapons = new WeaponPanel(this, () => this.save, s => this.persistSave(s));
     this.modals.push(this.weapons);
+    this.codex = new CodexPanel(this, () => this.save);
+    this.modals.push(this.codex);
     this.interactions.push(
       { x: 80, y: 74, r: 30, label: 'Terminal — historique des runs', action: () => this.history.open() },
       { x: 240, y: 40, r: 40, label: 'Sortir dans le couloir', action: () => this.go(SCENES.Building, { from: 'apartment' }) },
+      { x: 44, y: 132, r: 26, label: 'Serveur — bestiaire', action: () => this.codex.open() },
       { x: 300, y: 44, r: 24, label: `Râtelier d'armes (${WEAPONS[this.save.weapon].name})`, action: () => this.weapons.open() },
     );
   }

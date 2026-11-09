@@ -38,7 +38,7 @@ export class RipperdocScene extends InteriorScene {
     this.sign(96, 16, 'PROTHÈSES', 0xff3b3b, 6);
     this.sign(348, 16, 'STÉRILE (À PEU PRÈS)', 0xff3b3b, 6);
 
-    const doc = this.npc('npc-doc', 234, 140, 'idle', { flip: true, name: 'Doc Kessler', lines: SPECIAL_LINES.doc });
+    const doc = this.npc('npc-doc', 234, 140, 'idle', { flip: true, name: 'Doc Kessler', lines: SPECIAL_LINES.doc, talk: this.storyTalk('doc', SPECIAL_LINES.doc) });
     const shop = new SkillTreePanel(this, () => this.save, s => this.persistSave(s), [0, 1, 2, 3], CLINIC_THEME);
     this.modals.push(shop);
     // One interaction for the doc: talking to him opens his catalogue.

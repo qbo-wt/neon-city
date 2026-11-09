@@ -21,6 +21,8 @@ export interface NpcOpts {
   bounds?: Phaser.Geom.Rectangle;
   name?: string;
   lines?: string[];
+  /** Dialogue provider (story lines, reactions to your last run); falls back to `lines`. */
+  talk?: () => string;
 }
 
 /** Which animation of the NPC sheet each activity plays (wanderers switch between walk and idle). */
@@ -37,6 +39,7 @@ const ANIM: Record<NpcActivity, string> = {
 export class Npc extends Phaser.Physics.Arcade.Sprite {
   readonly name: string;
   private lines: string[];
+  private talk?: () => string;
   private lineIndex = 0;
   private target?: { x: number; y: number };
   private waitUntil = 0;
@@ -57,6 +60,7 @@ export class Npc extends Phaser.Physics.Arcade.Sprite {
     this.setDepth(8).setFlipX(!!opts.flip);
     this.name = opts.name ?? 'Passant';
     this.lines = opts.lines ?? ['...'];
+    this.talk = opts.talk;
     this.facing = opts.faceUp ? 'u' : 'd';
     this.shadow = scene.add.image(x, y + 7, 'shadow').setDepth(4);
     this.nextEmoteAt = scene.time.now + 1500 + Math.random() * 5000;
@@ -85,7 +89,7 @@ export class Npc extends Phaser.Physics.Arcade.Sprite {
   /** Shows the next line in a speech bubble. */
   speak() {
     this.bubble?.destroy();
-    const line = this.lines[this.lineIndex++ % this.lines.length];
+    const line = this.talk?.() ?? this.lines[this.lineIndex++ % this.lines.length];
     audio.sfx('talk');
     const t = txt(this.scene, 0, 0, line, 6, '#e8e8ff').setOrigin(0.5).setWordWrapWidth(150).setAlign('center');
     const bg = this.scene.add.rectangle(0, 0, t.width + 8, t.height + 6, 0x05030f, 0.92).setStrokeStyle(1, 0x8a86b0);
