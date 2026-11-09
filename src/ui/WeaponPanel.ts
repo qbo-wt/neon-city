@@ -5,6 +5,7 @@ import { WEAPONS, WEAPON_IDS, type WeaponId } from '../data/weapons';
 import { MAX_ASPECT_RANK, aspectRank, aspectsOf, defaultAspect } from '../data/aspects';
 import { audio } from '../audio/audio';
 import { txt } from './text';
+import { SPELLS } from '../data/spells';
 
 const ROMAN = ['', 'I', 'II', 'III'];
 
@@ -97,7 +98,7 @@ export class WeaponPanel {
       root.add(txt(s, 20, y + 2, `[${i + 1}] ${w.name}`, 8, owned ? '#e8e8ff' : '#8a86b0'));
       if (owned) root.add(txt(s, 150, y + 3, `${asp.name} ${ROMAN[aspectRank(save.aspects, asp.id)]}`, 6, '#ff2a6d'));
       root.add(txt(s, 20, y + 14, w.description, 6, '#a8a6d8'));
-      root.add(txt(s, 20, y + 24, `Spéciale (E) — ${w.special.name} : ${w.special.description}`, 6, '#00f0ff'));
+      root.add(txt(s, 20, y + 24, `Sorts : ${w.spells.map(id => SPELLS[id].name).join(' · ')}`, 6, '#00f0ff'));
       const status = equipped ? 'ÉQUIPÉE' : owned ? 'Équiper' : `${w.cost}¢`;
       root.add(txt(s, W - 20, y + 4, status, 8, equipped ? '#f5e663' : owned ? '#39ff88' : save.credits >= w.cost ? '#ff2a6d' : '#5a5578').setOrigin(1, 0));
     });
@@ -106,7 +107,7 @@ export class WeaponPanel {
   private renderAspects(root: Phaser.GameObjects.Container, save: SaveData) {
     const s = this.scene, W = CONFIG.WIDTH, id = this.current;
     root.add(txt(s, W / 2, 12, `${WEAPONS[id].name.toUpperCase()} — ASPECTS`, 9, '#f5e663').setOrigin(0.5));
-    root.add(txt(s, W / 2, 26, 'Un aspect change ta façon de jouer cette arme. Chacun monte jusqu\'au rang III.', 6, '#8a86b0').setOrigin(0.5));
+    root.add(txt(s, W / 2, 26, 'Un aspect modifie les sorts de cette arme. Chacun monte jusqu\'au rang III.', 6, '#8a86b0').setOrigin(0.5));
     const back = txt(s, 12, 12, '◄ Armes', 7, '#00f0ff').setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.button === 0) this.back(); });
     root.add(back);

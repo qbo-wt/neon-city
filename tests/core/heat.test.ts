@@ -17,7 +17,7 @@ describe('notoriety', () => {
   });
   it('translates into enemy and run modifiers', () => {
     const none = heatEffects({});
-    expect(none).toMatchObject({ hpMult: 1, damageMult: 1, speedMult: 1, healMult: 1, psyRateMult: 1, squads: false });
+    expect(none).toMatchObject({ hpMult: 1, damageMult: 1, pmBonus: 0, healMult: 1, psyRateMult: 1, squads: false });
     const hard = heatEffects({ armor: 2, rage: 1, nomercy: 1, smog: 2, squads: 1, bosses: 1 });
     expect(hard.hpMult).toBeCloseTo(1.5);
     expect(hard.damageMult).toBeCloseTo(1.2);

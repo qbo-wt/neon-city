@@ -42,8 +42,7 @@ export interface RunState {
 
 /** Live values the HUD draws each frame. */
 export interface HudData {
-  hp: number; maxHp: number; psy: number; credits: number;
-  dash: number; dashMax: number; blockers: number;
+  hp: number; maxHp: number; psy: number; credits: number; blockers: number;
   room: number; rooms: number; implants: string[]; relics: string[];
   synergies: string[];
   /** what the current psychosis tier gives, e.g. "+25 % DÉG" */
@@ -51,7 +50,6 @@ export interface HudData {
   /** contract progress, elite or event tag */
   notice?: string;
   boss?: { hp: number; max: number; name: string };
-  special: { name: string; charge: number };
   /** daily / notoriety marker in the top bar */
   tag: string;
   weapon: string;

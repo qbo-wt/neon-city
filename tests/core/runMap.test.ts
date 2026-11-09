@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateRun, spawnPoints, TILE } from '../../src/core/runMap';
+import { generateRun } from '../../src/core/runMap';
 import { ROOM_TEMPLATES, BOSS_ROOM } from '../../src/data/rooms';
 import { createRng } from '../../src/core/rng';
 import { CONFIG } from '../../src/config';
@@ -30,11 +30,12 @@ describe('run generation', () => {
     ['drone', 'bomber', 'hacker'].forEach(id => expect(seen.has(id)).toBe(true));
     generateRun(1)[0].waves.flat().forEach(id => expect(['runner', 'gunner']).toContain(id));
   });
-  it('waves grow with index and doors offer 2-3 rewards', () => {
+  it('turn-based waves stay small, reinforcements only late, doors offer 2-3 rewards', () => {
     for (let seed = 0; seed < 50; seed++) {
       const run = generateRun(seed);
-      expect(run[0].waves).toHaveLength(1);
-      expect(run[6].waves.length).toBeGreaterThanOrEqual(2);
+      run.slice(0, 4).forEach(r => expect(r.waves).toHaveLength(1));
+      run.forEach(r => r.waves.forEach(w => expect(w.length).toBeLessThanOrEqual(5)));
+      expect(run[0].waves[0].length).toBeLessThanOrEqual(3);
       run.filter(r => !r.isBoss).forEach(r => {
         expect(r.doorRewards.length).toBeGreaterThanOrEqual(2);
         expect(r.doorRewards.length).toBeLessThanOrEqual(3);
@@ -74,31 +75,6 @@ describe('run generation', () => {
     // Not all rectangles: at least 3 templates contain void tiles.
     expect(ROOM_TEMPLATES.filter(t => t.grid.join('').includes(' ')).length).toBeGreaterThanOrEqual(3);
   });
-  it('spawn points skip blocked tiles', () => {
-    const t = ROOM_TEMPLATES[0];
-    const py = t.grid.findIndex(r => r.includes('P'));
-    const blocked = new Set<string>();
-    t.grid.forEach((row, y) => [...row].forEach((c, x) => { if (c === '.' && (x + y) % 2) blocked.add(`${x},${y}`); }));
-    spawnPoints(t, 20, { x: t.grid[py].indexOf('P'), y: py }, createRng(4), blocked).forEach(p => {
-      expect(blocked.has(`${Math.floor(p.x / TILE)},${Math.floor(p.y / TILE)}`)).toBe(false);
-    });
-  });
-  it('spawn points are on floor and far from the player', () => {
-    for (let seed = 0; seed < 200; seed++) {
-      const rng = createRng(seed);
-      const t = ROOM_TEMPLATES[seed % ROOM_TEMPLATES.length];
-      const py = t.grid.findIndex(r => r.includes('P'));
-      const player = { x: t.grid[py].indexOf('P'), y: py };
-      const pts = spawnPoints(t, 4, player, rng);
-      expect(pts).toHaveLength(4);
-      pts.forEach(p => {
-        const tx = Math.floor(p.x / TILE), ty = Math.floor(p.y / TILE);
-        expect(['.', 'P']).toContain(t.grid[ty][tx]);
-        const d = Math.hypot(p.x - (player.x + 0.5) * TILE, p.y - (player.y + 0.5) * TILE);
-        expect(d).toBeGreaterThanOrEqual(CONFIG.MIN_SPAWN_DIST);
-      });
-    }
-  });
 });
 
 import { makeElite, makeEvent } from '../../src/core/runMap';
@@ -125,13 +101,13 @@ describe('route doors', () => {
 });
 
 describe('fixer contracts', () => {
-  const [nohit, speed, parry] = CONTRACTS;
+  const [nohit, speed, multi] = CONTRACTS;
   it('pay only when the challenge is met', () => {
-    expect(contractMet(nohit, { hitsTaken: 0, timeMs: 99999, parries: 0 })).toBe(true);
-    expect(contractMet(nohit, { hitsTaken: 1, timeMs: 1, parries: 9 })).toBe(false);
-    expect(contractMet(speed, { hitsTaken: 5, timeMs: speed.target - 1, parries: 0 })).toBe(true);
-    expect(contractMet(speed, { hitsTaken: 0, timeMs: speed.target + 1, parries: 0 })).toBe(false);
-    expect(contractMet(parry, { hitsTaken: 3, timeMs: 1, parries: parry.target })).toBe(true);
-    expect(contractMet(parry, { hitsTaken: 0, timeMs: 1, parries: parry.target - 1 })).toBe(false);
+    expect(contractMet(nohit, { hitsTaken: 0, rounds: 99, bestTurnKills: 0 })).toBe(true);
+    expect(contractMet(nohit, { hitsTaken: 1, rounds: 1, bestTurnKills: 9 })).toBe(false);
+    expect(contractMet(speed, { hitsTaken: 5, rounds: speed.target, bestTurnKills: 0 })).toBe(true);
+    expect(contractMet(speed, { hitsTaken: 0, rounds: speed.target + 1, bestTurnKills: 0 })).toBe(false);
+    expect(contractMet(multi, { hitsTaken: 3, rounds: 9, bestTurnKills: multi.target })).toBe(true);
+    expect(contractMet(multi, { hitsTaken: 0, rounds: 1, bestTurnKills: multi.target - 1 })).toBe(false);
   });
 });

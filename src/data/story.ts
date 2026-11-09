@@ -23,7 +23,7 @@ export const REACTIONS: Record<StoryNpc, Reaction[]> = {
     r => (r.victory ? 'Tu reviens entier. Presque décevant, je n\'ai rien à recoudre.' : undefined),
     r => (r.heat >= 4 ? 'Avec ta notoriété, même les drones connaissent ton visage. Je double mes tarifs ?' : undefined),
     r => (r.killer === 'psychosis' ? 'Ta tête a lâché avant ton corps. Je peux ajouter du chrome... mais tu sais ce que ça coûte.' : undefined),
-    r => (r.killer === 'warden' ? 'Le Lieutenant frappe fort. Travaille ta parade, je ne refais pas les crânes.' : undefined),
+    r => (r.killer === 'warden' ? 'Le Lieutenant frappe fort. Et ne reste jamais dos au mur, je ne refais pas les crânes.' : undefined),
     r => (r.killer === 'boss' ? 'L\'Exécuteur coupe net. Proprement, au moins. J\'apprécie le travail bien fait.' : undefined),
     r => (r.killerName ? `${r.killerName} t'a ouvert comme une boîte de conserve. J'ai vu pire. Pas beaucoup.` : undefined),
   ],

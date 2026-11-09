@@ -49,7 +49,7 @@ export interface EventCtx {
   say(msg: string, color?: string): void;
 }
 
-const CONTRACT_LABELS: Record<Contract['kind'], string> = { nohit: 'Contrat sans bavure', speed: 'Contrat express', parry: 'Contrat du duelliste' };
+const CONTRACT_LABELS: Record<Contract['kind'], string> = { nohit: 'Contrat sans bavure', speed: 'Contrat express', multikill: 'Contrat du boucher' };
 
 export function eventOptions(id: StreetEventId, c: EventCtx): ChoiceOption[] {
   const money = (n: number) => c.credits() >= n;

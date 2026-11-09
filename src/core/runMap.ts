@@ -50,15 +50,16 @@ export function makeEvent(room: RoomPlan): RoomPlan {
 /** Enemy pool widens with depth: drones from sector 2, bombers from 3, hackers from 4. */
 function poolFor(index: number): EnemyId[] {
   const pool: EnemyId[] = ['runner', 'runner', 'gunner'];
-  if (index >= 1) pool.push('gunner', 'brute', 'drone');
-  if (index >= 2) pool.push('bomber');
+  if (index >= 1) pool.push('gunner', 'drone');
+  if (index >= 2) pool.push('bomber', 'brute');
   if (index >= 3) pool.push('hacker', 'drone');
   if (index >= 5) pool.push('brute', 'hacker', 'bomber');
   return pool;
 }
 
 function makeWave(rng: Rng, index: number): EnemyId[] {
-  const size = Math.min(7, 3 + Math.floor(index / 2) + randInt(rng, 0, 1));
+  // Turn-based fights: a few enemies per wave; later waves arrive as reinforcements.
+  const size = Math.min(5, 2 + Math.floor(index / 4) + randInt(rng, 0, 1));
   const pool = poolFor(index);
   return Array.from({ length: size }, () => pick(rng, pool));
 }
@@ -78,7 +79,7 @@ export function generateRun(seed: number): RoomPlan[] {
       });
       continue;
     }
-    const waveCount = index === 0 ? 1 : index < 3 ? randInt(rng, 1, 2) : index < 5 ? 2 : randInt(rng, 2, 3);
+    const waveCount = index < 5 ? 1 : randInt(rng, 1, 2);
     rooms.push({
       index,
       template: pick(rng, ROOM_TEMPLATES),
@@ -97,21 +98,4 @@ export function findTile(template: RoomTemplate, ch: string): { x: number; y: nu
     if (x >= 0) return { x, y };
   }
   throw new Error(`Tile "${ch}" not found in ${template.id}`);
-}
-
-/** Pixel centres of free floor tiles at least MIN_SPAWN_DIST from the player tile. */
-export function spawnPoints(template: RoomTemplate, count: number, playerTile: { x: number; y: number }, rng: Rng, blocked: ReadonlySet<string> = new Set()): { x: number; y: number }[] {
-  const px = (playerTile.x + 0.5) * TILE, py = (playerTile.y + 0.5) * TILE;
-  const free: { x: number; y: number }[] = [];
-  template.grid.forEach((row, y) => [...row].forEach((ch, x) => {
-    const cx = (x + 0.5) * TILE, cy = (y + 0.5) * TILE;
-    if ((ch === '.' || ch === 'P') && !blocked.has(`${x},${y}`) && Math.hypot(cx - px, cy - py) >= CONFIG.MIN_SPAWN_DIST) free.push({ x: cx, y: cy });
-  }));
-  const chosen = shuffle(rng, free);
-  // Rooms are small: if more enemies than tiles, reuse tiles with jitter.
-  return Array.from({ length: count }, (_, i) => {
-    const p = chosen[i % chosen.length];
-    const j = i < chosen.length ? 0 : 6;
-    return { x: p.x + (rng() - 0.5) * j, y: p.y + (rng() - 0.5) * j };
-  });
 }

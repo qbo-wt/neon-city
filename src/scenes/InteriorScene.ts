@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { CONFIG, COLORS } from '../config';
 import { loadSave, writeSave, type SaveData } from '../core/save';
-import { computeStats } from '../core/stats';
 import { getStorage } from '../core/storage';
 import type { RoomTemplate } from '../data/rooms';
 import { Npc, type NpcActivity, type NpcOpts } from '../entities/Npc';
@@ -72,7 +71,7 @@ export abstract class InteriorScene extends Phaser.Scene {
 
     this.controls = new Controls(this);
     const p = this.spawnPoint(data);
-    this.player = new Player(this, p.x, p.y, computeStats([], this.save.ownedNodes), this.controls, 'explore');
+    this.player = new Player(this, p.x, p.y, this.controls);
     this.physics.add.collider(this.player, this.built.walls);
     this.physics.add.collider(this.player, this.npcGroup);
     this.physics.add.collider(this.npcGroup, this.built.walls);
@@ -86,7 +85,6 @@ export abstract class InteriorScene extends Phaser.Scene {
 
   protected refreshInfo() {
     this.info.setText(`${this.save.credits}¢   Runs : ${this.save.runs}   Record : secteur ${this.save.bestRoom}`);
-    this.player?.setStats(computeStats([], this.save.ownedNodes));
   }
 
   protected persistSave(s: SaveData) {

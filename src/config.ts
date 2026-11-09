@@ -6,45 +6,41 @@ export const CONFIG = {
   HEIGHT: 270,
   MAX_DT_MS: 50,
 
+  /** walking speed in the apartment and the building (px/s) */
   PLAYER_SPEED: 110,
   PLAYER_BASE_HP: 100,
-  DASH_SPEED: 330,
-  DASH_DURATION_MS: 140,
-  DASH_COOLDOWN_MS: 800,
-  COMBO_HITS: 3,
-  COMBO_RESET_MS: 500,
-  ATTACK_COOLDOWN_MS: 220,
-  ATTACK_RANGE: 22,
-  FINISHER_MULT: 1.5,
-  BASE_DAMAGE: 10,
-  PARRY_WINDOW_MS: 150,
-  PARRY_WHIFF_LOCK_MS: 350,
-  STUN_MS: 1000,
-  COUNTER_MULT: 2,
-  HIT_INVULN_MS: 500,
+  PLAYER_PA: 6,
+  PLAYER_PM: 3,
+  PLAYER_INIT: 100,
+  /** Surchauffe: +PA once per turn, for some psychosis */
+  OVERHEAT_PA: 2,
+  OVERHEAT_PSY: 12,
+  /** enemies get tougher sector after sector */
+  DEPTH_HP: 0.06,
+  DEPTH_DAMAGE: 0.03,
+  /** reinforcements (the next wave) arrive at the start of these rounds */
+  REINFORCE_ROUNDS: [3, 5],
 
   ROOMS_PER_RUN: 10,
   /** a boss fight, alone, every N sectors; the last one ends the run */
   BOSS_EVERY: 5,
-  /** psychosis per second in combat, even with no implant: Neon City wears you down */
-  PSY_BASE_RATE: 0.28,
-  PSY_RATE_PER_LOAD: 0.035,
-  PSY_PER_KILL: 1,
-  PSY_DRAIN_SLOW: 3,
-  PSY_DRAIN_FAST: 8,
+  /** psychosis at the start of each of your turns, even with no implant: Neon City wears you down */
+  PSY_PER_TURN: 1.5,
+  PSY_PER_TURN_PER_LOAD: 0.06,
+  PSY_PER_KILL: 2,
+  /** HP lost at the start of each turn at 75 % psychosis and in crisis (fraction of max HP) */
+  PSY_DRAIN_SLOW: 0.03,
+  PSY_DRAIN_FAST: 0.07,
   /** psychosis is also power: damage / speed bonuses per tier (glitch 50 %, drain 75 %, crisis 100 %) */
   PSY_GLITCH_DAMAGE: 1.1,
   PSY_DRAIN_DAMAGE: 1.25,
-  PSY_DRAIN_SPEED: 1.1,
   CRISIS_DAMAGE_MULT: 1.5,
-  CRISIS_SPEED_MULT: 1.5,
   /** in cyberpsychosis every kill heals a little: you can ride the edge if you keep killing */
-  CRISIS_KILL_HEAL: 4,
+  CRISIS_KILL_HEAL: 6,
   BLOCKER_AMOUNT: 30,
   HEAL_FRACTION: 0.3,
 
   BOSS_CREDIT_BONUS: 30,
-  MIN_SPAWN_DIST: 64,
 } as const;
 
 export const COLORS = {

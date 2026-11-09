@@ -3,8 +3,7 @@ import { createRng } from '../core/rng';
 import { PALETTE, SPRITES } from './sprites';
 import { generateInteriorArt, generateWallVariants } from './interiorArt';
 import { generateNpcArt } from './npcArt';
-import { generatePropTextures } from './streetProps';
-import { generateLootTextures, generateStreetTextures } from './streetArt';
+import { generateIsoArt } from './isoArt';
 import { generateHideoutArt } from './hideoutArt';
 import { generatePlayerArt } from './playerArt';
 import { generateEnemyArt } from './enemyArt';
@@ -56,9 +55,7 @@ export function generateTextures(scene: Phaser.Scene): void {
   generateInteriorArt(scene, canvasTexture, px);
   generateWallVariants(scene, canvasTexture, px);
   generateNpcArt(scene);
-  generateStreetTextures(scene, canvasTexture, px);
-  generateLootTextures(scene, canvasTexture, px);
-  generatePropTextures(scene, canvasTexture, px);
+  generateIsoArt(scene);
 
   const rng = createRng(1337);
 

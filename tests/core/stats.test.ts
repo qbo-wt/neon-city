@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { baseStats, computeStats, totalLoad } from '../../src/core/stats';
+import { baseStats, computeStats, grantedSpells, totalLoad } from '../../src/core/stats';
 import { IMPLANTS } from '../../src/data/implants';
 import { SKILL_NODES } from '../../src/data/skillNodes';
 import { RELICS } from '../../src/data/relics';
+import { SPELLS } from '../../src/data/spells';
 import type { Implant } from '../../src/core/types';
 
 const dmg5: Implant = { id: 't-dmg', name: 't', description: '', load: 10, modify: s => ({ ...s, damage: s.damage + 5 }) };
@@ -12,8 +13,8 @@ describe('stats', () => {
   it('no implants and no nodes equals base stats', () => {
     expect(computeStats([], [])).toEqual(baseStats());
   });
-  it('implant +5 damage gives 15', () => {
-    expect(computeStats([dmg5], []).damage).toBe(15);
+  it('implant +5 damage adds 5 to every hit', () => {
+    expect(computeStats([dmg5], []).damage).toBe(baseStats().damage + 5);
   });
   it('node +20 hp combined with implant +20 hp gives 140', () => {
     const node = SKILL_NODES.find(n => n.id === 'body-hp-1')!;
@@ -29,23 +30,22 @@ describe('stats', () => {
 });
 
 describe('relics', () => {
-  it('katana adds damage and reach, pistols add a gun shot, neither adds psychosis load', () => {
+  it('katana adds damage and range, pistols add a spell, neither adds psychosis load', () => {
     const katana = RELICS.find(r => r.id === 'katana')!;
     const pistols = RELICS.find(r => r.id === 'pistols')!;
     const k = computeStats([], [], [katana]);
     expect(k.damage).toBeGreaterThan(baseStats().damage);
-    expect(k.rangeMult).toBeGreaterThan(1);
-    expect(baseStats().gunDamage).toBe(0);
-    expect(computeStats([], [], [pistols]).gunDamage).toBeGreaterThan(0);
+    expect(k.range).toBe(baseStats().range + 1);
+    expect(grantedSpells([], [pistols])).toEqual(['goldshot']);
     expect(totalLoad([], k)).toBe(0);
   });
 });
 
 describe('content data', () => {
-  it('has 24 implants with positive load and unique ids', () => {
-    expect(IMPLANTS).toHaveLength(24);
-    IMPLANTS.forEach(i => expect(i.load).toBeGreaterThan(0));
-    expect(new Set(IMPLANTS.map(i => i.id)).size).toBe(24);
+  it('has 29 implants with positive load and unique ids, and every granted spell exists', () => {
+    expect(IMPLANTS).toHaveLength(29);
+    IMPLANTS.forEach(i => { expect(i.load).toBeGreaterThan(0); if (i.spell) expect(SPELLS[i.spell]).toBeDefined(); });
+    expect(new Set(IMPLANTS.map(i => i.id)).size).toBe(29);
   });
   it('has 16 body and 8 mind nodes with unique ids and valid prerequisites', () => {
     expect(SKILL_NODES.filter(n => n.tree === 'body')).toHaveLength(16);

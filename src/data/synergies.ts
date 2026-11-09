@@ -6,20 +6,20 @@ export interface Synergy { family: Family; tiers: SynergyTier[] }
 /** Carrying 2, then 3 implants of one family unlocks its set bonus (the tiers stack). */
 export const SYNERGIES: Record<Family, Synergy> = {
   chrome: { family: 'chrome', tiers: [
-    { count: 2, name: 'Blindage intégral', description: '-10 % de dégâts subis', modify: s => ({ ...s, damageTakenMult: s.damageTakenMult * 0.9 }) },
-    { count: 3, name: 'Forteresse', description: 'Renvoie 10 dégâts à qui te frappe au corps à corps, +20 vie max', modify: s => ({ ...s, thorns: s.thorns + 10, maxHp: s.maxHp + 20 }) },
+    { count: 2, name: 'Blindage intégral', description: '+8 % de résistance', modify: s => ({ ...s, res: s.res + 0.08 }) },
+    { count: 3, name: 'Forteresse', description: 'Renvoie 8 dégâts à qui te frappe au contact, +20 vie max, +1 tacle', modify: s => ({ ...s, thorns: s.thorns + 8, maxHp: s.maxHp + 20, tackle: s.tackle + 1 }) },
   ] },
   neural: { family: 'neural', tiers: [
-    { count: 2, name: 'Esprit froid', description: 'Chaque parade parfaite retire 6 psychose', modify: s => ({ ...s, parryPsy: s.parryPsy - 6 }) },
-    { count: 3, name: 'Singularité', description: '+10 % de critique, chaque critique retire 1,5 psychose', modify: s => ({ ...s, critChance: s.critChance + 0.1, critPsy: s.critPsy - 1.5 }) },
+    { count: 2, name: 'Esprit froid', description: '-20 % de psychose gagnée', modify: s => ({ ...s, psyResist: s.psyResist + 0.2 }) },
+    { count: 3, name: 'Singularité', description: '+1 PA', modify: s => ({ ...s, pa: s.pa + 1 }) },
   ] },
   blood: { family: 'blood', tiers: [
-    { count: 2, name: 'Soif', description: '+3 PV par élimination', modify: s => ({ ...s, killHeal: s.killHeal + 3 }) },
-    { count: 3, name: 'Frénésie rouge', description: '+25 % de dégâts sous 40 % de vie, +2 PV par élimination', modify: s => ({ ...s, lowHpDamage: s.lowHpDamage + 0.25, killHeal: s.killHeal + 2 }) },
+    { count: 2, name: 'Soif', description: '+4 PV par élimination', modify: s => ({ ...s, killHeal: s.killHeal + 4 }) },
+    { count: 3, name: 'Frénésie rouge', description: '+25 % de dégâts sous 40 % de vie, vol de vie 8 %', modify: s => ({ ...s, lowHpDamage: s.lowHpDamage + 0.25, lifesteal: s.lifesteal + 0.08 }) },
   ] },
   optic: { family: 'optic', tiers: [
     { count: 2, name: 'Visée assistée', description: '+10 % de critique', modify: s => ({ ...s, critChance: s.critChance + 0.1 }) },
-    { count: 3, name: 'Œil de dieu', description: 'Critiques +x1, le dash recharge 20 % plus vite', modify: s => ({ ...s, critMult: s.critMult + 1, dashCooldownMult: s.dashCooldownMult * 0.8 }) },
+    { count: 3, name: 'Œil de dieu', description: '+1 portée, critiques +x0,5', modify: s => ({ ...s, range: s.range + 1, critMult: s.critMult + 0.5 }) },
   ] },
 };
 

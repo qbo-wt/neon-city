@@ -19,7 +19,6 @@ export class HudScene extends Phaser.Scene {
   private psyBonusText!: Phaser.GameObjects.Text;
   private synergyText!: Phaser.GameObjects.Text;
   private noticeText!: Phaser.GameObjects.Text;
-  private specialText!: Phaser.GameObjects.Text;
   private tagText!: Phaser.GameObjects.Text;
   private glitchUntil = 0;
   private nextGlitchAt = 0;
@@ -33,14 +32,14 @@ export class HudScene extends Phaser.Scene {
     this.hpText = txt(this, 6, 3, '', 6);
     this.psyText = txt(this, 126, 3, '', 6);
     this.rightText = txt(this, CONFIG.WIDTH - 4, 3, '', 6).setOrigin(1, 0);
-    this.implantsText = txt(this, 4, CONFIG.HEIGHT - 10, '', 6, '#8a86b0');
+    // Above the tactical bar of the RunScene (38 px).
+    this.implantsText = txt(this, 4, CONFIG.HEIGHT - 47, '', 5, '#8a86b0').setStroke('#05030f', 2);
     this.bossText = txt(this, CONFIG.WIDTH / 2, 21, '', 7, '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 3);
     this.crisisText = txt(this, CONFIG.WIDTH / 2, 48, 'CYBERPSYCHOSE', 14, '#ff2a6d').setOrigin(0.5).setVisible(false);
     this.psyBonusText = txt(this, 178, 15, '', 5, '#f5e663');
-    this.synergyText = txt(this, 4, CONFIG.HEIGHT - 19, '', 6, '#39ff88');
-    this.noticeText = txt(this, CONFIG.WIDTH - 4, 16, '', 6, '#f5e663').setOrigin(1, 0).setStroke('#05030f', 3);
-    this.specialText = txt(this, 338, 3, '', 6, '#f5e663');
-    this.tagText = txt(this, 4, 16, '', 6, '#ff2a6d').setStroke('#05030f', 3);
+    this.synergyText = txt(this, 4, CONFIG.HEIGHT - 54, '', 5, '#39ff88').setStroke('#05030f', 2);
+    this.noticeText = txt(this, CONFIG.WIDTH - 4, 46, '', 6, '#f5e663').setOrigin(1, 0).setStroke('#05030f', 3);
+    this.tagText = txt(this, CONFIG.WIDTH / 2, 24, '', 6, '#ff2a6d').setOrigin(0.5, 0).setStroke('#05030f', 3);
   }
 
   update(time: number) {
@@ -63,18 +62,8 @@ export class HudScene extends Phaser.Scene {
     bar(g, 178, 4, 80, 6, d.psy / 100, psyCol);
     g.lineStyle(1, 0xffffff, 0.4);
     [0.5, 0.75].forEach(f => g.lineBetween(178 + 80 * f, 3, 178 + 80 * f, 11));
-    // Dash pips
-    for (let i = 0; i < d.dashMax; i++) {
-      g.fillStyle(i < d.dash ? COLORS.cyan : 0x221d35).fillRect(268 + i * 8, 4, 6, 6);
-    }
-    // Weapon special: a gauge that fills; bright when ready (E / Shift).
-    const ready = d.special.charge >= 1;
-    g.fillStyle(0x221d35).fillRect(300, 4, 34, 6);
-    g.fillStyle(ready ? COLORS.yellow : 0x8a6a2a).fillRect(300, 4, 34 * d.special.charge, 6);
-    g.lineStyle(1, ready ? COLORS.yellow : 0x05030f).strokeRect(300, 4, 34, 6);
-    this.specialText.setText(ready ? 'E' : '').setPosition(338, 3);
     this.rightText.setText(`NEURO[F] ${d.blockers}   ${d.credits}¢   SECTEUR ${d.room}/${d.rooms}`);
-    const parts = [d.weapon.toUpperCase() + ' — ' + d.special.name, d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
+    const parts = [d.weapon.toUpperCase(), d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
     this.implantsText.setText(parts.filter(Boolean).join('   |   '));
     this.synergyText.setText(d.synergies.length ? 'SYNERGIES : ' + d.synergies.join(' · ') : '');
     this.tagText.setText(d.tag);

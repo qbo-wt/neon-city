@@ -9,6 +9,8 @@ import { DeathScene } from './scenes/DeathScene';
 import { BuildingScene } from './scenes/BuildingScene';
 import { RipperdocScene } from './scenes/RipperdocScene';
 import { NetrunnerScene } from './scenes/NetrunnerScene';
+import { nextAction } from './tactics/ai';
+import { cast, moveTo } from './tactics/fight';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -24,5 +26,5 @@ const game = new Phaser.Game({
   scene: [BootScene, MenuScene, HideoutScene, BuildingScene, RipperdocScene, NetrunnerScene, RunScene, HudScene, DeathScene],
 });
 
-// Test hook: `?debug` exposes the game instance for automated smoke tests.
-if (new URLSearchParams(location.search).has('debug')) (window as unknown as { __NEON__: Phaser.Game }).__NEON__ = game;
+// Test hook: `?debug` exposes the game instance (and the fight AI, to let tests play the hero) for automated smoke tests.
+if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __NEON__: game, __NEON_AI__: { nextAction, cast, moveTo } });

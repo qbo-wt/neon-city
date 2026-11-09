@@ -9,7 +9,7 @@ export const RUMORS: string[] = [
   'Garde des neuro-bloqueurs sur toi. Toujours.',
   'Paraît qu\'un katana dort dans une caisse, quelque part en ville. Une lame rouge.',
   'Un type a trouvé des pistolets dorés dans une poubelle. Il est riche maintenant. Ou mort.',
-  'Les kamikazes jaunes : tu recules, tu pares ou tu dashes. Mais tu ne restes pas là.',
+  'Les kamikazes jaunes : quand ils brillent, tu t\'éloignes ou tu les renvoies chez eux. Mais tu ne restes pas à côté.',
   'Les netrunners pirates te grillent la cervelle à distance. Vise-les en premier.',
   'Quand l\'orage tombe, même les drones ont peur.',
   'J\'ai vu un gars en pleine crise. Il frappait comme un camion, mais il fondait sur place.',

@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { applyOffer, offerImplants, rollRarity } from '../../src/core/implantOffer';
 import { createRng } from '../../src/core/rng';
 import { baseStats, computeStats, implantLoad, totalLoad } from '../../src/core/stats';
-import { computeHitDamage } from '../../src/core/combat';
 import { IMPLANTS, IMPLANT_BY_ID, MAX_LEVEL, canUpgrade } from '../../src/data/implants';
 import { activeSynergies } from '../../src/data/synergies';
 import type { Implant } from '../../src/core/types';
@@ -19,16 +18,16 @@ describe('implant catalogue', () => {
   });
   it('upgrades scale the effect and the psychosis load', () => {
     const l1 = computeStats([get('arm-blades', 1)], []).damage, l3 = computeStats([get('arm-blades', 3)], []).damage;
-    expect(l1).toBe(baseStats().damage + 6);
-    expect(l3).toBe(baseStats().damage + 12);
+    expect(l1).toBe(baseStats().damage + 2);
+    expect(l3).toBe(baseStats().damage + 6);
     expect(implantLoad(get('arm-blades', 3))).toBeGreaterThan(implantLoad(get('arm-blades', 1)));
     expect(totalLoad([get('arm-blades', 2)], baseStats())).toBeCloseTo(12 * 1.3);
   });
   it('black-market implants have a drawback and cannot be upgraded', () => {
     const os = get('berserker-os');
     const s = computeStats([os], []);
-    expect(s.damage).toBeGreaterThan(baseStats().damage);
-    expect(s.parryLocked).toBe(1);
+    expect(s.damagePct).toBeGreaterThan(baseStats().damagePct);
+    expect(s.pm).toBe(baseStats().pm - 1);
     expect(canUpgrade(os)).toBe(false);
     expect(computeStats([get('neuro-leak')], []).psyResist).toBeLessThan(0);
     expect(canUpgrade(get('arm-blades', MAX_LEVEL))).toBe(false);
@@ -81,17 +80,5 @@ describe('implant offers', () => {
     expect(up).toHaveLength(2);
     expect(up[0].level).toBe(2);
     expect(applyOffer(owned, { implant: IMPLANT_BY_ID.get('aim-optics')!, level: 1, upgrade: false })).toHaveLength(3);
-  });
-});
-
-describe('damage modifiers', () => {
-  const s = baseStats();
-  it('crit uses the crit multiplier', () => {
-    expect(computeHitDamage({ ...s, critChance: 1, critMult: 3 }, { countered: false, tier: 'stable', roll: 0 }).amount).toBe(30);
-  });
-  it('overclock scales with psychosis, berserk only under 40 % HP', () => {
-    expect(computeHitDamage({ ...s, psyDamage: 0.003 }, { countered: false, tier: 'stable', roll: 1, psy: 100 }).amount).toBe(13);
-    expect(computeHitDamage({ ...s, lowHpDamage: 0.5 }, { countered: false, tier: 'stable', roll: 1, hpRatio: 0.3 }).amount).toBe(15);
-    expect(computeHitDamage({ ...s, lowHpDamage: 0.5 }, { countered: false, tier: 'stable', roll: 1, hpRatio: 0.8 }).amount).toBe(10);
   });
 });
