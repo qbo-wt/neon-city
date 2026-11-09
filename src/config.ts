@@ -8,7 +8,7 @@ export const CONFIG = {
 
   /** walking speed in the apartment and the building (px/s) */
   PLAYER_SPEED: 110,
-  PLAYER_BASE_HP: 100,
+  PLAYER_BASE_HP: 120,
   PLAYER_PA: 6,
   PLAYER_PM: 3,
   PLAYER_INIT: 100,

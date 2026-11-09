@@ -16,10 +16,10 @@ describe('stats', () => {
   it('implant +5 damage adds 5 to every hit', () => {
     expect(computeStats([dmg5], []).damage).toBe(baseStats().damage + 5);
   });
-  it('node +20 hp combined with implant +20 hp gives 140', () => {
-    const node = SKILL_NODES.find(n => n.id === 'body-hp-1')!;
-    expect(node.modify(baseStats()).maxHp).toBe(120);
-    expect(computeStats([hpImpl], ['body-hp-1']).maxHp).toBe(140);
+  it('node +20 hp combined with implant +20 hp stack', () => {
+    const node = SKILL_NODES.find(n => n.id === 'body-hp-1')!, base = baseStats().maxHp;
+    expect(node.modify(baseStats()).maxHp).toBe(base + 20);
+    expect(computeStats([hpImpl], ['body-hp-1']).maxHp).toBe(base + 40);
   });
   it('totalLoad applies implantLoadMult', () => {
     expect(totalLoad([dmg5, hpImpl], { ...baseStats(), implantLoadMult: 0.8 })).toBeCloseTo(12);

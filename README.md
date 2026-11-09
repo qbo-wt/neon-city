@@ -1,6 +1,8 @@
 # Neon City
 
-Rogue-lite d'action en vue de dessus, dans le navigateur. Pixel art cyberpunk, bruitages et musique entièrement générés par le code (aucun fichier image ni son).
+Rogue-lite tactique au tour par tour, dans le navigateur. Pixel art cyberpunk en vue isométrique, bruitages et musique entièrement générés par le code (aucun fichier image ni son).
+
+> Branche `tactique` : combat au tour par tour sur damier. La version action en temps réel (frappe, dash, parade) reste sur `main`.
 
 ## Lancer
 
@@ -13,56 +15,66 @@ npm run build      # vérification des types + build statique dans dist/
 
 ## Contrôles
 
-| Action | Touche |
+| Action | Commande |
 |---|---|
-| Bouger | ZQSD, WASD ou flèches |
-| Dash (invulnérable) | Espace |
-| Frapper vers le curseur (maintenir = enchaîner) | Clic gauche |
-| Parer (fenêtre de 150 ms) | Clic droit |
-| Capacité spéciale de l'arme | E ou Maj (en run) |
-| Neuro-bloqueur (-30 psychose) | F |
+| Se déplacer (appart, couloir) | ZQSD, WASD ou flèches |
 | Interagir | E |
-| Choisir une option | Clic ou 1 à 7 |
+| En run : marcher, choisir une sortie, parler | Clic sur une case |
+| Choisir un sort | 1 à 9 ou clic sur la barre, puis clic sur la cible |
+| Annuler le sort choisi | Clic droit ou Échap |
+| Fin du tour / prêt au placement | Espace ou Entrée |
+| Neuro-bloqueur (2 PA, -30 psychose) | F |
+| Infos d'une créature, chemin, portée, dégâts prévus | Survol |
 | Couper / remettre le son | M |
 | Aide des commandes | I ou bouton « i » |
+
+## Le combat
+
+- **Placement** sur les cases bleues, puis l'ordre des tours suit l'**initiative** (frise en haut à droite).
+- Chaque tour : **6 PA** pour les sorts, **3 PM** pour marcher (1 PM par case).
+- **Sorts** : coût en PA, portée, ligne de vue, lancer en ligne, relance, lancers par tour, zone (case, croix, cercle, ligne).
+- **Tacle et fuite** : quitter le contact d'un ennemi coûte des PM en plus (sa valeur de tacle moins ta fuite).
+- **Poussée** : un ennemi repoussé contre un mur ou une créature prend des dégâts pour chaque case qu'il n'a pas pu faire. La créature heurtée en prend la moitié.
+- **Couverts** : obstacles et créatures bloquent la ligne de vue. Caisses, barils et distributeurs se cassent et lâchent du butin.
+- **Renforts** : dans les secteurs avancés, la vague suivante arrive au round 3.
+- **Psychose** : monte à chaque début de tour (base + charge des implants) et à chaque élimination. Bonus de dégâts à 50 % et 75 %, la vie fond à partir de 75 %, x1,5 en crise. **Surchauffe** (0 PA, une fois par tour) : +2 PA contre de la psychose.
+- **Ennemis** : punk à lame (tacle), tireur (garde ses distances), colosse (ruée, marteau qui repousse), drone (rapide), kamikaze (s'amorce à côté de toi et explose au tour suivant, sur ses alliés aussi), netrunner (hacks sans ligne de vue, soigne ses alliés). Boss à phases aux secteurs 5 et 10.
+
+## Armes (classes)
+
+Chaque arme donne 4 sorts. Ses 3 **aspects** (râtelier de l'appart, jusqu'au rang III) modifient ces sorts.
+
+| Arme | Sorts |
+|---|---|
+| Lame-mono | Entaille, Estoc (repousse), Tranche-vent (ruée qui tranche au passage), Garde haute |
+| Lames mantes | Lacération (3x par tour), Saignée, Bond de mante (saut + zone), Esquive (+2 PM) |
+| Poings Titan | Uppercut (repousse de 2), Direct, Onde de choc (zone, repousse, -1 PM), Plaquage |
+| Fil-mono | Fouet (3 cases), Harpon (attire), Garrot (-2 PM), Toile (croix, -1 PM) |
+| Pistolet « Vautour » | Tir, Tir perçant (ligne), Rafale (zone), Roulade |
 
 ## Boucle de jeu
 
 Appart → couloir de l'immeuble → ascenseur → run de 10 secteurs → mort ou victoire → les crédits sont gardés, les implants et la psychose sont perdus → retour à l'appart.
 
-- **Appart** : terminal (historique des runs, meilleures runs, runs du jour), serveur (bestiaire), râtelier d'armes.
-- **Couloir** : PNJ animés qui se souviennent de ta dernière run, clinique du charcudoc (arbre du **corps**), repaire de la netrunneuse (arbre de l'**esprit**).
-- **Ascenseur** : run normale, run du jour (même ville pour tout le monde à une date donnée), avis de recherche (notoriété).
-
-## Systèmes
-
-- **Sensations** : hitstop selon le poids du coup, ralenti et flash chromatique sur parade parfaite, boss abattus au ralenti. Bruitages synthétisés et musique synthwave qui suit l'action (planque, combat, rue nettoyée, boss).
-- **Armes** (râtelier de l'appart) : Lame-mono, Lames mantes, Poings Titan, Fil-mono, Pistolet « Vautour », chacune avec son rythme et sa capacité spéciale. Chaque arme a 3 **aspects** (celui de base et 2 à débloquer) qui changent sa façon de jouer, chacun jusqu'au rang III.
-- **Implants** : 24 implants, 4 familles (chrome, neural, sang, optique), 3 raretés plus le marché noir (gros bonus, vrai défaut). Retrouver un implant l'améliore (jusqu'au niveau III). 2 et 3 implants d'une famille débloquent une synergie.
-- **Psychose** : la jauge monte pendant les combats, plus vite avec la charge des implants et à chaque ennemi tué. C'est aussi une force : +10 % de dégâts à 50 %, +25 % et +10 % de vitesse à 75 % (mais la vie baisse), x1,5 en crise (la vie fond, chaque élimination soigne un peu).
-- **Route** : chaque porte annonce sa récompense (implant d'une famille, soin, crédits, coffre), une **rencontre** (fixer et ses contrats, charcudoc de rue, pari de netrunner, marchande ambulante) ou un **secteur d'élite** (boucliers, explosifs, camouflés ou enragés, meilleur butin).
-- **Rues** : 7 types de cartes plus grandes que l'écran, objets cassables (vie, crédits, rarement une relique), événements de lumière.
-- **Boss** : secteurs 5 et 10, 3 phases, répliques selon ton historique avec eux.
-- **Notoriété** (après une première victoire) : 7 handicaps à rangs, +10 % de crédits par point, prime pour chaque nouveau record.
-- **Récit** : Mamie Lo, le Doc Kessler et Nyx réagissent à ta dernière run et racontent leur histoire, une étape par run, avec un cadeau à la fin. Bestiaire débloqué par les éliminations (description, tactique, secret).
+- **Implants** : 29 implants, 4 familles, 3 raretés plus le marché noir. Ils donnent des PA, PM, portée, résistance, dégâts de poussée, vol de vie… et certains ajoutent un sort (Court-circuit, Tourelle, Grenade, Stimulant, Bouclier cinétique, Tir réflexe). Retrouver un implant l'améliore. 2 et 3 implants d'une famille débloquent une synergie.
+- **Route** : chaque sortie annonce sa récompense, une rencontre (fixer et ses contrats, charcudoc de rue, netrunner, marchande) ou un secteur d'élite (boucliers, explosifs, camouflés, enragés).
+- **Contrats du fixer** : gagner sans perdre un PV, gagner en 3 rounds, éliminer 2 ennemis dans le même tour.
+- **Notoriété**, run du jour, récit des voisins et bestiaire comme sur `main`.
 
 ## Structure
 
 ```
 src/
-  config.ts        réglages chiffrés
-  audio/           moteur WebAudio : bruitages et séquenceur de musique
-  core/            logique pure, testée, sans Phaser (stats, psychose, offres d'implants, contrats,
-                   sauvegarde, run du jour, dialogues, génération)
-  data/            contenu : implants, synergies, armes, ennemis, notoriété, récit, bestiaire, salles
-  entities/        Player, Enemy, Npc, Bullets
-  scenes/          Boot, Menu, Hideout, Building, Ripperdoc, Netrunner, Run, Hud, Death
-  gfx/             rig de personnages animés, décors et textures générés
-  systems/ ui/ fx/ input/
-tests/core/        tests Vitest
-docs/              conception et plan
+  tactics/         moteur de combat pur et testé : plateau, ligne de vue, chemins, sorts, tours, IA, arènes
+  data/            contenu : sorts, ennemis, armes, aspects, implants, synergies, notoriété, récit, bestiaire
+  core/            logique pure de la méta (stats, psychose, offres, contrats, sauvegarde, run du jour)
+  scenes/          Boot, Menu, Hideout, Building, Ripperdoc, Netrunner, Run (+ run/ : vue des unités, interface), Hud, Death
+  gfx/             art iso (sol, façades, obstacles), rig de personnages animés, décors
+  audio/ entities/ systems/ ui/ fx/ input/
+tests/             tests Vitest (core et tactics)
+docs/              conception
 ```
 
-Ajouter un implant, une arme, un ennemi, un pacte de notoriété ou une réplique = ajouter une entrée dans `src/data/`.
+Ajouter un sort, un ennemi, un implant ou un aspect = ajouter une entrée dans `src/data/`.
 
-Debug : `?debug` dans l'URL expose l'instance du jeu sur `window.__NEON__`.
+Debug : `?debug` dans l'URL expose le jeu sur `window.__NEON__` et l'IA de combat sur `window.__NEON_AI__` (tests automatisés).

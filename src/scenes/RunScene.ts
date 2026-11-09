@@ -35,7 +35,7 @@ import { txt } from '../ui/text';
 import { DIRS, dist, keyOf, pathTo, reachable, same, walkable } from '../tactics/board';
 import { generateArena, type ArenaStyle, type BreakableKind } from '../tactics/arena';
 import {
-  BLOCKER_PA, addUnits, beginFight, byUid, cast, castError, createFight, current, endTurn, moveTo, previewCast,
+  BLOCKER_PA, addUnits, beginFight, byUid, cast, castError, createFight, current, endTurn, exitTax, moveTo, previewCast,
   rangeCells, reachFor, unitAt, zoneCells, type Fight,
 } from '../tactics/fight';
 import { nextAction } from '../tactics/ai';
@@ -1050,7 +1050,10 @@ export class RunScene extends Phaser.Scene {
   private drawRange() {
     const g = this.overlay;
     g.clear();
-    if (this.mode !== 'input' || !this.fight) return;
+    if (!this.fight) return;
+    // Primed bombers: where the blast will land at their next turn.
+    for (const u of this.fight.units) if (!u.dead && u.primed) for (const c of zoneCells(this.fight, u, { zone: { shape: 'circle', r: 2 } } as SpellDef, u)) this.diamond(g, c, 0xff8c2a, 0.28, 0xff8c2a);
+    if (this.mode !== 'input') return;
     const f = this.fight, p = this.hero;
     if (this.selected !== null) {
       const s = this.spells[this.selected];
@@ -1101,6 +1104,14 @@ export class RunScene extends Phaser.Scene {
       return;
     }
     this.ui.showTip(this.hoverSlot !== null ? this.spells[this.hoverSlot] : null, p);
+    // Hovering an enemy: where it can walk on its next turn (its full PM, with your tackle).
+    const foe = unitAt(f, cell);
+    if (foe && foe.team === 1 && foe.maxPm > 0) {
+      const pm = Math.max(0, foe.maxPm + foe.buffs.reduce((n, b) => n + (b.stat === 'pm' ? b.v : 0), 0));
+      const reach = reachable(this.board, foe, pm, q => !!unitAt(f, q) && !same(q, foe), q => exitTax(f, foe, q));
+      for (const k of reach.keys()) { const [x, y] = k.split(',').map(Number); if (x !== foe.x || y !== foe.y) this.diamond(g, { x, y }, 0xff2a6d, 0.18); }
+      return;
+    }
     const map = reachFor(f, p), path = pathTo(map, cell);
     if (path && path.length) {
       for (const q of path) this.diamond(g, q, 0x39ff88, 0.4);
