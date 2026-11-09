@@ -3,6 +3,8 @@ import { CONFIG, COLORS } from '../config';
 import type { EnemyDef } from '../data/enemies';
 import { floatText, sparks } from '../fx/effects';
 import type { Player } from './Player';
+import { ENEMY_RIGS, type EnemyRig } from '../gfx/enemyArt';
+import { facingOf, type Facing } from '../gfx/rig';
 
 export interface ShotOpts { psy?: number; key?: string }
 
@@ -27,7 +29,6 @@ const BOSS_CYCLES: Record<string, BossMove[]> = {
 const HITSTUN_MS = { light: 160, heavy: 60 };
 /** Shooters keep their distance: [too close, too far] in px. */
 const KITE: Record<string, [number, number]> = { ranged: [80, 150], burst: [70, 140], hack: [140, 210] };
-const SCALE: Record<string, number> = { boss: 2, warden: 1.8, brute: 1.3 };
 
 export class Enemy extends Phaser.Physics.Arcade.Sprite {
   hp: number;
@@ -50,7 +51,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private facing = { x: 0, y: 1 };
   private shadow: Phaser.GameObjects.Image;
   private chevron: Phaser.GameObjects.Image;
-  private baseKey: string;
+  private rig: EnemyRig;
+  private look: Facing = 'd';
+  private hurtUntil = 0;
+  /** Follow-through pose shown right after an attack is released. */
+  private strikeUntil = 0;
+  private strikeFrame = 'strike';
+  private stars: Phaser.GameObjects.Rectangle[] = [];
   private quakeRing?: Phaser.GameObjects.Arc;
   // Stuck detection: if an enemy trying to move stays in place, it side-steps for a moment.
   private stuckCheckAt = 0;
@@ -59,17 +66,22 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private unstickDir = { x: 0, y: 0 };
 
   constructor(scene: Phaser.Scene, x: number, y: number, readonly def: EnemyDef, private hooks: EnemyHooks) {
-    super(scene, x, y, `enemy-${def.id}`);
-    this.baseKey = `enemy-${def.id}`;
+    const rig = ENEMY_RIGS[def.id];
+    super(scene, x, y, rig.key, 'd-idle0');
+    this.rig = rig;
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    const scale = SCALE[def.id] ?? 1;
-    this.setScale(scale).setDepth(8);
-    const r = def.radius / scale;
-    (this.body as Phaser.Physics.Arcade.Body).setCircle(r, this.width / 2 - r, this.height * 0.62 - r);
+    // Drawn at native size: the origin sits at the waist, the hitbox rests on the feet (drones: on the hull).
+    this.setOrigin(0.5, rig.originRow / rig.S).setDepth(8);
+    const r = def.radius, centre = def.id === 'drone' ? rig.originRow : rig.feetRow + 1 - r;
+    (this.body as Phaser.Physics.Arcade.Body).setCircle(r, rig.S / 2 - r, centre - r);
+    const scale = rig.S / 20;
+    this.on(Phaser.Animations.Events.ANIMATION_UPDATE, (_a: unknown, frame: Phaser.Animations.AnimationFrame) => {
+      if (rig.S >= 32 && /walk[03]$/.test(String(frame.textureFrame))) this.stomp();
+    });
     this.hp = this.maxHp = def.hp;
     this.nextAttackAt = scene.time.now + 500 + Math.random() * 500;
-    this.shadow = scene.add.image(x, y, 'shadow').setScale(scale).setDepth(4).setAlpha(def.id === 'drone' ? 0.5 : 1);
+    this.shadow = scene.add.image(x, y, 'shadow').setScale(def.id === 'drone' ? 1 : scale).setDepth(4).setAlpha(def.id === 'drone' ? 0.5 : 1);
     this.chevron = scene.add.image(x, y, 'chevron').setTint(def.behavior === 'hack' ? 0x39ff88 : COLORS.magenta).setDepth(7).setAlpha(0.9);
   }
 
@@ -93,12 +105,30 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.vulnerable = true;
     (this.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     floatText(this.scene, this.x, this.y - 12, 'ÉTOURDI', '#f5e663', 6);
+    if (!this.stars.length) this.stars = [0, 1, 2].map(i => this.scene.add.rectangle(this.x, this.y, 2, 2, i === 1 ? COLORS.white : COLORS.yellow).setDepth(30));
+  }
+
+  /** Heavy footstep: a puff of dust under each foot. */
+  private stomp() {
+    const feet = this.y + this.rig.feetRow + 1 - this.rig.originRow;
+    for (const side of [-1, 1]) {
+      const puff = this.scene.add.circle(this.x + side * this.rig.S / 6, feet, 2, 0x8a86b0, 0.4).setDepth(4.5);
+      this.scene.tweens.add({ targets: puff, scale: 2.6, alpha: 0, duration: 380, onComplete: () => puff.destroy() });
+    }
+  }
+
+  /** Muzzle flash / cast light in the direction of an attack. */
+  private flashAt(nx: number, ny: number, color: number) {
+    const reach = this.rig.S / 2;
+    const fl = this.scene.add.image(this.x + nx * reach, this.y + ny * reach, 'glow').setTint(color).setScale(0.35).setBlendMode(Phaser.BlendModes.ADD).setDepth(30);
+    this.scene.tweens.add({ targets: fl, alpha: 0, scale: 0.6, duration: 110, onComplete: () => fl.destroy() });
   }
 
   takeHit(amount: number, crit: boolean, countered: boolean, fromX: number, fromY: number, stagger: boolean) {
     if (this.dead) return;
     this.hp -= amount;
     this.flashUntil = this.scene.time.now + 70;
+    this.hurtUntil = this.scene.time.now + 130;
     floatText(this.scene, this.x, this.y - 10, String(amount), countered ? '#00f0ff' : crit ? '#f5e663' : '#e8e8ff', countered || crit ? 9 : 7);
     sparks(this.scene, this.x, this.y, countered ? COLORS.cyan : COLORS.white, 5);
     if (this.hp <= 0) { this.die(); return; }
@@ -116,13 +146,27 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   private die() {
     this.dead = true;
+    if (!this.exploded) this.fall();
     sparks(this.scene, this.x, this.y, COLORS.magenta, 14, 22);
     sparks(this.scene, this.x, this.y, COLORS.yellow, 6, 16);
     this.hooks.onDeath(this);
     this.destroy();
   }
 
+  /** The body keeps the hurt pose, topples over, flickers and fades. */
+  private fall() {
+    // The enemy is destroyed right after: keep the scene, not `this`, for the tweens.
+    const scene = this.scene, drone = this.def.id === 'drone', big = this.def.behavior === 'boss';
+    const body = scene.add.sprite(this.x, this.y, this.rig.key, `${this.look}-hurt`).setOrigin(this.originX, this.originY).setFlipX(this.flipX).setDepth(7);
+    scene.tweens.add({
+      targets: body, angle: drone ? 25 : this.flipX ? -90 : 90, y: body.y + (drone ? 10 : this.rig.S / 6), duration: big ? 520 : 240, ease: 'Quad.in',
+      onComplete: () => scene.tweens.add({ targets: body, alpha: 0, duration: big ? 1400 : 600, delay: big ? 900 : 350, onComplete: () => body.destroy() }),
+    });
+  }
+
   override destroy(fromScene?: boolean) {
+    this.stars.forEach(s => s.destroy());
+    this.stars = [];
     this.quakeRing?.destroy();
     this.shadow?.destroy();
     this.chevron?.destroy();
@@ -180,10 +224,9 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.facing = { x: nx, y: ny };
     }
     const f = this.facing, reach = this.def.radius + 7;
-    const back = `${this.baseKey}-back`;
-    this.setTexture(f.y < -0.5 && this.scene.textures.exists(back) ? back : this.baseKey).setFlipX(f.x < 0);
+    this.pose(now, f, v.length() > 10);
     // Drones hover: their shadow sits further below and breathes.
-    const hover = this.def.id === 'drone' ? 10 + Math.sin(now / 150) * 2 : 7 * this.scaleY;
+    const hover = this.def.id === 'drone' ? 12 + Math.sin(now / 150) * 2 : this.rig.feetRow + 1 - this.rig.originRow;
     this.shadow.setPosition(this.x, this.y + hover);
     this.chevron.setPosition(this.x + f.x * reach, this.y + 3 + f.y * reach).setRotation(Math.atan2(f.y, f.x))
       .setVisible(this.ai !== 'stunned')
@@ -197,6 +240,37 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     } else {
       this.clearTint();
     }
+  }
+
+  /** Picks the frame: hurt > stun > windup > charge > follow-through > walk > idle. */
+  private pose(now: number, f: { x: number; y: number }, moving: boolean) {
+    const look = facingOf(f.x, f.y);
+    this.look = look;
+    this.setFlipX(f.x < 0);
+    const boss = this.def.behavior === 'boss';
+    let still: string | null = null;
+    if (now < this.hurtUntil) still = 'hurt';
+    else if (this.ai === 'stunned') still = 'stun';
+    else if (this.ai === 'windup') still = boss ? `windup-${this.move}` : 'windup';
+    else if (this.ai === 'attack') still = 'charge';
+    else if (now < this.strikeUntil) still = this.strikeFrame;
+    if (still && !this.texture.has(`${look}-${still}`)) still = this.ai === 'attack' ? 'windup' : 'strike';
+    if (still && this.texture.has(`${look}-${still}`)) {
+      this.anims.stop();
+      this.setFrame(`${look}-${still}`);
+    } else {
+      const key = `${this.rig.key}-${moving ? 'walk' : 'idle'}-${look}`;
+      if (this.anims.currentAnim?.key !== key || !this.anims.isPlaying) {
+        // Keep the step when turning; otherwise start anywhere so a crowd does not move in sync.
+        const keep = this.anims.currentAnim?.key.includes('-walk-') && moving ? (this.anims.currentFrame?.index ?? 1) - 1 : Math.floor(Math.random() * 4);
+        this.anims.play({ key, startFrame: Math.max(0, keep) });
+      }
+    }
+    // Stun stars circle over the head.
+    if (this.ai === 'stunned' && this.stars.length) {
+      const head = this.y - (this.rig.originRow - this.rig.headRow) - 2;
+      this.stars.forEach((s, i) => { const a = now / 160 + i * 2.1; s.setPosition(this.x + Math.cos(a) * this.rig.S / 5, head + Math.sin(a) * 2); });
+    } else if (this.stars.length) { this.stars.forEach(s => s.destroy()); this.stars = []; }
   }
 
   /** Where to walk: along the flow field (around obstacles) when far, straight at the player when close. */
@@ -272,6 +346,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const cd = { boss: this.frenzy ? 380 : this.enraged ? 600 : 950, ranged: 1300 + Math.random() * 700, burst: 1500 + Math.random() * 600, hack: 2600 + Math.random() * 800 }[b as string] ?? 750;
     this.nextAttackAt = now + cd;
     this.chargeDir = { x: 0, y: 0 };
+    this.strikeUntil = now + 200;
+    this.strikeFrame = b === 'boss' ? (this.move === 'charge' ? 'strike' : `strike-${this.move}`) : 'strike';
     const aimAt = () => Math.atan2(this.hooks.player.y - this.y, this.hooks.player.x - this.x);
 
     if (b === 'melee') {
@@ -280,14 +356,23 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.enter('recover', 400);
     } else if (b === 'ranged') {
       this.hooks.fireBullet(this.x, this.y, Math.atan2(ny, nx), 150, this.def.damage);
+      this.flashAt(nx, ny, COLORS.yellow);
       this.enter('recover', 300);
     } else if (b === 'burst') {
       // Three quick shots, each re-aimed: keep moving.
-      for (let i = 0; i < 3; i++) this.scene.time.delayedCall(i * 110, () => { if (!this.dead) this.hooks.fireBullet(this.x, this.y, aimAt(), 165, this.def.damage); });
+      for (let i = 0; i < 3; i++) this.scene.time.delayedCall(i * 110, () => {
+        if (this.dead) return;
+        const a = aimAt();
+        this.hooks.fireBullet(this.x, this.y, a, 165, this.def.damage);
+        this.flashAt(Math.cos(a), Math.sin(a), COLORS.yellow);
+      });
+      this.strikeUntil = now + 340;
       this.enter('recover', 420);
     } else if (b === 'hack') {
       // Slow quickhack orb: little damage, but it fries the player's mind (psychosis).
       this.hooks.fireBullet(this.x, this.y, Math.atan2(ny, nx), 85, this.def.damage, { psy: this.def.psyOnHit, key: 'bullet-hack' });
+      this.flashAt(nx, ny, 0x39ff88);
+      this.strikeUntil = now + 320;
       this.enter('recover', 500);
     } else if (b === 'explode') {
       this.explode(now);
@@ -304,7 +389,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     } else if (this.move === 'barrage') {
       // A stream of aimed shots: keep strafing.
       const shots = this.frenzy ? 12 : 8;
-      for (let i = 0; i < shots; i++) this.scene.time.delayedCall(i * 75, () => { if (!this.dead) this.hooks.fireBullet(this.x, this.y, aimAt() + (Math.random() - 0.5) * 0.12, 180, this.def.damage * 0.55); });
+      for (let i = 0; i < shots; i++) this.scene.time.delayedCall(i * 75, () => {
+        if (this.dead) return;
+        const a = aimAt() + (Math.random() - 0.5) * 0.12;
+        this.hooks.fireBullet(this.x, this.y, a, 180, this.def.damage * 0.55);
+        if (i % 2 === 0) this.flashAt(Math.cos(a), Math.sin(a), this.def.id === 'boss' ? COLORS.magenta : COLORS.yellow);
+      });
+      this.strikeUntil = now + shots * 75 + 80;
       this.enter('recover', shots * 75 + 200);
     } else if (this.move === 'quake') {
       this.quakeRing?.destroy();
@@ -313,6 +404,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.scene.tweens.add({ targets: wave, scale: 1.25, alpha: 0, duration: 260, onComplete: () => wave.destroy() });
       sparks(this.scene, this.x, this.y, 0xff3b3b, 20, 70);
       this.scene.cameras.main.shake(220, 0.01);
+      this.strikeUntil = now + 380;
       if (dist < 78) this.resolveHitOnPlayer(now, 1.3);
       if (this.frenzy) this.scene.time.delayedCall(300, () => { if (!this.dead) this.nova(); });
       this.enter('recover', 650);
@@ -356,7 +448,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.stun(now, 700);
       return;
     }
-    if (done) this.enter('recover', 600);
+    if (done) { this.enter('recover', 600); this.strikeUntil = now + 220; this.strikeFrame = 'strike'; }
   }
 
   private resolveHitOnPlayer(now: number, mult = 1) {

@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { createRng } from '../core/rng';
-import { BACK_VIEWS, ENEMY_LOOKS, PALETTE, SPRITES } from './sprites';
+import { PALETTE, SPRITES } from './sprites';
 import { generateInteriorArt, generateWallVariants } from './interiorArt';
 import { generateNpcArt } from './npcArt';
 import { generatePropTextures } from './streetProps';
 import { generateLootTextures, generateStreetTextures } from './streetArt';
 import { generateHideoutArt } from './hideoutArt';
 import { generatePlayerArt } from './playerArt';
+import { generateEnemyArt } from './enemyArt';
 
 export type CanvasTex = (scene: Phaser.Scene, key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) => void;
 export type Px = (ctx: CanvasRenderingContext2D, c: string, x: number, y: number, w?: number, h?: number) => void;
@@ -41,16 +42,7 @@ export function generateTextures(scene: Phaser.Scene): void {
   for (const [key, grid] of Object.entries(SPRITES)) gridTexture(scene, key, grid);
 
   generatePlayerArt(scene);
-
-  for (const [key, [base, map]] of Object.entries(ENEMY_LOOKS)) {
-    SPRITES[key] = SPRITES[base].map(r => [...r].map(ch => map[ch] ?? ch).join(''));
-    gridTexture(scene, key, SPRITES[key]);
-    BACK_VIEWS[key] = { rows: BACK_VIEWS[base].rows, to: map[BACK_VIEWS[base].to] ?? BACK_VIEWS[base].to };
-  }
-
-  for (const [key, { rows, to }] of Object.entries(BACK_VIEWS)) {
-    gridTexture(scene, `${key}-back`, SPRITES[key].map((r, i) => rows.includes(i) ? r.replace(/[^.k]/g, to) : r));
-  }
+  generateEnemyArt(scene);
 
   // Soft ground shadow under characters.
   canvasTexture(scene, 'shadow', 14, 6, ctx => {
