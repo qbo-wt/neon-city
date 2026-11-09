@@ -8,6 +8,11 @@ export interface RunRecord {
   hpHealed: number;
   credits: number;
   timeMs: number;
+  weapon?: string;
+  /** notoriety points of the run */
+  heat?: number;
+  /** date key if it was the daily run */
+  daily?: string;
 }
 
 export const HISTORY_CAP = 50;

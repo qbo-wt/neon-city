@@ -20,6 +20,7 @@ export class HudScene extends Phaser.Scene {
   private synergyText!: Phaser.GameObjects.Text;
   private noticeText!: Phaser.GameObjects.Text;
   private specialText!: Phaser.GameObjects.Text;
+  private tagText!: Phaser.GameObjects.Text;
   private glitchUntil = 0;
   private nextGlitchAt = 0;
 
@@ -39,6 +40,7 @@ export class HudScene extends Phaser.Scene {
     this.synergyText = txt(this, 4, CONFIG.HEIGHT - 19, '', 6, '#39ff88');
     this.noticeText = txt(this, CONFIG.WIDTH - 4, 16, '', 6, '#f5e663').setOrigin(1, 0).setStroke('#05030f', 3);
     this.specialText = txt(this, 338, 3, '', 6, '#f5e663');
+    this.tagText = txt(this, 4, 16, '', 6, '#ff2a6d').setStroke('#05030f', 3);
   }
 
   update(time: number) {
@@ -75,6 +77,7 @@ export class HudScene extends Phaser.Scene {
     const parts = [d.weapon.toUpperCase() + ' — ' + d.special.name, d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
     this.implantsText.setText(parts.filter(Boolean).join('   |   '));
     this.synergyText.setText(d.synergies.length ? 'SYNERGIES : ' + d.synergies.join(' · ') : '');
+    this.tagText.setText(d.tag);
     this.noticeText.setText(d.notice ?? '').setColor(d.notice?.includes('ÉCHOUÉ') ? '#ff2a6d' : d.notice?.startsWith('ÉLITE') ? '#ff2a6d' : '#f5e663');
 
     if (d.boss) {

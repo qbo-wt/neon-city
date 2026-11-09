@@ -14,7 +14,7 @@ export class Controls {
   private static PARRY_STALE_MS = 100;
 
   constructor(private scene: Phaser.Scene) {
-    this.k = scene.input.keyboard!.addKeys('Z,Q,S,D,W,A,UP,DOWN,LEFT,RIGHT,SPACE,E,F,ESC,ONE,TWO,THREE,FOUR,FIVE,SHIFT,TAB') as Record<string, K>;
+    this.k = scene.input.keyboard!.addKeys('Z,Q,S,D,W,A,UP,DOWN,LEFT,RIGHT,SPACE,E,F,ESC,ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,SHIFT,TAB') as Record<string, K>;
     // Input timing uses the real clock: the run's simulation clock slows down on parries and freezes on hits.
     scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.button === 2) this.parryAt = this.real();
@@ -22,7 +22,7 @@ export class Controls {
     });
     // Discrete actions are event-buffered: a tap shorter than one frame would be missed by JustDown.
     const kb = scene.input.keyboard!;
-    const keys = ['SPACE', 'E', 'F', 'ESC', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SHIFT', 'TAB'];
+    const keys = ['SPACE', 'E', 'F', 'ESC', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'SHIFT', 'TAB'];
     const handlers = keys.map(key => {
       const h = (e: KeyboardEvent) => { if (!e.repeat) this.pressed.set(key, this.real()); };
       kb.on(`keydown-${key}`, h);
@@ -61,6 +61,8 @@ export class Controls {
     if (this.took('THREE')) return 3;
     if (this.took('FOUR')) return 4;
     if (this.took('FIVE')) return 5;
+    if (this.took('SIX')) return 6;
+    if (this.took('SEVEN')) return 7;
     return 0;
   }
 

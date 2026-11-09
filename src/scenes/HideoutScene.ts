@@ -47,7 +47,7 @@ export class HideoutScene extends InteriorScene {
     const home = txt(this, 150, 16, 'HOME', 9, '#ff2a6d').setOrigin(0.5).setDepth(3);
     this.tweens.add({ targets: home, alpha: 0.5, yoyo: true, repeat: -1, duration: 90, repeatDelay: 2600 });
 
-    this.history = new HistoryPanel(this, () => this.save.history);
+    this.history = new HistoryPanel(this, () => this.save.history, () => this.save.daily);
     this.modals.push(this.history);
     this.add.image(300, 16, 'gun-rack').setDepth(1.5);
     this.glow(300, 34, COLORS.yellow, 0.25, 1.2, 0.6);
@@ -65,5 +65,6 @@ export class HideoutScene extends InteriorScene {
     if (this.weapons.isOpen) { if (n) this.weapons.select(n - 1); return; }
     if (n === 1) this.history.setFilter('recent');
     if (n === 2) this.history.setFilter('best');
+    if (n === 3) this.history.setFilter('daily');
   }
 }

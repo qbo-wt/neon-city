@@ -6,6 +6,7 @@ import { InteriorScene } from './InteriorScene';
 import type { NpcActivity, NpcOpts } from '../entities/Npc';
 import { NAMES, RUMORS, SPECIAL_LINES } from '../data/dialogue';
 import { RESIDENTS } from '../gfx/npcArt';
+import { DescentPanel } from '../ui/DescentPanel';
 
 /** Solid props: [texture, x, y]. Walking lanes are kept clear: home door → corridor, corridor ↔ side doors, corridor → elevator. */
 // Door centres on the top wall: x = 48, 144 (home), 240, 336-368 (elevator), 432. Nothing is placed in front of them.
@@ -42,7 +43,14 @@ export class BuildingScene extends InteriorScene {
     faceVariants: ['wall-corridor-sconce', 'wall-corridor-pipe', 'wall-corridor-panel', 'wall-corridor-graffiti'],
   };
 
+  private descent!: DescentPanel;
+
   constructor() { super(SCENES.Building); }
+
+  protected onModalTick() {
+    const n = this.controls.numberPressed();
+    if (n && this.descent.isOpen) this.descent.select(n);
+  }
 
   protected spawnPoint(data: Record<string, unknown>) {
     if (data.from === 'doc') return { x: 56, y: 112 };
@@ -51,6 +59,9 @@ export class BuildingScene extends InteriorScene {
   }
 
   protected layout() {
+    this.descent = new DescentPanel(this, () => this.save, s => this.persistSave(s), daily =>
+      this.go(SCENES.Run, daily ? { seed: 0, daily: true } : { seed: Date.now() >>> 0 }, daily ? '▼ RUN DU JOUR — NEON CITY' : '▼ REZ-DE-CHAUSSÉE — NEON CITY'));
+    this.modals.push(this.descent);
     const m = this.built.marks;
     m.a.forEach(d => d.obj.setTexture('door-apt'));
     m.A[0].obj.setTexture('door-home');
@@ -136,7 +147,7 @@ export class BuildingScene extends InteriorScene {
       { x: 144, y: 44, r: 30, label: 'Rentrer à l\'appart', action: () => this.go(SCENES.Hideout, { from: 'building' }) },
       { x: 48, y: 112, r: 32, label: 'Clinique du Doc Kessler (corps)', action: () => this.go(SCENES.Ripperdoc) },
       { x: 432, y: 112, r: 32, label: 'Repaire de Nyx, netrunneuse (esprit)', action: () => this.go(SCENES.Netrunner) },
-      { x: 352, y: 46, r: 34, label: 'Ascenseur — descendre dans la rue', action: () => this.go(SCENES.Run, { seed: Date.now() >>> 0 }, '▼ REZ-DE-CHAUSSÉE — NEON CITY') },
+      { x: 352, y: 46, r: 34, label: 'Ascenseur — descendre dans la rue', action: () => this.descent.open() },
     );
   }
 

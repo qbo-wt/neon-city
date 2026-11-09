@@ -20,6 +20,8 @@ import { Bullets } from '../entities/Bullets';
 import { Enemy, type EnemyHooks } from '../entities/Enemy';
 import { PLAYER_ATTACK, PLAYER_HURT, PLAYER_PARRY, PLAYER_SHOOT, PLAYER_SPECIAL, Player, type AttackEvent, type ShootEvent, type SpecialEvent } from '../entities/Player';
 import { WEAPONS, type Weapon } from '../data/weapons';
+import { heatCreditMult, heatEffects, heatRecordBonus } from '../data/heat';
+import { dailySeed, dateKey, recordDaily } from '../core/daily';
 import { audio } from '../audio/audio';
 import { Rain, floatText, sparks } from '../fx/effects';
 import { LIGHT_LABELS, Lighting, pickLightEvents } from '../fx/lighting';
@@ -137,8 +139,13 @@ export class RunScene extends Phaser.Scene {
     return s;
   }
 
-  init(data: { seed?: number }) {
-    if (data?.seed !== undefined) { const sv = loadSave(getStorage()); setRun(this.registry, newRun(data.seed, sv.ownedNodes, sv.weapon)); }
+  init(data: { seed?: number; daily?: boolean }) {
+    if (data?.seed !== undefined) {
+      const sv = loadSave(getStorage());
+      // The daily run is the same city for everyone today: fixed seed, mono-blade, no notoriety.
+      if (data.daily) { const key = dateKey(); setRun(this.registry, newRun(dailySeed(key), sv.ownedNodes, 'blade', { daily: key })); }
+      else setRun(this.registry, newRun(data.seed, sv.ownedNodes, sv.weapon, { heat: sv.heat }));
+    }
     this.run = getRun(this.registry);
     this.waveIndex = 0;
     this.pendingSpawns = 0;
@@ -156,8 +163,10 @@ export class RunScene extends Phaser.Scene {
 
   private get weapon(): Weapon { return WEAPONS[this.run.weapon] ?? WEAPONS.blade; }
   private computeStats() {
-    const s = computeStats(this.run.implants, this.run.ownedNodes, this.run.relics);
-    return this.weapon.modify ? this.weapon.modify(s) : s;
+    let s = computeStats(this.run.implants, this.run.ownedNodes, this.run.relics);
+    if (this.weapon.modify) s = this.weapon.modify(s);
+    const h = heatEffects(this.run.heat);
+    return { ...s, healMult: s.healMult * h.healMult, psyRateMult: s.psyRateMult * h.psyRateMult };
   }
 
   create() {
@@ -212,7 +221,7 @@ export class RunScene extends Phaser.Scene {
       steer: (x, y) => this.steer(x, y),
       occupied: (x, y) => this.navBlocked.has(`${Math.floor(x / TILE)},${Math.floor(y / TILE)}`),
       now: () => this.simNow,
-      struckPlayer: e => this.thorns(e),
+      struckPlayer: e => { this.run.killer = e.def.id; this.thorns(e); },
       eliteBlast: (x, y) => this.eliteBlast(x, y),
     };
 
@@ -406,7 +415,9 @@ export class RunScene extends Phaser.Scene {
 
     if (this.roomActive) {
       this.run.psy = tickPsychosis(this.run.psy, totalLoad(this.run.implants, this.stats), dt, this.stats.psyResist, this.stats.psyRateMult);
-      this.player.hp = Math.max(0, this.player.hp - hpDrainPerSec(tier) * dt / 1000);
+      const drain = hpDrainPerSec(tier) * dt / 1000;
+      if (drain > 0 && this.player.hp - drain <= 0) this.run.killer = 'psychosis';
+      this.player.hp = Math.max(0, this.player.hp - drain);
       // Death wins over a simultaneous room clear.
       if (this.player.hp <= 0) { this.endRun(false); return; }
       if (this.pendingSpawns === 0 && this.enemies.countActive() === 0) this.onWaveCleared();
@@ -750,6 +761,7 @@ export class RunScene extends Phaser.Scene {
     const res = this.player.receiveHit(b.getData('damage'), this.simNow, b.x, b.y);
     if (res === 'parried') this.bullets.reflect(b);
     else if (res === 'hit') {
+      if (b.getData('from')) this.run.killer = b.getData('from') as string;
       // Quickhack: the shot also pushes psychosis up.
       const psy = (b.getData('psy') as number) * (1 - this.stats.psyResist);
       if (psy > 0) {
@@ -826,7 +838,12 @@ export class RunScene extends Phaser.Scene {
   }
 
   private spawnEnemy(id: EnemyId, x: number, y: number): Enemy {
-    const e = new Enemy(this, x, y, ENEMIES[id], this.hooks, { elite: ENEMIES[id].behavior === 'boss' ? undefined : this.room.elite });
+    const h = heatEffects(this.run.heat), boss = ENEMIES[id].behavior === 'boss';
+    const e = new Enemy(this, x, y, ENEMIES[id], this.hooks, {
+      elite: boss ? undefined : this.room.elite,
+      hpMult: h.hpMult * (boss ? h.bossHpMult : 1), damageMult: h.damageMult,
+      speedMult: h.speedMult * (boss ? h.bossSpeedMult : 1), telegraphMult: h.telegraphMult,
+    });
     this.enemies.add(e);
     sparks(this, x, y, COLORS.magenta, 6, 12);
     return e;
@@ -836,6 +853,7 @@ export class RunScene extends Phaser.Scene {
     if (e === this.boss) this.boss = undefined;
     if (e.exploded) return; // blew itself up: no kill, no credits
     this.run.kills++;
+    this.run.killsByType[e.def.id] = (this.run.killsByType[e.def.id] ?? 0) + 1;
     this.run.psy = psyOnKill(this.run.psy, this.stats.psyResist);
     // Lifesteal implants, and the cyberpsycho's trade: in crisis every kill patches you up.
     const leech = this.stats.killHeal + (psyTier(this.run.psy) === 'crisis' ? CONFIG.CRISIS_KILL_HEAL : 0);
@@ -1002,18 +1020,37 @@ export class RunScene extends Phaser.Scene {
     const storage = getStorage();
     const save = loadSave(storage);
     const bonus = victory ? Math.round(CONFIG.BOSS_CREDIT_BONUS * this.stats.creditMult * this.stats.bossBonusMult) : 0;
-    const earned = this.run.creditsEarned + bonus;
+    // Notoriety pays: +10 % per point on everything, plus a one-off prize for a new record.
+    const pts = this.run.heatPoints;
+    const record = victory && !this.run.daily ? heatRecordBonus(pts, save.bestHeat) : 0;
+    const earned = Math.round((this.run.creditsEarned + bonus) * heatCreditMult(pts)) + record;
+    const sector = this.run.roomIndex + 1;
     save.credits += earned;
     save.runs += 1;
-    save.bestRoom = Math.max(save.bestRoom, this.run.roomIndex + 1);
+    save.bestRoom = Math.max(save.bestRoom, sector);
+    if (victory && !this.run.daily) save.bestHeat = Math.max(save.bestHeat, pts);
+    for (const [id, n] of Object.entries(this.run.killsByType)) save.codex[id] = (save.codex[id] ?? 0) + n;
+    const killer = victory ? undefined : this.run.killer ?? 'psychosis';
+    if (killer) save.deaths[killer] = (save.deaths[killer] ?? 0) + 1;
+    save.story.lastRun = { victory, sector, killer, weapon: this.run.weapon, heat: pts };
+    let dailyBest = false;
+    if (this.run.daily) {
+      const r = recordDaily(save.daily, { date: this.run.daily, sector, victory, timeMs: Math.round(this.run.timeMs), kills: this.run.kills });
+      save.daily = r.list;
+      dailyBest = r.best;
+    }
     save.history = addRecord(save.history, {
-      date: Date.now(), victory, sector: this.run.roomIndex + 1, kills: this.run.kills,
+      date: Date.now(), victory, sector, kills: this.run.kills,
       damageDealt: Math.round(this.run.damageDealt), hpHealed: Math.round(this.run.hpHealed), credits: earned, timeMs: Math.round(this.run.timeMs),
+      weapon: this.run.weapon, heat: pts, daily: this.run.daily,
     });
     writeSave(storage, save);
     this.registry.remove('run');
     this.scene.stop(SCENES.Hud);
-    this.scene.start(SCENES.Death, { victory, creditsEarned: earned, roomReached: this.run.roomIndex + 1 });
+    this.scene.start(SCENES.Death, {
+      victory, creditsEarned: earned, roomReached: sector, heat: pts, recordBonus: record, daily: this.run.daily, dailyBest,
+      killer: killer === 'psychosis' ? 'la cyberpsychose' : killer ? ENEMIES[killer as EnemyId]?.name : undefined,
+    });
   }
 
   private publishHud() {
@@ -1029,6 +1066,7 @@ export class RunScene extends Phaser.Scene {
       boss: this.boss && !this.boss.dead ? { hp: this.boss.hp, max: this.boss.maxHp, name: this.boss.def.name } : undefined,
       special: { name: this.weapon.special.name, charge: this.player.specialCharge(this.simNow) },
       weapon: this.weapon.name,
+      tag: [this.run.daily ? 'RUN DU JOUR' : '', this.run.heatPoints ? `NOTORIÉTÉ ${this.run.heatPoints}` : ''].filter(Boolean).join(' · '),
     };
     this.registry.set('hud', hud);
   }

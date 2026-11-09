@@ -8,7 +8,7 @@ import type { Player } from './Player';
 import { ENEMY_RIGS, type EnemyRig } from '../gfx/enemyArt';
 import { facingOf, type Facing } from '../gfx/rig';
 
-export interface ShotOpts { psy?: number; key?: string }
+export interface ShotOpts { psy?: number; key?: string; from?: string }
 
 /** Scaling applied on spawn: elite squads (and notoriety) make enemies tougher. */
 export interface EnemyMods { hpMult?: number; damageMult?: number; speedMult?: number; telegraphMult?: number; elite?: EliteMod }
@@ -321,6 +321,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  private shoot(x: number, y: number, angle: number, speed: number, damage: number, opts: ShotOpts = {}) {
+    this.hooks.fireBullet(x, y, angle, speed, damage, { ...opts, from: this.def.id });
+  }
+
   /** Picks the frame: hurt > stun > windup > charge > follow-through > walk > idle. */
   private pose(now: number, f: { x: number; y: number }, moving: boolean) {
     const look = facingOf(f.x, f.y);
@@ -437,7 +441,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       if (dist < 26) this.resolveHitOnPlayer(now);
       this.enter('recover', 400);
     } else if (b === 'ranged') {
-      this.hooks.fireBullet(this.x, this.y, Math.atan2(ny, nx), 150, this.def.damage);
+      this.shoot(this.x, this.y, Math.atan2(ny, nx), 150, this.def.damage);
       this.flashAt(nx, ny, COLORS.yellow);
       audio.sfx('enemyShoot');
       this.enter('recover', 300);
@@ -446,7 +450,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       for (let i = 0; i < 3; i++) this.scene.time.delayedCall(i * 110, () => {
         if (this.dead) return;
         const a = aimAt();
-        this.hooks.fireBullet(this.x, this.y, a, 165, this.def.damage);
+        this.shoot(this.x, this.y, a, 165, this.def.damage);
         this.flashAt(Math.cos(a), Math.sin(a), COLORS.yellow);
         audio.sfx('enemyShoot', { pitch: 1.2 });
       });
@@ -454,7 +458,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.enter('recover', 420);
     } else if (b === 'hack') {
       // Slow quickhack orb: little damage, but it fries the player's mind (psychosis).
-      this.hooks.fireBullet(this.x, this.y, Math.atan2(ny, nx), 85, this.def.damage, { psy: this.def.psyOnHit, key: 'bullet-hack' });
+      this.shoot(this.x, this.y, Math.atan2(ny, nx), 85, this.def.damage, { psy: this.def.psyOnHit, key: 'bullet-hack' });
       this.flashAt(nx, ny, 0x39ff88);
       audio.sfx('hack');
       this.strikeUntil = now + 320;
@@ -468,7 +472,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.enter('attack', b === 'boss' ? 650 : 550);
     } else if (this.move === 'fan') {
       const n = this.enraged ? 11 : 7, spread = 1.0, base = Math.atan2(ny, nx);
-      for (let i = 0; i < n; i++) this.hooks.fireBullet(this.x, this.y, base - spread / 2 + (spread * i) / (n - 1), 120, this.def.damage * 0.7);
+      for (let i = 0; i < n; i++) this.shoot(this.x, this.y, base - spread / 2 + (spread * i) / (n - 1), 120, this.def.damage * 0.7);
       audio.sfx('playerShoot', { pitch: 0.6 });
       // Phase 2+: the fan is followed by a nova.
       if (this.enraged) this.scene.time.delayedCall(380, () => { if (!this.dead) this.nova(); });
@@ -479,7 +483,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       for (let i = 0; i < shots; i++) this.scene.time.delayedCall(i * 75, () => {
         if (this.dead) return;
         const a = aimAt() + (Math.random() - 0.5) * 0.12;
-        this.hooks.fireBullet(this.x, this.y, a, 180, this.def.damage * 0.55);
+        this.shoot(this.x, this.y, a, 180, this.def.damage * 0.55);
         if (i % 2 === 0) { this.flashAt(Math.cos(a), Math.sin(a), this.def.id === 'boss' ? COLORS.magenta : COLORS.yellow); audio.sfx('enemyShoot', { pitch: 0.8 }); }
       });
       this.strikeUntil = now + shots * 75 + 80;
@@ -508,13 +512,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     const n = this.enraged ? 18 : 14, gap = Math.floor(Math.random() * n), rings = this.frenzy ? 3 : 2;
     for (let ring = 0; ring < rings; ring++) this.scene.time.delayedCall(ring * 260, () => {
       if (this.dead) return;
-      for (let i = 0; i < n; i++) if (i !== gap && i !== (gap + 1) % n) this.hooks.fireBullet(this.x, this.y, (i + ring * 0.5) * (Math.PI * 2 / n), 95, this.def.damage * 0.6);
+      for (let i = 0; i < n; i++) if (i !== gap && i !== (gap + 1) % n) this.shoot(this.x, this.y, (i + ring * 0.5) * (Math.PI * 2 / n), 95, this.def.damage * 0.6);
     });
   }
 
   private explode(now: number) {
     const p = this.hooks.player;
-    if (Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y) < 40) this.hooks.player.receiveHit(this.def.damage, now, this.x, this.y);
+    if (Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y) < 40 && this.hooks.player.receiveHit(this.def.damage, now, this.x, this.y) === 'hit') this.hooks.struckPlayer(this);
     const flash = this.scene.add.image(this.x, this.y, 'glow').setTint(COLORS.yellow).setScale(0.5).setBlendMode(Phaser.BlendModes.ADD).setDepth(40);
     this.scene.tweens.add({ targets: flash, scale: 1.8, alpha: 0, duration: 260, onComplete: () => flash.destroy() });
     sparks(this.scene, this.x, this.y, COLORS.yellow, 18, 36);
