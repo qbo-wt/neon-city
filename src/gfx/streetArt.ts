@@ -193,13 +193,38 @@ export function paintStreetGround(scene: Phaser.Scene, key: string, template: Ro
       for (let k = 0; k < 4; k++) f(k % 2 ? '#05030f' : '#f5e663', tx * TILE + k * 8, ty * TILE + 3, 8, 3);
     for (let i = 0; i < 6; i++) { ctx.fillStyle = '#0a0a12'; ctx.beginPath(); ctx.ellipse(rng() * W, rng() * H, 14, 6, 0, 0, Math.PI * 2); ctx.fill(); }
   }
-  if (style === 'market') for (let tx = 1; tx < cols - 1; tx += 3) if (walkable(tx, midRow)) f('#ff2a6d22', tx * TILE, TILE, 20, H - 2 * TILE);
   if (style === 'alley') {
     for (let i = 0; i < 12; i++) {
       let x = rng() * W, y = rng() * H;
       ctx.strokeStyle = '#05030f'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x, y);
       for (let k = 0; k < 5; k++) { x += (rng() - 0.5) * 30; y += (rng() - 0.5) * 18; ctx.lineTo(x, y); }
       ctx.stroke();
+    }
+  }
+
+  // Street wear: tyre marks, lane arrows, drains along the curbs, cracked slabs and litter.
+  for (let ty = 0; ty < rows; ty++) for (let tx = 0; tx < cols; tx++) {
+    const x = tx * TILE, y = ty * TILE;
+    if (road(tx, ty)) {
+      if (style !== 'market' && rng() < 0.06) {
+        ctx.strokeStyle = '#0000004d'; ctx.lineWidth = 2; ctx.beginPath();
+        ctx.moveTo(x, y + 8 + rng() * 16); ctx.quadraticCurveTo(x + 16, y + rng() * 32, x + 32, y + 8 + rng() * 16); ctx.stroke();
+      }
+      if ((style === 'avenue' || style === 'crossroad') && Math.abs(ty - midRow) === 2 && tx % 7 === 3) {
+        const dir = ty < midRow ? -1 : 1, ax = x + 16, ay = y + 16; // lane arrow
+        f('#e8e8ff88', ax - 8 * dir, ay - 1, 12, 3);
+        ctx.fillStyle = '#e8e8ff88'; ctx.beginPath(); ctx.moveTo(ax + 6 * dir, ay - 5); ctx.lineTo(ax + 12 * dir, ay + 0.5); ctx.lineTo(ax + 6 * dir, ay + 6); ctx.fill();
+      }
+      if (rng() < 0.04) for (let k = 0; k < 3; k++) f(pick(rng, ['#e8e8ff66', '#ff2a6d66', '#f5e66366', '#8a86b066']), x + rng() * 30, y + rng() * 30, 2, 1);
+    }
+    if (isWalk(tx, ty)) {
+      const toRoad = [[0, 1], [0, -1], [1, 0], [-1, 0]].find(([dx, dy]) => road(tx + dx, ty + dy));
+      if (toRoad && (tx + ty) % 5 === 0) { // drain grate on the curb
+        const gx = x + 10 + toRoad[0] * 10, gy = y + 12 + toRoad[1] * 10;
+        f('#05030f', gx, gy, 10, 7); for (let k = 1; k < 10; k += 2) f('#3a3550', gx + k, gy + 1, 1, 5);
+      }
+      if (rng() < 0.15) { ctx.strokeStyle = '#14101f'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + rng() * 32, y + rng() * 32); ctx.lineTo(x + rng() * 32, y + rng() * 32); ctx.stroke(); }
+      if (rng() < 0.08) f(pick(rng, ['#c8c8e8', '#ff8c2a', '#39ff88']), x + 4 + rng() * 24, y + 4 + rng() * 24, 3, 2); // a can, a flyer
     }
   }
 
@@ -222,33 +247,7 @@ export function decorateStreet(scene: Phaser.Scene, template: RoomTemplate, styl
   const walkable = (x: number, y: number) => { const c = g[y]?.[x]; return c === '.' || c === 'P' || c === 'o'; };
   const neon = [COLORS.magenta, COLORS.cyan, COLORS.yellow, 0x39ff88];
 
-  // Neon shop signs on facades that face the street from above, never on doors, spaced out.
-  let lastSign = { x: -9, y: -9 };
-  g.forEach((row, ty) => [...row].forEach((ch, tx) => {
-    if (ch !== '#' || !walkable(tx, ty + 1) || rng() < 0.55) return;
-    if (ty === lastSign.y && tx - lastSign.x < 3) return;
-    lastSign = { x: tx, y: ty };
-    const col = pick(rng, neon), hexc = '#' + col.toString(16).padStart(6, '0');
-    const label = style === 'checkpoint' ? pick(rng, ['PSY-SEC', 'ZONE FERMÉE', 'ARRÊT']) : pick(rng, SIGNS);
-    const cx = tx * TILE + 16, cy = ty * TILE + 22;
-    const sign = txt(scene, cx, cy, label, 6, hexc).setOrigin(0.5).setDepth(3);
-    scene.add.rectangle(cx, cy, sign.width + 6, 10, 0x05030f, 0.85).setStrokeStyle(1, col).setDepth(2.9);
-    scene.add.image(cx, cy + 22, 'glow').setTint(col).setAlpha(0.28).setScale(1.2, 0.7).setBlendMode(Phaser.BlendModes.ADD).setDepth(1);
-    if (rng() < 0.3) scene.tweens.add({ targets: sign, alpha: 0.2, yoyo: true, repeat: -1, duration: 60, repeatDelay: 1500 + rng() * 3000 });
-  }));
-
-  // Graffiti tags on facades seen from below.
-  g.forEach((row, ty) => [...row].forEach((ch, tx) => {
-    if (ch !== '#' || !walkable(tx, ty - 1) || rng() > 0.18) return;
-    const gr = scene.add.graphics().setDepth(2);
-    gr.lineStyle(2, pick(rng, neon), 0.6);
-    const x = tx * TILE + 4, y = ty * TILE + 14;
-    gr.beginPath(); gr.moveTo(x, y);
-    for (let k = 0; k < 6; k++) gr.lineTo(x + k * 5, y + (k % 2 ? -6 : 4) * rng());
-    gr.strokePath();
-  }));
-
-  // Ground props on free floor tiles: about one per 18 tiles.
+  // Ground props on free floor tiles: about one per 18 tiles. (Facades, signs and graffiti come from cityArt.)
   const free: { x: number; y: number }[] = [];
   g.forEach((row, ty) => [...row].forEach((ch, tx) => { if (ch === '.') free.push({ x: tx, y: ty }); }));
   const props = Math.round(free.length / (style === 'alley' ? 12 : 18));

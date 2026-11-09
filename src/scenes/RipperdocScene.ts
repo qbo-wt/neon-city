@@ -18,7 +18,7 @@ export class RipperdocScene extends InteriorScene {
     '#.............#',
     '###############',
   ] };
-  protected readonly roomOptions = { floorKey: 'floor-clinic', wallKey: 'wall-clinic', streetLights: false };
+  protected readonly roomOptions = { floorKey: 'floor-clinic', wallKey: 'wall-clinic', capKey: 'cap-clinic', faceVariants: ['wall-clinic-chart'], streetLights: false };
 
   constructor() { super(SCENES.Ripperdoc); }
 

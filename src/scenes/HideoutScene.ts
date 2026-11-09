@@ -23,7 +23,7 @@ export class HideoutScene extends InteriorScene {
     '#......P......#',
     '###############',
   ] };
-  protected readonly roomOptions = { floorKey: 'floor-home', wallKey: 'wall-home', streetLights: false };
+  protected readonly roomOptions = { floorKey: 'floor-home', wallKey: 'wall-home', capKey: 'cap-home', faceVariants: ['wall-home-shelf', 'wall-home-poster'], streetLights: false };
   private history!: HistoryPanel;
 
   constructor() { super(SCENES.Hideout); }

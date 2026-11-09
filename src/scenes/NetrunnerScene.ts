@@ -19,7 +19,7 @@ export class NetrunnerScene extends InteriorScene {
     '#.............#',
     '###############',
   ] };
-  protected readonly roomOptions = { floorKey: 'floor-net', wallKey: 'wall-net', streetLights: false };
+  protected readonly roomOptions = { floorKey: 'floor-net', wallKey: 'wall-net', capKey: 'cap-net', faceVariants: ['wall-net-screen'], streetLights: false };
 
   constructor() { super(SCENES.Netrunner); }
 

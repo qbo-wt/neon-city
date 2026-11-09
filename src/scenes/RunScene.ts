@@ -20,6 +20,8 @@ import { Rain, floatText, sparks } from '../fx/effects';
 import { LIGHT_LABELS, Lighting, pickLightEvents } from '../fx/lighting';
 import { STREET_NAMES, decorateStreet, obstacleFor, paintStreetGround, streetStyle, type StreetStyle } from '../gfx/streetArt';
 import { Controls } from '../input/controls';
+import { lightCity, overheadCity, paintCity } from '../gfx/cityArt';
+import { placeStreetProps } from '../gfx/streetProps';
 import { buildRoom, type BuiltRoom } from '../systems/roomBuilder';
 import { getRun, newRun, setRun, type HudData, type RunState } from '../systems/runState';
 import { ImplantChoice } from '../ui/ImplantChoice';
@@ -91,8 +93,13 @@ export class RunScene extends Phaser.Scene {
     const rng = createRng(this.run.seed * 31 + this.run.roomIndex * 7919);
     paintStreetGround(this, 'street-ground', this.room.template, style, rng);
     this.add.image(0, 0, 'street-ground').setOrigin(0).setDepth(0);
-    this.built = buildRoom(this, this.room.template, this.room.doorRewards.length, { floorKey: null, streetLights: false, obstacleKey: () => obstacleFor(style, rng) });
+    // The surrounding city (facades, rooftops, shadows) is one painted layer; walls are invisible bodies.
+    const city = paintCity(this, 'city-layer', this.room.template, style, this.run.seed * 17 + this.run.roomIndex * 131);
+    this.add.image(0, 0, 'city-layer').setOrigin(0).setDepth(1.5);
+    lightCity(this, city);
+    this.built = buildRoom(this, this.room.template, this.room.doorRewards.length, { floorKey: null, wallKey: null, streetLights: false, obstacleKey: () => obstacleFor(style, rng) });
     decorateStreet(this, this.room.template, style, rng);
+    overheadCity(this, this.room.template, style, rng);
     const streetName = STREET_NAMES[style][this.run.roomIndex % 2];
 
     this.stats = this.computeStats();
@@ -105,6 +112,7 @@ export class RunScene extends Phaser.Scene {
     this.bullets = new Bullets(this);
     this.breakables = this.physics.add.staticGroup();
     this.placeBreakables(style, rng);
+    placeStreetProps(this, this.room.template, style, rng, this.built.walls, this.blockedTiles);
 
     this.physics.add.collider(this.player, this.built.walls);
     this.physics.add.collider(this.player, this.breakables);

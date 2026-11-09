@@ -222,3 +222,36 @@ export function generateInteriorArt(scene: Phaser.Scene, tex: CanvasTex, px: Px)
     });
   });
 }
+
+/** Interior wall caps (top of a wall seen from above) and face variants for variety. */
+export function generateWallVariants(scene: Phaser.Scene, tex: CanvasTex, px: Px) {
+  const cap = (key: string, base: string, rim: string, line: string) => tex(scene, key, 32, 32, ctx => {
+    // Seamless: neighbouring caps blend into one solid wall top.
+    px(ctx, base, 0, 0, 32, 32);
+    for (let i = 0; i < 10; i++) px(ctx, i % 2 ? rim : line, (i * 13) % 31, (i * 7) % 31, 1, 1);
+  });
+  cap('cap-corridor', '#14101f', '#3d3352', '#1d1729');
+  cap('cap-home', '#0f0b18', '#2a2140', '#15101f');
+  cap('cap-clinic', '#9aa0b4', '#e4e6ee', '#aeb2c0');
+  cap('cap-net', '#020604', '#123326', '#04140b');
+
+  const face = (key: string, base: string, draw: (ctx: CanvasRenderingContext2D) => void) => tex(scene, key, 32, 32, ctx => {
+    const src = scene.textures.get(base).getSourceImage() as HTMLCanvasElement;
+    ctx.drawImage(src, 0, 0);
+    draw(ctx);
+  });
+  face('wall-corridor-sconce', 'wall-corridor', ctx => { px(ctx, '#05030f', 12, 6, 8, 7); px(ctx, '#ffd27a', 13, 7, 6, 5); px(ctx, '#ffffffaa', 14, 8, 4, 1); });
+  face('wall-corridor-pipe', 'wall-corridor', ctx => { px(ctx, '#05030f', 22, 0, 6, 32); px(ctx, '#5a5578', 23, 0, 4, 32); px(ctx, '#8a86b0', 23, 0, 1, 32); px(ctx, '#05030f', 21, 12, 8, 3); px(ctx, '#39ff8855', 24, 26, 2, 3); });
+  face('wall-corridor-panel', 'wall-corridor', ctx => { px(ctx, '#05030f', 6, 4, 14, 16); px(ctx, '#5a5a78', 7, 5, 12, 14); px(ctx, '#f5e663', 8, 7, 3, 3); px(ctx, '#05030f', 9, 8, 1, 1); px(ctx, '#ff3b3b', 15, 7, 2, 2); px(ctx, '#39ff88', 15, 11, 2, 2); });
+  face('wall-corridor-graffiti', 'wall-corridor', ctx => {
+    ctx.strokeStyle = '#ff2a6d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(4, 16); ctx.lineTo(9, 8); ctx.lineTo(13, 16); ctx.lineTo(18, 7); ctx.lineTo(24, 15); ctx.stroke();
+    ctx.strokeStyle = '#00f0ff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(6, 18); ctx.lineTo(26, 17); ctx.stroke();
+  });
+  face('wall-home-shelf', 'wall-home', ctx => {
+    px(ctx, '#05030f', 4, 10, 24, 2);
+    ([[6, '#f5e663'], [10, '#ff2a6d'], [14, '#00f0ff'], [20, '#8a86b0']] as [number, string][]).forEach(([x, c]) => px(ctx, c, x, 5, 3, 5));
+  });
+  face('wall-home-poster', 'wall-home', ctx => { px(ctx, '#05030f', 8, 3, 16, 18); px(ctx, '#6a2cff', 9, 4, 14, 16); px(ctx, '#ff2a6d', 11, 6, 10, 6); px(ctx, '#f5e663', 11, 15, 10, 2); });
+  face('wall-clinic-chart', 'wall-clinic', ctx => { px(ctx, '#05030f', 8, 3, 16, 17); px(ctx, '#f2f2f2', 9, 4, 14, 15); px(ctx, '#ff3b3b', 13, 6, 6, 6); for (let y = 14; y < 18; y += 2) px(ctx, '#9aa0b4', 11, y, 10, 1); });
+  face('wall-net-screen', 'wall-net', ctx => { px(ctx, '#05030f', 5, 5, 22, 14); px(ctx, '#02140a', 6, 6, 20, 12); for (let y = 7; y < 17; y += 2) px(ctx, '#39ff88', 7, y, 4 + ((y * 7) % 14), 1); });
+}

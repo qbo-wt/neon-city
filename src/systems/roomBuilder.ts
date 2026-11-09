@@ -18,7 +18,12 @@ export interface BuiltRoom {
 export interface RoomOptions {
   /** null = no floor tiles (the scene paints its own ground) */
   floorKey?: string | null;
-  wallKey?: string;
+  /** null = invisible collision walls (the scene paints its own buildings) */
+  wallKey?: string | null;
+  /** Wall tiles whose face is not visible (no floor right below) show this cap instead. */
+  capKey?: string;
+  /** Extra face textures picked at random for variety. */
+  faceVariants?: string[];
   streetLights?: boolean;
   obstacleKey?: () => string;
 }
@@ -29,7 +34,15 @@ export function doorPicks(count: number): number[] {
 }
 
 export function buildRoom(scene: Phaser.Scene, template: RoomTemplate, doorCount: number, opts: RoomOptions = {}): BuiltRoom {
-  const { floorKey = 'tile-floor', wallKey = 'tile-wall', streetLights = true, obstacleKey = () => 'tile-obstacle' } = opts;
+  const { floorKey = 'tile-floor', wallKey = 'tile-wall', streetLights = true, obstacleKey = () => 'tile-obstacle', capKey, faceVariants } = opts;
+  const floorAt = (tx: number, ty: number) => { const c = template.grid[ty]?.[tx]; return c === '.' || c === 'o' || c === 'P'; };
+  const wallAt = (tx: number, ty: number, x: number, y: number) => {
+    if (wallKey === null) return (walls.create(x, y, 'tile-wall') as Phaser.Physics.Arcade.Image).setVisible(false);
+    let key = wallKey;
+    if (capKey && !floorAt(tx, ty + 1)) key = capKey;
+    else if (faceVariants?.length && ((tx * 7 + ty * 13) % 5) < 2) key = faceVariants[(tx * 3 + ty) % faceVariants.length];
+    return walls.create(x, y, key) as Phaser.Physics.Arcade.Image;
+  };
   const walls = scene.physics.add.staticGroup();
   const marks: BuiltRoom['marks'] = {};
   const doorTiles: { x: number; y: number }[] = [];
@@ -41,15 +54,15 @@ export function buildRoom(scene: Phaser.Scene, template: RoomTemplate, doorCount
   template.grid.forEach((row, ty) => [...row].forEach((ch, tx) => {
     const x = tx * TILE + TILE / 2, y = ty * TILE + TILE / 2;
     if (ch === ' ') return; // void outside the map
-    if (ch === '#') { walls.create(x, y, wallKey); return; }
+    if (ch === '#') { wallAt(tx, ty, x, y); return; }
     if (ch === 'D') {
       const isExit = [...exits].some(d => d.x === tx && d.y === ty);
       if (isExit) doorSlots.push({ x, y, locked: walls.create(x, y, 'door-locked') });
-      else walls.create(x, y, wallKey);
+      else wallAt(tx, ty, x, y);
       return;
     }
     if (ch !== '.' && ch !== 'o' && ch !== 'P') {
-      (marks[ch] ??= []).push({ x, y, obj: walls.create(x, y, wallKey) });
+      (marks[ch] ??= []).push({ x, y, obj: walls.create(x, y, wallKey ?? 'tile-wall') });
       return;
     }
     if (floorKey) scene.add.image(x, y, floorKey).setDepth(0);

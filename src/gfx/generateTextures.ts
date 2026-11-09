@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { createRng } from '../core/rng';
 import { BACK_VIEWS, ENEMY_LOOKS, PALETTE, SPRITES } from './sprites';
-import { generateInteriorArt } from './interiorArt';
+import { generateInteriorArt, generateWallVariants } from './interiorArt';
 import { generateNpcArt } from './npcArt';
+import { generatePropTextures } from './streetProps';
 import { generateLootTextures, generateStreetTextures } from './streetArt';
 import { generateHideoutArt } from './hideoutArt';
 
@@ -61,9 +62,11 @@ export function generateTextures(scene: Phaser.Scene): void {
 
   generateHideoutArt(scene, canvasTexture, px);
   generateInteriorArt(scene, canvasTexture, px);
+  generateWallVariants(scene, canvasTexture, px);
   generateNpcArt(scene);
   generateStreetTextures(scene, canvasTexture, px);
   generateLootTextures(scene, canvasTexture, px);
+  generatePropTextures(scene, canvasTexture, px);
 
   const rng = createRng(1337);
 

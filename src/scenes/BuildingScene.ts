@@ -8,17 +8,17 @@ import { NAMES, RUMORS, SPECIAL_LINES } from '../data/dialogue';
 import { RESIDENTS } from '../gfx/npcArt';
 
 /** Solid props: [texture, x, y]. Walking lanes are kept clear: home door → corridor, corridor ↔ side doors, corridor → elevator. */
+// Door centres on the top wall: x = 48, 144 (home), 240, 336-368 (elevator), 432. Nothing is placed in front of them.
 const PROPS: [string, number, number][] = [
-  ['plant', 48, 44], ['bike', 88, 50], ['vending', 208, 46], ['vending', 236, 46],
-  ['arcade-cab', 276, 46], ['arcade-cab', 300, 46], ['boxes', 392, 46], ['laundry', 424, 50],
+  ['plant', 80, 44], ['bike', 112, 50], ['vending', 192, 46], ['vending', 216, 46],
+  ['arcade-cab', 276, 46], ['arcade-cab', 300, 46], ['boxes', 400, 46],
   ['boxes', 52, 196], ['boxes', 52, 172], ['mop-bucket', 84, 210],
-  ['noodle-cart', 236, 168], ['bench', 160, 214], ['bench', 304, 214],
+  ['noodle-cart', 236, 168], ['bench', 160, 214], ['bench', 304, 214], ['laundry', 346, 214],
   ['couch-old', 404, 168], ['trashcan', 436, 214], ['trashcan', 120, 214],
 ];
-/** Wall decor (no collision). */
+/** Wall decor (no collision), only on stretches of top wall between doors. */
 const WALL_DECOR: [string, number, number][] = [
-  ['poster-0', 60, 14], ['poster-2', 98, 12], ['poster-1', 186, 14], ['poster-3', 318, 12], ['poster-0', 404, 14],
-  ['noticeboard', 254, 16], ['poster-1', 120, 242], ['poster-2', 300, 242], ['poster-3', 360, 240],
+  ['poster-0', 76, 14], ['noticeboard', 112, 16], ['poster-1', 176, 14], ['poster-2', 208, 12], ['poster-3', 400, 14],
 ];
 
 /**
@@ -37,7 +37,10 @@ export class BuildingScene extends InteriorScene {
     '#.............#',
     '###############',
   ] };
-  protected readonly roomOptions = { floorKey: 'floor-corridor', wallKey: 'wall-corridor', streetLights: false };
+  protected readonly roomOptions = {
+    floorKey: 'floor-corridor', wallKey: 'wall-corridor', capKey: 'cap-corridor', streetLights: false,
+    faceVariants: ['wall-corridor-sconce', 'wall-corridor-pipe', 'wall-corridor-panel', 'wall-corridor-graffiti'],
+  };
 
   constructor() { super(SCENES.Building); }
 
@@ -70,16 +73,15 @@ export class BuildingScene extends InteriorScene {
     this.glow(40, 112, 0xff3b3b, 0.45, 1.2, 1.4);
     this.sign(428, 78, 'NET//DEN', 0x39ff88, 6);
     this.glow(440, 112, 0x39ff88, 0.4, 1.2, 1.4);
-    this.sign(352, 40, '▼ RUE', COLORS.yellow, 6);
+    txt(this, 352, 3, 'RUE ▼', 5, '#f5e663').setOrigin(0.5).setDepth(3);
     this.sign(236, 140, 'RAMEN DE MAMIE LO', 0xff3b3b, 5);
     this.glow(236, 170, 0xff3b3b, 0.3, 1.6, 1);
     this.glow(288, 60, 0x6a2cff, 0.4, 1.4, 1);
     txt(this, 144, 3, '3712', 5, '#00f0ff').setOrigin(0.5).setDepth(3);
-    txt(this, 420, 240, 'ICI ON NE DEAL PAS', 6, '#ff2a6d').setOrigin(0.5).setDepth(3).setAlpha(0.75).setAngle(-4);
 
     // Advert screen on the bottom wall, scrolling.
-    this.add.image(200, 240, 'ad-screen').setDepth(1.5);
-    const ad = txt(this, 200, 240, '', 6, '#f5e663').setOrigin(0.5).setDepth(2);
+    this.add.image(288, 16, 'ad-screen').setDepth(1.5);
+    const ad = txt(this, 288, 16, '', 6, '#f5e663').setOrigin(0.5).setDepth(2);
     const msg = '   BIÈRE NEON — GOÛTE LA NUIT   ★   ASSURANCE TRAUMA PLATINE   ★   ';
     let off = 0;
     this.time.addEvent({ delay: 140, loop: true, callback: () => { off = (off + 1) % msg.length; ad.setText((msg + msg).slice(off, off + 14)); } });
