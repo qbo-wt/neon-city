@@ -3,6 +3,7 @@ import { CONFIG, COLORS } from '../../config';
 import { spellRange, type Fight } from '../../tactics/fight';
 import type { SpellDef, Unit } from '../../tactics/types';
 import { txt, hex } from '../../ui/text';
+import { spellBits, zoneIcon, zoneLabel } from '../../ui/spellInfo';
 
 export const BAR_H = 38;
 const SLOT = 24, GAP = 3, SLOTS_X = 104;
@@ -102,27 +103,25 @@ export class TacticalUi {
   }
 
   /** Spell card above the bar. */
-  showTip(s: SpellDef | null, u?: Unit, extra?: string) {
+  /** `avoidX`: screen x to keep clear (the hero), the card goes to the other side. */
+  showTip(s: SpellDef | null, u?: Unit, extra?: string, avoidX = 0) {
     this.tip.removeAll(true);
     if (!s || !u) { this.tip.setVisible(false); return; }
-    const W = CONFIG.WIDTH, [min, max] = spellRange(u, s);
-    const bits = [`${s.pa} PA`, s.target === 'self' ? 'sur soi' : `portée ${min === max ? min : `${min}-${max}`}${s.rangeMod ? ' (modifiable)' : ''}`];
-    if (s.target !== 'self') bits.push(s.los ? 'ligne de vue' : 'sans ligne de vue');
-    if (s.line) bits.push('en ligne');
-    if (s.cooldown) bits.push(`relance ${s.cooldown} tour${s.cooldown > 1 ? 's' : ''}`);
-    if (s.perTurn) bits.push(`${s.perTurn}x par tour`);
+    const W = CONFIG.WIDTH;
     const dmg = s.effects.find(e => e.k === 'dmg' || e.k === 'dash');
-    const lines = [s.name.toUpperCase(), bits.join(' · '), s.desc];
+    const lines = [s.name.toUpperCase(), spellBits(s, spellRange(u, s)), `Zone : ${zoneLabel(s)}`, s.desc];
     if (dmg && (dmg.k === 'dmg' || dmg.k === 'dash')) lines.push(`Dégâts : ${dmg.min + u.st.flat}-${dmg.max + u.st.flat}${extra ? '   ' + extra : ''}`);
     else if (extra) lines.push(extra);
-    const t = txt(this.scene, 0, 0, lines.join('\n'), 6, '#e8e8ff').setWordWrapWidth(230).setLineSpacing(2);
-    const w = Math.min(240, t.width + 12), h = t.height + 10;
-    // Bottom-left corner, clear of the middle of the board where the action is.
-    const x = 4, y = CONFIG.HEIGHT - BAR_H - h - 2;
-    void W;
+    const t = txt(this.scene, 0, 0, lines.join('\n'), 6, '#e8e8ff').setWordWrapWidth(165).setLineSpacing(2);
+    const ICON = 56;
+    const w = Math.min(236, t.width + 12 + ICON), h = Math.max(t.height + 10, 44);
+    // Above the bar, on the side away from the hero.
+    const x = avoidX < W / 2 ? W - w - 4 : 4, y = CONFIG.HEIGHT - BAR_H - h - 2;
     const bg = this.scene.add.rectangle(x, y, w, h, 0x05030f, 0.95).setOrigin(0).setStrokeStyle(1, s.color);
     t.setPosition(x + 6, y + 5);
-    this.tip.add([bg, t]);
+    // A picture of the zone, on the right of the card.
+    const icon = zoneIcon(this.scene, x + w - ICON / 2 - 2, y + h / 2, s, s.color);
+    this.tip.add([bg, t, icon]);
     this.tip.setVisible(true);
   }
 

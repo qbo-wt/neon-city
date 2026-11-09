@@ -351,6 +351,13 @@ export function generateIsoArt(scene: Phaser.Scene) {
     px(c, '#39ff88', cx - 6, cy - 16, 2, 2); px(c, '#00f0ff', cx - 4, cy - 12, 2, 2);
   });
 
+  // Steam (ramen stall, vents).
+  if (!scene.textures.exists('steam')) {
+    const t = scene.textures.createCanvas('steam', 8, 8)!, c = t.getContext();
+    c.fillStyle = 'rgba(200,200,230,0.35)'; c.beginPath(); c.arc(4, 4, 4, 0, Math.PI * 2); c.fill();
+    t.refresh();
+  }
+
   // Tactical markers.
   const mark = (key: string, fill: string, edge: string) => {
     if (scene.textures.exists(key)) return;

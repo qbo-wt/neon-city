@@ -2,7 +2,10 @@ import Phaser from 'phaser';
 import { CONFIG, COLORS } from '../config';
 import type { SaveData } from '../core/save';
 import { WEAPONS, WEAPON_IDS, type WeaponId } from '../data/weapons';
-import { MAX_ASPECT_RANK, aspectRank, aspectsOf, defaultAspect } from '../data/aspects';
+import { MAX_ASPECT_RANK, aspectRank, aspectsOf, defaultAspect, equip } from '../data/aspects';
+import { baseStats } from '../core/stats';
+import { spellBits, zoneIcon, zoneLabel } from './spellInfo';
+import { hex } from './text';
 import { audio } from '../audio/audio';
 import { txt } from './text';
 import { SPELLS } from '../data/spells';
@@ -104,27 +107,45 @@ export class WeaponPanel {
     });
   }
 
+  /** The weapon's four spells as cards, with the equipped aspect applied: cost, range, zone picture, effect. */
+  private renderSpells(root: Phaser.GameObjects.Container, save: SaveData) {
+    const s = this.scene, W = CONFIG.WIDTH, id = this.current;
+    const eq = save.aspect[id] ?? defaultAspect(id);
+    const spells = equip(id, baseStats(), eq, aspectRank(save.aspects, eq)).spells;
+    const cw = (W - 24) / 4, top = 177;
+    root.add(txt(s, 12, top - 3, 'SORTS DE L\'ARME (avec l\'aspect équipé)', 6, '#00f0ff').setOrigin(0, 1));
+    spells.forEach((sp, i) => {
+      const x = 12 + i * cw;
+      root.add(s.add.rectangle(x + 1, top, cw - 3, 60, 0x0b0820).setOrigin(0).setStrokeStyle(1, sp.color, 0.6));
+      root.add(txt(s, x + 5, top + 3, sp.name, 7, hex(sp.color)));
+      root.add(txt(s, x + 5, top + 13, spellBits(sp).replace(/ · ligne de vue| · sans ligne de vue/, ''), 5, '#a8a6d8').setWordWrapWidth(cw - 44));
+      root.add(txt(s, x + 5, top + 27, `${sp.zone.shape === 'cell' ? '' : `Zone : ${zoneLabel(sp)}. `}${sp.desc}`, 5, '#e8e8ff').setWordWrapWidth(cw - 10).setLineSpacing(1));
+      root.add(zoneIcon(s, x + cw - 20, top + 14, sp, sp.color));
+    });
+  }
+
   private renderAspects(root: Phaser.GameObjects.Container, save: SaveData) {
+    this.renderSpells(root, save);
     const s = this.scene, W = CONFIG.WIDTH, id = this.current;
     root.add(txt(s, W / 2, 12, `${WEAPONS[id].name.toUpperCase()} — ASPECTS`, 9, '#f5e663').setOrigin(0.5));
-    root.add(txt(s, W / 2, 26, 'Un aspect modifie les sorts de cette arme. Chacun monte jusqu\'au rang III.', 6, '#8a86b0').setOrigin(0.5));
+    root.add(txt(s, W / 2, 24, 'Un aspect modifie les sorts de cette arme. Chacun monte jusqu\'au rang III.', 6, '#8a86b0').setOrigin(0.5));
     const back = txt(s, 12, 12, '◄ Armes', 7, '#00f0ff').setOrigin(0, 0.5).setInteractive({ useHandCursor: true });
     back.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.button === 0) this.back(); });
     root.add(back);
     const eq = save.aspect[id] ?? defaultAspect(id);
     aspectsOf(id).forEach((a, i) => {
-      const rank = aspectRank(save.aspects, a.id), equipped = eq === a.id, y = 40 + i * 62;
-      const row = s.add.rectangle(W / 2, y + 26, W - 24, 56, equipped ? 0x2a0c18 : 0x140f2b).setStrokeStyle(1, equipped ? COLORS.magenta : rank ? 0x3a3550 : 0x221d35)
+      const rank = aspectRank(save.aspects, a.id), equipped = eq === a.id, y = 32 + i * 43;
+      const row = s.add.rectangle(W / 2, y + 19, W - 24, 40, equipped ? 0x2a0c18 : 0x140f2b).setStrokeStyle(1, equipped ? COLORS.magenta : rank ? 0x3a3550 : 0x221d35)
         .setInteractive({ useHandCursor: true });
       row.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.button === 0) this.select(i + 1); });
       root.add(row);
       root.add(txt(s, 20, y + 2, `[${i + 1}] ${a.name}${i === 0 ? ' (de base)' : ''}`, 8, rank ? '#e8e8ff' : '#8a86b0'));
       root.add(txt(s, W - 20, y + 2, '■'.repeat(rank) + '□'.repeat(MAX_ASPECT_RANK - rank), 9, '#ff2a6d').setOrigin(1, 0));
-      root.add(txt(s, 20, y + 16, rank ? `Rang ${ROMAN[rank]} : ${a.describe(rank)}` : `Rang I : ${a.describe(1)}`, 6, rank ? '#f5e663' : '#a8a6d8').setWordWrapWidth(W - 60));
-      if (rank > 0 && rank < MAX_ASPECT_RANK) root.add(txt(s, 20, y + 28, `Rang ${ROMAN[rank + 1]} : ${a.describe(rank + 1)}`, 6, '#5a5578').setWordWrapWidth(W - 60));
+      root.add(txt(s, 20, y + 13, rank ? `Rang ${ROMAN[rank]} : ${a.describe(rank)}` : `Rang I : ${a.describe(1)}`, 6, rank ? '#f5e663' : '#a8a6d8').setWordWrapWidth(W - 140));
+      if (rank > 0 && rank < MAX_ASPECT_RANK) root.add(txt(s, 20, y + 23, `Rang ${ROMAN[rank + 1]} : ${a.describe(rank + 1)}`, 6, '#5a5578').setWordWrapWidth(W - 140));
       const status = !rank ? `Débloquer — ${a.costs[0]}¢` : !equipped ? 'Équiper' : rank < MAX_ASPECT_RANK ? `ÉQUIPÉ — rang ${ROMAN[rank + 1]} : ${a.costs[rank]}¢` : 'ÉQUIPÉ — rang max';
       const cost = !rank ? a.costs[0] : equipped && rank < MAX_ASPECT_RANK ? a.costs[rank] : 0;
-      root.add(txt(s, W - 20, y + 42, status, 7, equipped ? '#ff2a6d' : cost > save.credits ? '#5a5578' : '#39ff88').setOrigin(1, 0));
+      root.add(txt(s, W - 20, y + 29, status, 7, equipped ? '#ff2a6d' : cost > save.credits ? '#5a5578' : '#39ff88').setOrigin(1, 0));
     });
   }
 }

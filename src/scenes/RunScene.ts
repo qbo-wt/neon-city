@@ -1053,13 +1053,17 @@ export class RunScene extends Phaser.Scene {
     if (!this.fight) return;
     // Primed bombers: where the blast will land at their next turn.
     for (const u of this.fight.units) if (!u.dead && u.primed) for (const c of zoneCells(this.fight, u, { zone: { shape: 'circle', r: 2 } } as SpellDef, u)) this.diamond(g, c, 0xff8c2a, 0.28, 0xff8c2a);
-    if (this.mode !== 'input') return;
     const f = this.fight, p = this.hero;
-    if (this.selected !== null) {
-      const s = this.spells[this.selected];
-      for (const r of rangeCells(f, p, s)) this.diamond(g, r.p, r.sight ? 0x2a6aff : 0x5a5578, r.sight ? 0.32 : 0.22);
+    // The chosen spell, or the one under the mouse on the bar: its range (blue, grey without sight),
+    // and for spells cast on yourself, the zone they hit around you.
+    const shown = this.selected ?? this.hoverSlot;
+    if (shown !== null && this.spells[shown]) {
+      const s = this.spells[shown];
+      if (s.target === 'self') { if (s.zone.shape !== 'cell') for (const c of zoneCells(f, p, s, p)) this.diamond(g, c, 0xff2a6d, 0.3, 0xff2a6d); }
+      else for (const r of rangeCells(f, p, s)) this.diamond(g, r.p, r.sight ? 0x2a6aff : 0x5a5578, r.sight ? 0.32 : 0.22);
       return;
     }
+    if (this.mode !== 'input') return;
     for (const k of reachFor(f, p).keys()) {
       const [x, y] = k.split(',').map(Number);
       if (x === p.x && y === p.y) continue;
@@ -1071,6 +1075,8 @@ export class RunScene extends Phaser.Scene {
   private drawHover() {
     const g = this.hoverG;
     g.clear();
+    // The spell card follows the button under the mouse, wherever the cursor is.
+    this.ui.showTip(this.hoverSlot !== null ? this.spells[this.hoverSlot] ?? null : null, this.hero, undefined, this.views.get(1)?.x ?? 0);
     this.hoverLabels.forEach(l => l.destroy());
     this.hoverLabels = [];
     const cell = this.hoverCell;
@@ -1081,7 +1087,7 @@ export class RunScene extends Phaser.Scene {
       if (i >= 0) this.diamond(g, cell, 0x39ff88, 0.3, 0x39ff88);
     }
     if (this.mode === 'placement' && this.board.playerStarts.some(s => same(s, cell))) this.diamond(g, cell, 0x00f0ff, 0.35, 0x00f0ff);
-    if (this.mode !== 'input' || !this.fight) { this.ui.showTip(this.hoverSlot !== null ? this.spells[this.hoverSlot] : null, this.hero); return; }
+    if (this.mode !== 'input' || !this.fight) return;
     const f = this.fight, p = this.hero;
     if (this.selected !== null) {
       const s = this.spells[this.selected];
@@ -1098,12 +1104,10 @@ export class RunScene extends Phaser.Scene {
           if (u.team !== 0) extra = `${u.name} ${t}`;
           this.hoverLabels.push(txt(this, v.x, v.y - 36, t, 7, r.lost > 0 ? (r.dies ? '#ff2a6d' : '#f5e663') : '#39ff88').setOrigin(0.5).setDepth(990).setStroke('#05030f', 3));
         }
-        this.ui.showTip(this.hoverSlot !== null ? this.spells[this.hoverSlot] : null, p);
         this.ui.hint(`${s.name} — ${this.dmgText(s)}${extra ? '   →  ' + extra : ''}`);
-      } else { this.ui.showTip(this.hoverSlot !== null ? this.spells[this.hoverSlot] : null, p); this.ui.hint(`${s.name} — ${err}`, '#ff2a6d'); }
+      } else { this.ui.hint(`${s.name} — ${err}`, '#ff2a6d'); }
       return;
     }
-    this.ui.showTip(this.hoverSlot !== null ? this.spells[this.hoverSlot] : null, p);
     // Hovering an enemy: where it can walk on its next turn (its full PM, with your tackle).
     const foe = unitAt(f, cell);
     if (foe && foe.team === 1 && foe.maxPm > 0) {
