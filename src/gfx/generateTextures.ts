@@ -6,6 +6,7 @@ import { generateNpcArt } from './npcArt';
 import { generatePropTextures } from './streetProps';
 import { generateLootTextures, generateStreetTextures } from './streetArt';
 import { generateHideoutArt } from './hideoutArt';
+import { generatePlayerArt } from './playerArt';
 
 export type CanvasTex = (scene: Phaser.Scene, key: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D) => void) => void;
 export type Px = (ctx: CanvasRenderingContext2D, c: string, x: number, y: number, w?: number, h?: number) => void;
@@ -39,8 +40,7 @@ const px = (ctx: CanvasRenderingContext2D, c: string, x: number, y: number, w = 
 export function generateTextures(scene: Phaser.Scene): void {
   for (const [key, grid] of Object.entries(SPRITES)) gridTexture(scene, key, grid);
 
-  // Dash afterimage: player silhouette in cyan.
-  gridTexture(scene, 'player-dash', SPRITES.player.map(r => r.replace(/[^.]/g, 'c')));
+  generatePlayerArt(scene);
 
   for (const [key, [base, map]] of Object.entries(ENEMY_LOOKS)) {
     SPRITES[key] = SPRITES[base].map(r => [...r].map(ch => map[ch] ?? ch).join(''));

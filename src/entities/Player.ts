@@ -4,6 +4,7 @@ import { resolveParry } from '../core/combat';
 import type { Stats } from '../core/types';
 import type { Controls } from '../input/controls';
 import { sparks } from '../fx/effects';
+import { PLAYER_ORIGIN_Y, playerKey, type Facing } from '../gfx/playerArt';
 
 export type HitResult = 'parried' | 'hit' | 'ignored';
 
@@ -37,11 +38,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private lungeDir = { x: 0, y: 0 };
 
   constructor(scene: Phaser.Scene, x: number, y: number, public stats: Stats, private controls: Controls, private mode: 'combat' | 'explore' = 'combat') {
-    super(scene, x, y, 'player');
+    super(scene, x, y, playerKey('d', 'idle0'));
     scene.add.existing(this);
     scene.physics.add.existing(this);
     const body = this.body as Phaser.Physics.Arcade.Body;
-    body.setCircle(5, 3, 6);
+    // 24×24 frames with the feet on row 21: same body circle as before, relative to the feet.
+    this.setOrigin(0.5, PLAYER_ORIGIN_Y);
+    body.setCircle(5, 7, 13);
+    this.on(Phaser.Animations.Events.ANIMATION_UPDATE, (_a: unknown, frame: Phaser.Animations.AnimationFrame) => {
+      if (/walk[03]$/.test(frame.textureKey)) this.footstep();
+    });
     this.setDepth(10);
     this.hp = stats.maxHp;
     this.dashCharges = stats.dashCharges;
@@ -57,7 +63,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   tick(now: number) {
     const body = this.body as Phaser.Physics.Arcade.Body;
-    if (!this.inputEnabled) { body.setVelocity(0, 0); return; }
+    if (!this.inputEnabled) { body.setVelocity(0, 0); this.animate(now, this.walkDir, false); return; }
 
     // Dash charges refill one at a time.
     if (this.dashCharges < this.stats.dashCharges && now >= this.dashRechargeAt) {
@@ -99,7 +105,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     // Outside a run there is nothing to aim at: face where you walk.
     if (move.x || move.y) this.walkDir = move;
-    this.updateLook(now, this.mode === 'combat' ? aim : this.walkDir);
+    this.updateLook(now, this.mode === 'combat' ? aim : this.walkDir, !!(move.x || move.y) || now < this.dashUntil);
   }
 
   private walkDir = { x: 0, y: 1 };
@@ -107,14 +113,53 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private reticle?: Phaser.GameObjects.Image;
 
   /** Body faces the cursor (back view when aiming up); a cyan chevron shows exactly where the next hit lands. */
-  private updateLook(now: number, aim: { x: number; y: number }) {
+  private updateLook(now: number, aim: { x: number; y: number }, moving: boolean) {
     this.shadow ??= this.scene.add.image(this.x, this.y, 'shadow').setDepth(4);
     this.reticle ??= this.scene.add.image(this.x, this.y, 'chevron').setTint(COLORS.cyan).setDepth(9).setAlpha(0.9);
-    this.setTexture(aim.y < -0.5 ? 'player-back' : 'player').setFlipX(aim.x < 0);
+    this.animate(now, aim, moving);
     this.shadow.setPosition(this.x, this.y + 7);
     this.reticle.setPosition(this.x + aim.x * 14, this.y + 3 + aim.y * 14).setRotation(Math.atan2(aim.y, aim.x))
       .setVisible(this.mode === 'combat');
     this.setAlpha(now < this.invulnUntil && Math.floor(now / 60) % 2 === 0 ? 0.35 : 1);
+  }
+
+  private hurtUntil = 0;
+  private facing: Facing = 'd';
+
+  /** Knocked to one knee: shown when the run ends in death (the scene stops ticking the player). */
+  collapse() {
+    this.anims.stop();
+    this.setTexture(playerKey(this.facing, 'down'));
+  }
+  private attackAt = -Infinity;
+
+  /** Picks the pose: knocked down > hurt > dash > guard > slash > walk > idle. */
+  private animate(now: number, look: { x: number; y: number }, moving: boolean) {
+    const dir = now < this.dashUntil ? this.dashDir : look;
+    const facing: Facing = dir.y < -0.6 ? 'u' : Math.abs(dir.x) > 0.55 ? 's' : 'd';
+    this.setFlipX(dir.x < 0);
+    this.facing = facing;
+    const red = this.stats.rangeMult > 1 ? '-r' : '';
+    const since = now - this.attackAt;
+    const still = this.hp <= 0 ? 'down' : now < this.hurtUntil ? 'hurt' : now < this.dashUntil ? 'dash'
+      : this.parryPending ? 'guard' + red : since < 90 ? 'atk0' + red : since < 190 ? 'atk1' + red : null;
+    if (still) {
+      this.anims.stop();
+      this.setTexture(playerKey(facing, still));
+      return;
+    }
+    const key = `pl-${moving ? 'walk' : 'idle'}-${facing}`;
+    if (this.anims.currentAnim?.key === key && this.anims.isPlaying) return;
+    // Turning while walking keeps the step in progress instead of restarting the cycle.
+    const keepStep = moving && this.anims.currentAnim?.key.startsWith('pl-walk') ? this.anims.currentFrame?.index ?? 0 : 0;
+    this.anims.play({ key, startFrame: Math.max(0, keepStep - 1) });
+  }
+
+  /** A small puff of dust under the foot that just landed. */
+  private footstep() {
+    const side = this.anims.currentFrame?.textureKey.endsWith('0') ? -3 : 3;
+    const puff = this.scene.add.circle(this.x + side, this.y + 7, 1.5, 0x8a86b0, 0.45).setDepth(4.5);
+    this.scene.tweens.add({ targets: puff, scale: 2.4, alpha: 0, y: puff.y - 2, duration: 320, onComplete: () => puff.destroy() });
   }
 
   private aimDir() {
@@ -129,11 +174,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.dashCharges--;
     this.dashDir = dir;
     this.dashUntil = now + CONFIG.DASH_DURATION_MS;
+    for (let i = 0; i < 5; i++) {
+      const puff = this.scene.add.circle(this.x - dir.x * 4 + (Math.random() - 0.5) * 8, this.y + 7, 1.5, 0x8a86b0, 0.5).setDepth(4.5);
+      this.scene.tweens.add({ targets: puff, scale: 3, alpha: 0, x: puff.x - dir.x * 8, duration: 360, onComplete: () => puff.destroy() });
+    }
   }
 
   private afterimage(now: number) {
     this.nextAfterimageAt = now + 28;
-    const img = this.scene.add.image(this.x, this.y, 'player-dash').setFlipX(this.flipX).setAlpha(0.6).setDepth(9);
+    const img = this.scene.add.image(this.x, this.y, this.texture.key).setOrigin(this.originX, this.originY).setFlipX(this.flipX)
+      .setTint(COLORS.cyan).setTintMode(Phaser.TintModes.FILL).setAlpha(0.6).setDepth(9);
     this.scene.tweens.add({ targets: img, alpha: 0, duration: 180, onComplete: () => img.destroy() });
   }
 
@@ -150,6 +200,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const chained = now - this.lastAttackAt <= CONFIG.COMBO_RESET_MS + CONFIG.ATTACK_COOLDOWN_MS;
     this.comboIndex = chained ? (this.comboIndex % CONFIG.COMBO_HITS) + 1 : 1;
     this.lastAttackAt = now;
+    this.attackAt = now;
     const finisher = this.comboIndex === CONFIG.COMBO_HITS;
     this.nextAttackAt = now + CONFIG.ATTACK_COOLDOWN_MS + (finisher ? 120 : 0);
     this.lungeDir = aim;
@@ -185,6 +236,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (now < this.invulnUntil) return 'ignored';
     this.hp = Math.max(0, this.hp - amount * this.stats.damageTakenMult);
     this.invulnUntil = now + CONFIG.HIT_INVULN_MS;
+    this.hurtUntil = now + 180;
     const dx = this.x - fromX, dy = this.y - fromY, len = Math.hypot(dx, dy) || 1;
     this.lungeDir = { x: dx / len * 1.6, y: dy / len * 1.6 };
     this.lungeUntil = now + 90;

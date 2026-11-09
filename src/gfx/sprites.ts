@@ -6,6 +6,7 @@ export const PALETTE: Record<string, string> = {
   y: '#f5e663', Y: '#a89a2a', // yellow / dark yellow
   w: '#e8e8ff', g: '#3a3550', G: '#221d35',
   s: '#c98f6b', S: '#8a5a3a', h: '#e8b896', r: '#ff3b3b', p: '#6a2cff', P: '#36167f', e: '#39ff88',
+  v: '#a8a6d8', n: '#0b4652', // player: hair shade, deep coat teal
 };
 
 export const SPRITES: Record<string, string[]> = {

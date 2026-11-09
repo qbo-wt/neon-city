@@ -558,6 +558,7 @@ export class RunScene extends Phaser.Scene {
     this.physics.pause();
     (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
     this.player.setTint(COLORS.magenta);
+    if (!victory) this.player.collapse();
     this.cameras.main.shake(300, 0.01);
     this.cameras.main.flash(300, 255, 0, 40);
     this.screenText('SIGNAL VITAL PERDU', 16, '#ff2a6d');
