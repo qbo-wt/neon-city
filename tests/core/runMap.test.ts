@@ -100,3 +100,38 @@ describe('run generation', () => {
     }
   });
 });
+
+import { makeElite, makeEvent } from '../../src/core/runMap';
+import { contractMet, CONTRACTS } from '../../src/core/contract';
+
+describe('route doors', () => {
+  it('event and elite doors only lead to regular sectors', () => {
+    for (let seed = 0; seed < 60; seed++) generateRun(seed).forEach((r, i) => {
+      if (!r.doorRewards.some(d => d === 'event' || d === 'elite')) return;
+      expect((i + 2) % CONFIG.BOSS_EVERY).not.toBe(0);
+    });
+    let seen = false;
+    for (let seed = 0; seed < 30 && !seen; seed++) seen = generateRun(seed).some(r => r.doorRewards.includes('event'));
+    expect(seen).toBe(true);
+  });
+  it('an elite sector adds one enemy per wave and a modifier; an event sector has no fight', () => {
+    const room = generateRun(4)[2];
+    const e = makeElite(room, createRng(1));
+    expect(e.elite).toBeDefined();
+    e.waves.forEach((w, i) => expect(w).toHaveLength(room.waves[i].length + 1));
+    expect(makeEvent(room).waves).toEqual([]);
+    expect(makeEvent(room).kind).toBe('event');
+  });
+});
+
+describe('fixer contracts', () => {
+  const [nohit, speed, parry] = CONTRACTS;
+  it('pay only when the challenge is met', () => {
+    expect(contractMet(nohit, { hitsTaken: 0, timeMs: 99999, parries: 0 })).toBe(true);
+    expect(contractMet(nohit, { hitsTaken: 1, timeMs: 1, parries: 9 })).toBe(false);
+    expect(contractMet(speed, { hitsTaken: 5, timeMs: speed.target - 1, parries: 0 })).toBe(true);
+    expect(contractMet(speed, { hitsTaken: 0, timeMs: speed.target + 1, parries: 0 })).toBe(false);
+    expect(contractMet(parry, { hitsTaken: 3, timeMs: 1, parries: parry.target })).toBe(true);
+    expect(contractMet(parry, { hitsTaken: 0, timeMs: 1, parries: parry.target - 1 })).toBe(false);
+  });
+});

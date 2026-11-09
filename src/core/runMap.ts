@@ -6,13 +6,20 @@ import type { Family } from './types';
 
 export const TILE = 32;
 
-export type Reward = 'implant' | 'credits' | 'heal' | 'chest';
+/** What a door gives: an instant reward, or a different next sector (street event, elite squad). */
+export type Reward = 'implant' | 'credits' | 'heal' | 'chest' | 'event' | 'elite';
+export type EliteMod = 'shield' | 'explosive' | 'cloak' | 'frenzy';
+export const ELITE_MODS: EliteMod[] = ['shield', 'explosive', 'cloak', 'frenzy'];
 
 export interface RoomPlan {
   index: number;
   template: RoomTemplate;
   waves: EnemyId[][];
   isBoss: boolean;
+  /** 'event': a non-combat encounter, chosen by taking an event door */
+  kind?: 'event';
+  /** set when the previous door was an elite one */
+  elite?: EliteMod;
   doorRewards: Reward[];
   /** implant doors show which family their clinic stocks */
   doorFamilies: Family[];
@@ -22,6 +29,23 @@ const FAMILIES: Family[] = ['chrome', 'neural', 'blood', 'optic'];
 const families = (rng: Rng, n: number) => Array.from({ length: n }, () => pick(rng, FAMILIES));
 
 const REWARDS: Reward[] = ['implant', 'credits', 'heal', 'chest'];
+
+/** Doors before a regular sector can also lead to a street event or an elite squad. */
+function doorRewards(rng: Rng, index: number): Reward[] {
+  const nextIsBoss = (index + 2) % CONFIG.BOSS_EVERY === 0;
+  const pool: Reward[] = [...REWARDS];
+  if (!nextIsBoss && index >= 1 && index < CONFIG.ROOMS_PER_RUN - 2) pool.push('event', 'elite');
+  return shuffle(rng, pool).slice(0, randInt(rng, 2, 3));
+}
+
+/** An elite squad: one more enemy per wave and a modifier on all of them. */
+export function makeElite(room: RoomPlan, rng: Rng): RoomPlan {
+  return { ...room, elite: pick(rng, ELITE_MODS), waves: room.waves.map(w => [...w, pick(rng, w)]) };
+}
+
+export function makeEvent(room: RoomPlan): RoomPlan {
+  return { ...room, kind: 'event', waves: [] };
+}
 
 /** Enemy pool widens with depth: drones from sector 2, bombers from 3, hackers from 4. */
 function poolFor(index: number): EnemyId[] {
@@ -60,7 +84,7 @@ export function generateRun(seed: number): RoomPlan[] {
       template: pick(rng, ROOM_TEMPLATES),
       waves: Array.from({ length: waveCount }, () => makeWave(rng, index)),
       isBoss: false,
-      doorRewards: shuffle(rng, REWARDS).slice(0, randInt(rng, 2, 3)),
+      doorRewards: doorRewards(rng, index),
       doorFamilies: families(rng, 3),
     });
   }

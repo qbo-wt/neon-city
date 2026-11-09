@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG, COLORS } from '../config';
 import type { EnemyDef } from '../data/enemies';
+import type { EliteMod } from '../core/runMap';
 import { floatText, sparks } from '../fx/effects';
 import { audio } from '../audio/audio';
 import type { Player } from './Player';
@@ -8,6 +9,9 @@ import { ENEMY_RIGS, type EnemyRig } from '../gfx/enemyArt';
 import { facingOf, type Facing } from '../gfx/rig';
 
 export interface ShotOpts { psy?: number; key?: string }
+
+/** Scaling applied on spawn: elite squads (and notoriety) make enemies tougher. */
+export interface EnemyMods { hpMult?: number; damageMult?: number; speedMult?: number; telegraphMult?: number; elite?: EliteMod }
 
 export interface EnemyHooks {
   player: Player;
@@ -17,6 +21,8 @@ export interface EnemyHooks {
   /** True when (x, y) lies in a tile taken by a crate or a large prop. */
   occupied(x: number, y: number): boolean;
   onDeath(e: Enemy): void;
+  /** An explosive elite died here. */
+  eliteBlast(x: number, y: number): void;
   /** The run's simulation clock (slows on parries, freezes on hit-stop). */
   now(): number;
   /** This enemy's melee blow just landed on the player (thorns). */
@@ -70,9 +76,25 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private unstickUntil = 0;
   private unstickDir = { x: 0, y: 0 };
 
-  constructor(scene: Phaser.Scene, x: number, y: number, readonly def: EnemyDef, private hooks: EnemyHooks) {
+  readonly def: EnemyDef;
+  readonly elite?: EliteMod;
+  /** Shield elites: damage hits this first; no knockback while it holds. */
+  private shield = 0;
+  private shieldRing?: Phaser.GameObjects.Arc;
+  private aura?: Phaser.GameObjects.Image;
+
+  constructor(scene: Phaser.Scene, x: number, y: number, baseDef: EnemyDef, private hooks: EnemyHooks, mods: EnemyMods = {}) {
+    const def: EnemyDef = {
+      ...baseDef,
+      hp: Math.round(baseDef.hp * (mods.hpMult ?? 1) * (mods.elite ? 1.3 : 1)),
+      damage: baseDef.damage * (mods.damageMult ?? 1),
+      speed: baseDef.speed * (mods.speedMult ?? 1) * (mods.elite === 'frenzy' ? 1.35 : 1),
+      telegraphMs: baseDef.telegraphMs * (mods.telegraphMult ?? 1) * (mods.elite === 'frenzy' ? 0.8 : 1),
+    };
     const rig = ENEMY_RIGS[def.id];
     super(scene, x, y, rig.key, 'd-idle0');
+    this.def = def;
+    this.elite = mods.elite;
     this.rig = rig;
     scene.add.existing(this);
     scene.physics.add.existing(this);
@@ -88,6 +110,13 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     this.nextAttackAt = hooks.now() + 500 + Math.random() * 500;
     this.shadow = scene.add.image(x, y, 'shadow').setScale(def.id === 'drone' ? 1 : scale).setDepth(4).setAlpha(def.id === 'drone' ? 0.5 : 1);
     this.chevron = scene.add.image(x, y, 'chevron').setTint(def.behavior === 'hack' ? 0x39ff88 : COLORS.magenta).setDepth(7).setAlpha(0.9);
+    if (mods.elite === 'shield') {
+      this.shield = Math.round(this.maxHp * 0.4);
+      this.shieldRing = scene.add.circle(x, y, def.radius + 6).setStrokeStyle(1, COLORS.cyan, 0.9).setFillStyle(COLORS.cyan, 0.08).setDepth(9);
+    }
+    if (mods.elite === 'frenzy' || mods.elite === 'explosive') {
+      this.aura = scene.add.image(x, y, 'glow').setTint(mods.elite === 'frenzy' ? 0xff3b3b : COLORS.yellow).setBlendMode(Phaser.BlendModes.ADD).setDepth(7).setScale(rig.S / 40).setAlpha(0.5);
+    }
   }
 
   /** Boss phase 2 below 50% HP, phase 3 (frenzy) below 25%. */
@@ -132,6 +161,19 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   takeHit(amount: number, crit: boolean, countered: boolean, fromX: number, fromY: number, stagger: boolean) {
     if (this.dead) return;
+    if (this.shield > 0) {
+      // The shield soaks the blow; what is left goes through once it breaks.
+      this.shield -= amount;
+      sparks(this.scene, this.x, this.y, COLORS.cyan, 4, 10);
+      if (this.shield > 0) { floatText(this.scene, this.x, this.y - 10, String(amount), '#00f0ff', 6); this.flashUntil = this.hooks.now() + 50; return; }
+      amount = -this.shield;
+      this.shield = 0;
+      this.shieldRing?.destroy();
+      this.shieldRing = undefined;
+      floatText(this.scene, this.x, this.y - 16, 'BOUCLIER BRISÉ', '#00f0ff', 6);
+      audio.sfx('parry', { pitch: 0.6 });
+      if (amount <= 0) return;
+    }
     this.hp -= amount;
     this.flashUntil = this.hooks.now() + 70;
     this.hurtUntil = this.hooks.now() + 130;
@@ -140,7 +182,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     if (this.hp <= 0) { this.die(); return; }
 
     const charging = this.ai === 'attack' && this.heavy;
-    if (!charging) {
+    if (!charging && !this.shieldRing) {
       const dx = this.x - fromX, dy = this.y - fromY, len = Math.hypot(dx, dy) || 1, k = this.heavy ? 50 : 150;
       (this.body as Phaser.Physics.Arcade.Body).setVelocity(dx / len * k, dy / len * k);
       // Hitstun lets the knockback play out instead of being overwritten by the chase on the same frame.
@@ -152,6 +194,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   private die() {
     this.dead = true;
+    if (this.elite === 'explosive' && !this.exploded) this.hooks.eliteBlast(this.x, this.y);
     audio.sfx('kill', { pitch: 24 / this.rig.S });
     if (!this.exploded) this.fall();
     sparks(this.scene, this.x, this.y, COLORS.magenta, 14, 22);
@@ -172,6 +215,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   }
 
   override destroy(fromScene?: boolean) {
+    this.shieldRing?.destroy();
+    this.aura?.destroy();
     this.stars.forEach(s => s.destroy());
     this.stars = [];
     this.quakeRing?.destroy();
@@ -235,8 +280,18 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Drones hover: their shadow sits further below and breathes.
     const hover = this.def.id === 'drone' ? 12 + Math.sin(now / 150) * 2 : this.rig.feetRow + 1 - this.rig.originRow;
     this.shadow.setPosition(this.x, this.y + hover);
+    this.shieldRing?.setPosition(this.x, this.y + 2);
+    this.aura?.setPosition(this.x, this.y + 4).setAlpha(0.35 + 0.15 * Math.sin(now / 120));
+    // Cloaked elites are near-invisible until close or attacking.
+    let cloaked = false;
+    if (this.elite === 'cloak') {
+      const p = this.hooks.player, near = Phaser.Math.Distance.Between(this.x, this.y, p.x, p.y) < 70;
+      cloaked = !near && this.ai !== 'windup' && this.ai !== 'attack' && now >= this.hurtUntil + 300;
+      this.setAlpha(cloaked ? (Math.random() < 0.05 ? 0.4 : 0.12) : 1);
+      this.shadow.setAlpha(cloaked ? 0.2 : 1);
+    }
     this.chevron.setPosition(this.x + f.x * reach, this.y + 3 + f.y * reach).setRotation(Math.atan2(f.y, f.x))
-      .setVisible(this.ai !== 'stunned')
+      .setVisible(this.ai !== 'stunned' && !cloaked)
       .setScale(this.ai === 'windup' ? 1.5 : 1);
 
     // Visual state: white flash on hit, blink while winding up, yellow when stunned.

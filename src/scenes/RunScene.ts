@@ -29,13 +29,21 @@ import { placeStreetProps } from '../gfx/streetProps';
 import { buildRoom, type BuiltRoom } from '../systems/roomBuilder';
 import { getRun, newRun, setRun, type HudData, type RunState } from '../systems/runState';
 import { ImplantChoice } from '../ui/ImplantChoice';
+import { ChoicePanel } from '../ui/ChoicePanel';
+import { Npc } from '../entities/Npc';
+import { STREET_EVENTS, STREET_EVENT_IDS, eventLine, eventOptions, type EventCtx, type StreetEventId } from '../systems/streetEvents';
+import { contractMet, contractProgress, type SectorTally } from '../core/contract';
+import { makeElite, makeEvent, type EliteMod } from '../core/runMap';
+import { IMPLANTS, canUpgrade } from '../data/implants';
+import type { Offer } from '../core/implantOffer';
 import { setupCamera } from '../ui/camera';
 import { txt } from '../ui/text';
 
 export const HUD_H = 14;
 
-const REWARD_ICON: Record<Reward, string> = { implant: 'implant-pickup', credits: 'credit', heal: 'heal', chest: 'chest' };
-const DOOR_LABELS: Record<Reward, string> = { implant: 'IMPLANT', credits: 'CRÉDITS', heal: 'SOIN', chest: 'COFFRE' };
+const REWARD_ICON: Record<Reward, string> = { implant: 'implant-pickup', credits: 'credit', heal: 'heal', chest: 'chest', event: 'icon-event', elite: 'icon-elite' };
+const DOOR_LABELS: Record<Reward, string> = { implant: 'IMPLANT', credits: 'CRÉDITS', heal: 'SOIN', chest: 'COFFRE', event: 'RENCONTRE', elite: 'ÉLITE ★' };
+const ELITE_LABELS: Record<EliteMod, string> = { shield: 'BOUCLIERS', explosive: 'EXPLOSIFS', cloak: 'CAMOUFLÉS', frenzy: 'ENRAGÉS' };
 
 function psyBonusLabel(tier: ReturnType<typeof psyTier>) {
   const m = crisisMultipliers(tier);
@@ -80,6 +88,14 @@ export class RunScene extends Phaser.Scene {
   private hooks!: EnemyHooks;
   private boss?: Enemy;
   private choice?: ImplantChoice;
+  private panel?: ChoicePanel;
+  /** Street event sector: the NPC you talk to, and whether you already did. */
+  private eventNpc?: Npc;
+  private eventId?: StreetEventId;
+  private eventDone = false;
+  private eventPrompt?: Phaser.GameObjects.Text;
+  /** Measured for fixer contracts. */
+  private tally: SectorTally = { hitsTaken: 0, timeMs: 0, parries: 0 };
   private waveIndex = 0;
   private pendingSpawns = 0;
   /** Psychosis only ticks while enemies are live in the room — never during transitions. */
@@ -126,7 +142,9 @@ export class RunScene extends Phaser.Scene {
     this.waveIndex = 0;
     this.pendingSpawns = 0;
     this.roomActive = this.leaving = this.ending = false;
-    this.boss = this.choice = undefined;
+    this.boss = this.choice = this.panel = this.eventNpc = this.eventId = undefined;
+    this.eventDone = false;
+    this.tally = { hitsTaken: 0, timeMs: 0, parries: 0 };
     this.simNow = this.time.now;
     this.freezeUntil = this.slowUntil = 0;
     this.curScale = 1;
@@ -189,6 +207,7 @@ export class RunScene extends Phaser.Scene {
       occupied: (x, y) => this.navBlocked.has(`${Math.floor(x / TILE)},${Math.floor(y / TILE)}`),
       now: () => this.simNow,
       struckPlayer: e => this.thorns(e),
+      eliteBlast: (x, y) => this.eliteBlast(x, y),
     };
 
     this.events.on(PLAYER_ATTACK, this.onPlayerAttack, this);
@@ -212,11 +231,123 @@ export class RunScene extends Phaser.Scene {
     if (!this.scene.isActive(SCENES.Hud)) this.scene.launch(SCENES.Hud);
     this.followCamera(0, true);
 
-    const label = this.room.isBoss ? 'ALERTE — CIBLE PRIORITAIRE' : `SECTEUR ${this.run.roomIndex + 1} / ${CONFIG.ROOMS_PER_RUN}\n${streetName.toUpperCase()}`;
-    const sub = light.length && !this.room.isBoss ? `\n⚠ ${LIGHT_LABELS[light[0]]}` : '';
-    const banner = this.screenText(label + sub, 12, this.room.isBoss ? '#ff2a6d' : '#00f0ff', 110);
+    const event = this.room.kind === 'event';
+    if (event) this.setupEvent(rng);
+    // A contract signed with a fixer runs in the next combat sector.
+    if (!event && !this.room.isBoss && this.run.contract && this.run.contract.room === undefined) this.run.contract.room = this.run.roomIndex;
+    const label = this.room.isBoss ? 'ALERTE — CIBLE PRIORITAIRE'
+      : event ? `${STREET_EVENTS[this.eventId!].banner}\n${streetName.toUpperCase()}`
+        : `SECTEUR ${this.run.roomIndex + 1} / ${CONFIG.ROOMS_PER_RUN}\n${streetName.toUpperCase()}`;
+    const sub = this.room.elite ? `\n★ SECTEUR ÉLITE — ${ELITE_LABELS[this.room.elite]} ★` : light.length && !this.room.isBoss && !event ? `\n⚠ ${LIGHT_LABELS[light[0]]}` : '';
+    const banner = this.screenText(label + sub, 12, this.room.isBoss || this.room.elite ? '#ff2a6d' : event ? '#f5e663' : '#00f0ff', 110);
     this.tweens.add({ targets: banner, alpha: 0, delay: 900, duration: 400, onComplete: () => banner.destroy() });
-    this.time.delayedCall(800, () => { this.roomActive = true; this.spawnWave(); });
+    if (this.room.elite) audio.sfx('elite');
+    if (!event) this.time.delayedCall(800, () => { this.roomActive = true; this.spawnWave(); });
+  }
+
+  // ---------- street events ----------
+
+  /** A calm street with one person to talk to; the exits are open from the start. */
+  private setupEvent(rng: Rng) {
+    this.eventId = pick(rng, STREET_EVENT_IDS);
+    const ev = STREET_EVENTS[this.eventId];
+    // Stand on the free street tile closest to the middle of the map (maps are not rectangles).
+    const g = this.room.template.grid, cx = g[0].length / 2, cy = g.length / 2;
+    const start = { x: Math.floor(this.built.start.x / TILE), y: Math.floor(this.built.start.y / TILE) };
+    let best = { x: Math.floor(cx), y: Math.floor(cy) }, bestD = Infinity;
+    g.forEach((row, ty) => [...row].forEach((ch, tx) => {
+      if (ch !== '.' || this.navBlocked.has(`${tx},${ty}`) || this.blockedTiles.has(`${tx},${ty}`) || g[ty - 1]?.[tx] === 'D') return;
+      if (Math.abs(tx - start.x) + Math.abs(ty - start.y) < 3) return;
+      const d = Math.hypot(tx + 0.5 - cx, ty + 0.5 - cy);
+      if (d < bestD) { bestD = d; best = { x: tx, y: ty }; }
+    }));
+    const x = best.x * TILE + TILE / 2, y = best.y * TILE + TILE / 2;
+    this.eventNpc = new Npc(this, x, y, ev.look, 'idle', new Phaser.Geom.Rectangle(x, y, 1, 1), { name: ev.name });
+    this.physics.add.collider(this.player, this.eventNpc);
+    this.add.image(x, y + 6, 'glow').setTint(ev.color).setAlpha(0.45).setScale(1.6, 0.8).setBlendMode(Phaser.BlendModes.ADD).setDepth(3);
+    this.eventPrompt = txt(this, x, y - 22, '', 7, '#e8e8ff').setOrigin(0.5).setDepth(50).setStroke('#05030f', 3);
+    audio.setIntensity(0);
+    this.time.delayedCall(300, () => this.unlockDoors());
+  }
+
+  private updateEvent() {
+    const npc = this.eventNpc;
+    if (!npc) return;
+    npc.tick(this.simNow);
+    const near = !this.eventDone && Phaser.Math.Distance.Between(npc.x, npc.y, this.player.x, this.player.y) < 30;
+    this.eventPrompt?.setText(near ? `[E] Parler à ${STREET_EVENTS[this.eventId!].name}` : '');
+    if (near && this.controls.interact()) this.openEvent();
+  }
+
+  private openEvent() {
+    const id = this.eventId!, ev = STREET_EVENTS[id];
+    this.physics.pause();
+    (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+    audio.sfx('talk');
+    this.panel = new ChoicePanel(this, this.controls, ev.name, eventLine(id, Math.random), eventOptions(id, this.eventCtx()), () => {
+      this.panel = undefined;
+      this.eventDone = true;
+      this.physics.resume();
+    }, ev.color);
+  }
+
+  private eventCtx(): EventCtx {
+    const say = (msg: string, color = '#e8e8ff') => {
+      const t = this.screenText(msg, 10, color, 90);
+      this.tweens.add({ targets: t, alpha: 0, y: 76, delay: 900, duration: 500, onComplete: () => t.destroy() });
+    };
+    return {
+      rng: Math.random,
+      credits: () => this.run.creditsEarned,
+      spend: n => { this.run.creditsEarned = Math.max(0, this.run.creditsEarned - n); audio.sfx('buy'); },
+      gain: n => { this.run.creditsEarned += n; audio.sfx('credit'); },
+      hp: () => this.player.hp,
+      hurt: n => { this.player.hp = this.run.hp = Math.max(1, this.player.hp - n); audio.sfx('hurt'); this.cameras.main.flash(120, 255, 40, 40); },
+      healFraction: f => { const g = this.heal(this.stats.maxHp * f); say(`+${Math.round(g)} PV`, '#39ff88'); audio.sfx('heal'); },
+      addPsy: n => this.addPsy(n),
+      addBlocker: () => { this.run.blockers++; },
+      implants: opts => {
+        const options: Offer[] = opts === 'black'
+          ? IMPLANTS.filter(i => i.rarity === 'black' && !this.run.implants.some(o => o.id === i.id)).slice(0, 3).map(i => ({ implant: i, level: 1, upgrade: false }))
+          : offerImplants(Math.random, this.run.implants, this.run.roomIndex, opts);
+        if (options.length) this.openImplantChoice(options, () => this.physics.resume(), opts === 'black' ? 'MARCHÉ NOIR — UNE GREFFE, UN PRIX' : 'GREFFE DE RUE — CHOISIS UN IMPLANT');
+      },
+      relicLeft: () => (this.relicsLeft().length ? this.relicsLeft()[0] : undefined),
+      giveRelic: r => this.grantRelic(r),
+      canUpgrade: () => this.run.implants.some(canUpgrade),
+      upgradeRandom: () => {
+        const list = this.run.implants.filter(canUpgrade);
+        if (!list.length) return undefined;
+        const imp = pick(Math.random, list);
+        this.run.implants = this.run.implants.map(i => (i.id === imp.id ? { ...i, level: (i.level ?? 1) + 1 } : i));
+        this.refreshStats();
+        audio.sfx('implant');
+        return imp.name;
+      },
+      sign: c => { this.run.contract = { ...c }; },
+      say,
+    };
+  }
+
+  /** Recompute stats after the build changed, keeping the HP gained from a higher max. */
+  private refreshStats() {
+    const before = this.stats.maxHp, next = this.computeStats();
+    this.player.hp = this.run.hp = Math.min(next.maxHp, this.player.hp + Math.max(0, next.maxHp - before));
+    this.stats = next;
+    this.player.setStats(next);
+  }
+
+  /** Explosive elite: a short warning ring, then a blast. */
+  private eliteBlast(x: number, y: number) {
+    const ring = this.add.circle(x, y, 30).setStrokeStyle(2, COLORS.yellow).setFillStyle(COLORS.yellow, 0.1).setScale(0.2).setDepth(6);
+    this.tweens.add({ targets: ring, scale: 1, duration: 450, onComplete: () => {
+      ring.destroy();
+      if (this.ending) return;
+      sparks(this, x, y, COLORS.yellow, 14, 30);
+      audio.sfx('explode', { vol: 0.7 });
+      this.cameras.main.shake(120, 0.006);
+      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < 32) this.player.receiveHit(12, this.simNow, x, y);
+    } });
   }
 
   /** Text fixed on screen (banners), regardless of the camera scroll. */
@@ -242,6 +373,7 @@ export class RunScene extends Phaser.Scene {
     // Keep time scales moving while the run ends, or a freeze at the killing blow would never thaw.
     if (this.ending) { this.applyTimeScale(time); return; }
     if (this.choice) { this.choice.tick(); this.publishHud(); return; }
+    if (this.panel) { this.panel.tick(); this.publishHud(); return; }
     this.run.timeMs += real;
     const dt = real * this.applyTimeScale(time);
     this.simNow += dt;
@@ -257,6 +389,8 @@ export class RunScene extends Phaser.Scene {
     }
     this.magnetPickups();
     this.dashCuts();
+    this.updateEvent();
+    if (this.roomActive) this.tally.timeMs += real;
     this.followCamera(real);
 
     if (this.roomActive) {
@@ -467,19 +601,19 @@ export class RunScene extends Phaser.Scene {
       floatText(this, k.x, k.y - 6, `+${Math.round(gained)} PV`, '#39ff88', 7);
       audio.sfx('heal');
     } else if (loot.kind === 'relic') {
-      const relic = k.getData('relic') as Relic;
-      this.run.relics.push(relic);
-      const prevMax = this.stats.maxHp;
-      this.stats = this.computeStats();
-      this.player.setStats(this.stats);
-      this.player.hp = Math.min(this.stats.maxHp, this.player.hp + Math.max(0, this.stats.maxHp - prevMax));
-      this.cameras.main.flash(250, 255, 59, 59);
-      audio.sfx('relic');
-      const t = this.screenText(`${relic.name.toUpperCase()}\n${relic.description}`, 9, '#ff3b3b', 80);
-      this.tweens.add({ targets: t, alpha: 0, delay: 2200, duration: 500, onComplete: () => t.destroy() });
+      this.grantRelic(k.getData('relic') as Relic);
       (k.getData('halo') as Phaser.GameObjects.Image | undefined)?.destroy();
     }
     k.destroy();
+  }
+
+  private grantRelic(relic: Relic) {
+    this.run.relics.push(relic);
+    this.refreshStats();
+    this.cameras.main.flash(250, 255, 59, 59);
+    audio.sfx('relic');
+    const t = this.screenText(`${relic.name.toUpperCase()}\n${relic.description}`, 9, '#ff3b3b', 80);
+    this.tweens.add({ targets: t, alpha: 0, delay: 2200, duration: 500, onComplete: () => t.destroy() });
   }
 
   // ---------- combat ----------
@@ -549,12 +683,14 @@ export class RunScene extends Phaser.Scene {
     this.hitstop(70);
     this.slowmo(380, 0.3);
     this.registry.set('parryAt', this.game.loop.time);
+    this.tally.parries++;
     const ring = this.add.circle(x, y, 6).setStrokeStyle(2, COLORS.cyan).setDepth(40);
     this.tweens.add({ targets: ring, scale: 5, alpha: 0, duration: 260, onComplete: () => ring.destroy() });
   }
 
   private onHurt() {
     this.hitstop(60);
+    this.tally.hitsTaken++;
     this.registry.set('hurtAt', this.game.loop.time);
   }
 
@@ -593,7 +729,7 @@ export class RunScene extends Phaser.Scene {
   }
 
   private spawnEnemy(id: EnemyId, x: number, y: number): Enemy {
-    const e = new Enemy(this, x, y, ENEMIES[id], this.hooks);
+    const e = new Enemy(this, x, y, ENEMIES[id], this.hooks, { elite: ENEMIES[id].behavior === 'boss' ? undefined : this.room.elite });
     this.enemies.add(e);
     sparks(this, x, y, COLORS.magenta, 6, 12);
     return e;
@@ -642,7 +778,30 @@ export class RunScene extends Phaser.Scene {
       const gained = this.heal(this.stats.maxHp * this.stats.regenOnClear);
       floatText(this, this.player.x, this.player.y - 14, `+${Math.round(gained)} PV`, '#39ff88', 8);
     }
-    this.unlockDoors();
+    // Extra rewards first (elite loot, contract bounty), then the exits open.
+    const steps: ((next: () => void) => void)[] = [];
+    const ri = this.run.roomIndex;
+    if (this.room.elite) {
+      this.run.creditsEarned += Math.round(15 * this.stats.creditMult);
+      steps.push(next => this.openImplantChoice(offerImplants(createRng(this.run.seed + ri * 29), this.run.implants, ri, { minRarity: ri >= 6 ? 'epic' : 'rare' }),
+        () => { this.physics.resume(); next(); }, 'BUTIN D\'ÉLITE — CHOISIS UN IMPLANT'));
+    }
+    const c = this.run.contract;
+    if (c && c.room === ri) {
+      this.run.contract = undefined;
+      const ok = contractMet(c, this.tally);
+      steps.push(next => {
+        const t = this.screenText(ok ? 'CONTRAT REMPLI — PRIME VERSÉE' : 'CONTRAT ÉCHOUÉ', 11, ok ? '#f5e663' : '#ff2a6d', 80);
+        this.tweens.add({ targets: t, alpha: 0, delay: 1200, duration: 500, onComplete: () => t.destroy() });
+        audio.sfx(ok ? 'buy' : 'deny');
+        if (!ok) { next(); return; }
+        if (c.reward === 'credits') { this.run.creditsEarned += Math.round(c.amount * this.stats.creditMult); next(); return; }
+        this.time.delayedCall(700, () => this.openImplantChoice(offerImplants(Math.random, this.run.implants, ri, { minRarity: c.reward === 'implant-epic' ? 'epic' : 'rare' }),
+          () => { this.physics.resume(); next(); }, 'PRIME DU FIXER — CHOISIS UN IMPLANT'));
+      });
+    }
+    const runSteps = (i: number) => (i < steps.length ? steps[i](() => runSteps(i + 1)) : this.unlockDoors());
+    runSteps(0);
   }
 
   private unlockDoors() {
@@ -687,6 +846,10 @@ export class RunScene extends Phaser.Scene {
       this.run.creditsEarned += Math.round((5 + ri * 2) * this.stats.creditMult);
       if (Math.random() < 0.5) this.run.blockers++;
     }
+    // Route doors change what the next sector is.
+    const next = this.run.rooms[ri + 1];
+    if (next && !next.isBoss && reward === 'event') this.run.rooms[ri + 1] = makeEvent(next);
+    if (next && !next.isBoss && reward === 'elite') this.run.rooms[ri + 1] = makeElite(next, createRng(this.run.seed + ri * 37));
     this.nextRoom();
   }
 
@@ -764,6 +927,8 @@ export class RunScene extends Phaser.Scene {
       implants: this.run.implants.map(i => i.name + (i.level && i.level > 1 ? ' ' + ['', 'I', 'II', 'III'][i.level] : '')), relics: this.run.relics.map(r => r.name),
       synergies: activeSynergies(this.run.implants).map(a => SYNERGIES[a.synergy].tiers[a.tier].name),
       psyBonus: psyBonusLabel(psyTier(this.run.psy)),
+      notice: this.run.contract && this.run.contract.room === this.run.roomIndex ? contractProgress(this.run.contract, this.tally)
+        : this.run.contract ? 'CONTRAT EN ATTENTE' : this.room.elite ? `ÉLITE — ${ELITE_LABELS[this.room.elite]}` : undefined,
       boss: this.boss && !this.boss.dead ? { hp: this.boss.hp, max: this.boss.maxHp, name: this.boss.def.name } : undefined,
     };
     this.registry.set('hud', hud);

@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { generateRun, type RoomPlan } from '../core/runMap';
 import { computeStats } from '../core/stats';
 import type { Implant, Relic } from '../core/types';
+import type { Contract } from '../core/contract';
 
 /** Everything that survives between rooms of one run. Lives in the game registry. */
 export interface RunState {
@@ -20,6 +21,8 @@ export interface RunState {
   damageDealt: number;
   hpHealed: number;
   timeMs: number;
+  /** a fixer contract waiting for (or running in) the next combat sector */
+  contract?: Contract & { room?: number };
 }
 
 /** Live values the HUD draws each frame. */
@@ -30,6 +33,8 @@ export interface HudData {
   synergies: string[];
   /** what the current psychosis tier gives, e.g. "+25 % DÉG" */
   psyBonus: string;
+  /** contract progress, elite or event tag */
+  notice?: string;
   boss?: { hp: number; max: number; name: string };
 }
 

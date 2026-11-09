@@ -259,6 +259,15 @@ export function generateNpcArt(scene: Phaser.Scene) {
     pal: pal({ H: 'w', F: 'v', K: 'h', Q: 's', T: 'r', U: 'M', L: 'm', A: 'y', V: 'w', N: 'G', O: 'k', B: 'k' }),
   };
   generateNpc(scene, 'npc-lo', lo);
+  // Street encounters.
+  generateNpc(scene, 'ev-fixer', { build: 'normal', hair: 'cap', extras: ['glasses'], torso: 'coat', tail: 3, arms: ['cloth', 'chrome'],
+    pal: pal({ T: 'G', U: 'k', L: 'g', A: 'y', V: 'y', I: 'y', N: 'g', O: 'G', B: 'w', K: 'S', Q: 'd' }) });
+  generateNpc(scene, 'ev-doc', { build: 'wide', hair: 'bald', extras: ['respirator', 'cybereye'], torso: 'apron', arms: ['skin', 'chrome'],
+    pal: pal({ T: 'g', U: 'G', L: 'v', A: 'r', N: 'G', O: 'k', B: 'k', K: 's', Q: 'S', R: 'r' }) });
+  generateNpc(scene, 'ev-net', { build: 'slim', hair: 'mohawk', extras: ['visor'], torso: 'hoodie', arms: ['cloth', 'cloth'],
+    pal: pal({ H: 'e', F: 'G', T: 'k', U: 'G', L: 'G', V: 'e', A: 'e', N: 'G', O: 'k', B: 'e', K: 'h', Q: 's' }) });
+  generateNpc(scene, 'ev-merchant', { build: 'wide', hair: 'afro', extras: ['earrings'], torso: 'vest', arms: ['skin', 'skin'], carry: 'bag', skirt: 2,
+    pal: pal({ H: 'm', F: 'M', T: 'c', U: 'C', L: 'w', A: 'y', N: 'P', O: 'G', B: 'y', K: 'S', Q: 'd' }) });
   // Small props still carried as separate images.
   if (!scene.textures.exists('bowl')) {
     const t = scene.textures.createCanvas('bowl', 8, 5)!;
