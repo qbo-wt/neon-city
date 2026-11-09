@@ -19,6 +19,8 @@ export interface EnemyHooks {
   onDeath(e: Enemy): void;
   /** The run's simulation clock (slows on parries, freezes on hit-stop). */
   now(): number;
+  /** This enemy's melee blow just landed on the player (thorns). */
+  struckPlayer(e: Enemy): void;
 }
 
 type AiState = 'chase' | 'windup' | 'attack' | 'recover' | 'stunned';
@@ -469,6 +471,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   private resolveHitOnPlayer(now: number, mult = 1) {
     const res = this.hooks.player.receiveHit(this.def.damage * mult, now, this.x, this.y);
+    if (res === 'hit') this.hooks.struckPlayer(this);
     if (res === 'parried') this.stun(now, this.def.behavior === 'melee' ? CONFIG.STUN_MS : CONFIG.STUN_MS * 1.5);
     return res;
   }

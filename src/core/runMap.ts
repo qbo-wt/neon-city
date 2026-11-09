@@ -2,6 +2,7 @@ import { CONFIG } from '../config';
 import { ROOM_TEMPLATES, BOSS_ROOM, type RoomTemplate } from '../data/rooms';
 import type { EnemyId } from '../data/enemies';
 import { createRng, pick, randInt, shuffle, type Rng } from './rng';
+import type { Family } from './types';
 
 export const TILE = 32;
 
@@ -13,7 +14,12 @@ export interface RoomPlan {
   waves: EnemyId[][];
   isBoss: boolean;
   doorRewards: Reward[];
+  /** implant doors show which family their clinic stocks */
+  doorFamilies: Family[];
 }
+
+const FAMILIES: Family[] = ['chrome', 'neural', 'blood', 'optic'];
+const families = (rng: Rng, n: number) => Array.from({ length: n }, () => pick(rng, FAMILIES));
 
 const REWARDS: Reward[] = ['implant', 'credits', 'heal', 'chest'];
 
@@ -44,6 +50,7 @@ export function generateRun(seed: number): RoomPlan[] {
       rooms.push({
         index, template: BOSS_ROOM, waves: [[final ? 'boss' : 'warden']], isBoss: true,
         doorRewards: final ? [] : shuffle(rng, REWARDS).slice(0, randInt(rng, 2, 3)),
+        doorFamilies: families(rng, 3),
       });
       continue;
     }
@@ -54,6 +61,7 @@ export function generateRun(seed: number): RoomPlan[] {
       waves: Array.from({ length: waveCount }, () => makeWave(rng, index)),
       isBoss: false,
       doorRewards: shuffle(rng, REWARDS).slice(0, randInt(rng, 2, 3)),
+      doorFamilies: families(rng, 3),
     });
   }
   return rooms;

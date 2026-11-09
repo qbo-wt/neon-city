@@ -16,6 +16,8 @@ export class HudScene extends Phaser.Scene {
   private implantsText!: Phaser.GameObjects.Text;
   private bossText!: Phaser.GameObjects.Text;
   private crisisText!: Phaser.GameObjects.Text;
+  private psyBonusText!: Phaser.GameObjects.Text;
+  private synergyText!: Phaser.GameObjects.Text;
   private glitchUntil = 0;
   private nextGlitchAt = 0;
 
@@ -31,6 +33,8 @@ export class HudScene extends Phaser.Scene {
     this.implantsText = txt(this, 4, CONFIG.HEIGHT - 10, '', 6, '#8a86b0');
     this.bossText = txt(this, CONFIG.WIDTH / 2, 21, '', 7, '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 3);
     this.crisisText = txt(this, CONFIG.WIDTH / 2, 48, 'CYBERPSYCHOSE', 14, '#ff2a6d').setOrigin(0.5).setVisible(false);
+    this.psyBonusText = txt(this, 178, 15, '', 5, '#f5e663');
+    this.synergyText = txt(this, 4, CONFIG.HEIGHT - 19, '', 6, '#39ff88');
   }
 
   update(time: number) {
@@ -48,6 +52,7 @@ export class HudScene extends Phaser.Scene {
     bar(g, 20, 4, 96, 6, d.hp / d.maxHp, COLORS.magenta);
     // Psychosis
     this.psyText.setText(`PSY ${Math.floor(d.psy)}%`);
+    this.psyBonusText.setText(d.psyBonus).setColor(tier === 'crisis' ? '#ff2a6d' : tier === 'drain' ? '#ff3b3b' : '#f5e663');
     const psyCol = tier === 'stable' ? COLORS.cyan : tier === 'glitch' ? COLORS.yellow : COLORS.magenta;
     bar(g, 178, 4, 80, 6, d.psy / 100, psyCol);
     g.lineStyle(1, 0xffffff, 0.4);
@@ -59,6 +64,7 @@ export class HudScene extends Phaser.Scene {
     this.rightText.setText(`NEURO[F] ${d.blockers}   ${d.credits}¢   SECTEUR ${d.room}/${d.rooms}`);
     const parts = [d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
     this.implantsText.setText(parts.filter(Boolean).join('   |   '));
+    this.synergyText.setText(d.synergies.length ? 'SYNERGIES : ' + d.synergies.join(' · ') : '');
 
     if (d.boss) {
       this.bossText.setText(d.boss.name.toUpperCase());

@@ -6,13 +6,15 @@ import { buildFlowField, nextStep, reachableCount } from '../core/flowField';
 import { rollLoot } from '../core/loot';
 import { applyBlocker, crisisMultipliers, hpDrainPerSec, psyOnKill, psyTier, tickPsychosis } from '../core/psychosis';
 import { TILE, spawnPoints, type Reward, type RoomPlan } from '../core/runMap';
-import { createRng, pick, shuffle, type Rng } from '../core/rng';
+import { createRng, pick, type Rng } from '../core/rng';
 import { loadSave, writeSave } from '../core/save';
 import { computeStats, totalLoad } from '../core/stats';
 import { getStorage } from '../core/storage';
 import type { Relic, Stats } from '../core/types';
 import { ENEMIES, type EnemyId } from '../data/enemies';
-import { IMPLANTS } from '../data/implants';
+import { FAMILY_COLORS, FAMILY_NAMES } from '../data/implants';
+import { SYNERGIES, activeSynergies } from '../data/synergies';
+import { applyOffer, offerImplants } from '../core/implantOffer';
 import { RELICS } from '../data/relics';
 import { Bullets } from '../entities/Bullets';
 import { Enemy, type EnemyHooks } from '../entities/Enemy';
@@ -33,6 +35,13 @@ import { txt } from '../ui/text';
 export const HUD_H = 14;
 
 const REWARD_ICON: Record<Reward, string> = { implant: 'implant-pickup', credits: 'credit', heal: 'heal', chest: 'chest' };
+const DOOR_LABELS: Record<Reward, string> = { implant: 'IMPLANT', credits: 'CRÉDITS', heal: 'SOIN', chest: 'COFFRE' };
+
+function psyBonusLabel(tier: ReturnType<typeof psyTier>) {
+  const m = crisisMultipliers(tier);
+  if (m.damage <= 1) return '';
+  return `+${Math.round((m.damage - 1) * 100)} % DÉG${m.speed > 1 ? ` +${Math.round((m.speed - 1) * 100)} % VIT` : ''}`;
+}
 
 /** Breakable kinds: texture, hit points, loot rolls. */
 const BREAKABLES = {
@@ -179,6 +188,7 @@ export class RunScene extends Phaser.Scene {
       steer: (x, y) => this.steer(x, y),
       occupied: (x, y) => this.navBlocked.has(`${Math.floor(x / TILE)},${Math.floor(y / TILE)}`),
       now: () => this.simNow,
+      struckPlayer: e => this.thorns(e),
     };
 
     this.events.on(PLAYER_ATTACK, this.onPlayerAttack, this);
@@ -246,10 +256,11 @@ export class RunScene extends Phaser.Scene {
       this.separateEnemies();
     }
     this.magnetPickups();
+    this.dashCuts();
     this.followCamera(real);
 
     if (this.roomActive) {
-      this.run.psy = tickPsychosis(this.run.psy, totalLoad(this.run.implants, this.stats), dt, this.stats.psyResist);
+      this.run.psy = tickPsychosis(this.run.psy, totalLoad(this.run.implants, this.stats), dt, this.stats.psyResist, this.stats.psyRateMult);
       this.player.hp = Math.max(0, this.player.hp - hpDrainPerSec(tier) * dt / 1000);
       // Death wins over a simultaneous room clear.
       if (this.player.hp <= 0) { this.endRun(false); return; }
@@ -286,6 +297,44 @@ export class RunScene extends Phaser.Scene {
       a.setPosition(a.x - ux * push, a.y - uy * push);
       b.setPosition(b.x + ux * push, b.y + uy * push);
     }
+  }
+
+  /** Tranchant Cinétique: enemies you dash through take a cut, once per dash. */
+  private dashCuts() {
+    if (this.stats.dashDamage <= 0 || !this.player.isDashing(this.simNow)) return;
+    for (const obj of [...this.enemies.getChildren()]) {
+      const e = obj as Enemy;
+      if (e.dead || e.getData('dashCut') === this.player.dashSerial) continue;
+      if (Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) > e.def.radius + 9) continue;
+      e.setData('dashCut', this.player.dashSerial);
+      const dmg = Math.round(this.stats.dashDamage);
+      this.run.damageDealt += Math.min(dmg, Math.max(0, e.hp));
+      e.takeHit(dmg, false, false, this.player.x, this.player.y, false);
+      audio.sfx('hit', { pitch: 1.5 });
+      this.hitstop(25);
+    }
+  }
+
+  /** Coque Titan / Forteresse: melee attackers take damage back. */
+  private thorns(e: Enemy) {
+    if (this.stats.thorns <= 0 || e.dead) return;
+    e.takeHit(Math.round(this.stats.thorns), false, false, this.player.x, this.player.y, false);
+    sparks(this, e.x, e.y, COLORS.white, 6, 12);
+  }
+
+  /** Psychosis change from an effect (parry, crit, hit), kept inside 0-100. */
+  private addPsy(v: number) {
+    if (!v) return;
+    this.run.psy = Math.min(100, Math.max(0, this.run.psy + (v > 0 ? v * (1 - this.stats.psyResist) : v)));
+  }
+
+  /** Heals from pickups, doors and sector regen go through the heal multiplier (Pacte de Sang). */
+  private heal(amount: number, fromKill = false) {
+    const before = this.player.hp;
+    this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + amount * (fromKill ? 1 : this.stats.healMult));
+    const gained = Math.max(0, this.player.hp - before);
+    this.run.hpHealed += gained;
+    return gained;
   }
 
   private passable = (tx: number, ty: number) => {
@@ -414,10 +463,8 @@ export class RunScene extends Phaser.Scene {
       floatText(this, k.x, k.y - 6, `+${gain}¢`, '#f5e663', 7);
       audio.sfx('credit');
     } else if (loot.kind === 'heal') {
-      const before = this.player.hp;
-      this.player.hp = Math.min(this.stats.maxHp, before + loot.amount);
-      this.run.hpHealed += Math.max(0, this.player.hp - before);
-      floatText(this, k.x, k.y - 6, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 7);
+      const gained = this.heal(loot.amount);
+      floatText(this, k.x, k.y - 6, `+${Math.round(gained)} PV`, '#39ff88', 7);
       audio.sfx('heal');
     } else if (loot.kind === 'relic') {
       const relic = k.getData('relic') as Relic;
@@ -445,7 +492,8 @@ export class RunScene extends Phaser.Scene {
       const e = obj as Enemy;
       if (e.dead || Phaser.Math.Distance.Between(ev.x, ev.y, e.x, e.y) > ev.radius + e.def.radius) continue;
       const countered = e.consumeVulnerable();
-      const { amount, crit } = computeHitDamage(this.stats, { countered, tier, roll: Math.random(), mult: ev.mult });
+      const { amount, crit } = computeHitDamage(this.stats, { countered, tier, roll: Math.random(), mult: ev.mult, psy: this.run.psy, hpRatio: this.player.hp / this.stats.maxHp });
+      this.addPsy(this.stats.hitPsy + (crit ? this.stats.critPsy : 0));
       this.run.damageDealt += Math.min(amount, Math.max(0, e.hp));
       const finisher = ev.comboIndex === CONFIG.COMBO_HITS;
       e.takeHit(amount, crit, countered, this.player.x, this.player.y, finisher);
@@ -494,6 +542,10 @@ export class RunScene extends Phaser.Scene {
   /** Perfect parry: a freeze, then slow motion, a shock ring and a chromatic flash on the HUD. */
   private onParry(x: number, y: number) {
     audio.sfx('parry');
+    if (this.stats.parryPsy) {
+      this.addPsy(this.stats.parryPsy);
+      floatText(this, this.player.x, this.player.y - 18, `${this.stats.parryPsy > 0 ? '+' : ''}${this.stats.parryPsy} PSY`, '#39ff88', 7);
+    }
     this.hitstop(70);
     this.slowmo(380, 0.3);
     this.registry.set('parryAt', this.game.loop.time);
@@ -552,6 +604,12 @@ export class RunScene extends Phaser.Scene {
     if (e.exploded) return; // blew itself up: no kill, no credits
     this.run.kills++;
     this.run.psy = psyOnKill(this.run.psy, this.stats.psyResist);
+    // Lifesteal implants, and the cyberpsycho's trade: in crisis every kill patches you up.
+    const leech = this.stats.killHeal + (psyTier(this.run.psy) === 'crisis' ? CONFIG.CRISIS_KILL_HEAL : 0);
+    if (leech > 0) {
+      const g = this.heal(leech, true);
+      if (g >= 1) floatText(this, this.player.x + 8, this.player.y - 12, `+${Math.round(g)}`, '#39ff88', 6);
+    }
     const gain = Math.round(e.def.credits * this.stats.creditMult);
     this.run.creditsEarned += gain;
     if (gain) floatText(this, e.x, e.y - 4, `+${gain}¢`, '#f5e663', 7);
@@ -581,10 +639,8 @@ export class RunScene extends Phaser.Scene {
     const t = this.screenText(this.room.isBoss ? 'CIBLE NEUTRALISÉE' : 'SECTEUR NETTOYÉ', 11, this.room.isBoss ? '#f5e663' : '#00f0ff', 120);
     this.tweens.add({ targets: t, alpha: 0, y: 100, delay: 600, duration: 600, onComplete: () => t.destroy() });
     if (this.stats.regenOnClear > 0) {
-      const before = this.player.hp;
-      this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + this.stats.maxHp * this.stats.regenOnClear);
-      this.run.hpHealed += Math.max(0, this.player.hp - before);
-      floatText(this, this.player.x, this.player.y - 14, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 8);
+      const gained = this.heal(this.stats.maxHp * this.stats.regenOnClear);
+      floatText(this, this.player.x, this.player.y - 14, `+${Math.round(gained)} PV`, '#39ff88', 8);
     }
     this.unlockDoors();
   }
@@ -594,51 +650,71 @@ export class RunScene extends Phaser.Scene {
       const reward = this.room.doorRewards[i];
       slot.locked.destroy();
       const door = this.physics.add.staticImage(slot.x, slot.y, 'door');
+      const fam = this.room.doorFamilies[i];
       const icon = this.add.image(slot.x, slot.y + 2, REWARD_ICON[reward]).setDepth(20);
+      if (reward === 'implant') icon.setTint(Phaser.Display.Color.HexStringToColor(FAMILY_COLORS[fam]).color);
       this.tweens.add({ targets: icon, y: slot.y - 2, yoyo: true, repeat: -1, duration: 500 });
       this.add.image(slot.x, slot.y + 20, 'glow').setTint(COLORS.cyan).setAlpha(0.4).setBlendMode(Phaser.BlendModes.ADD).setDepth(1);
-      this.physics.add.overlap(this.player, door, () => this.takeDoor(reward));
+      // Say what is behind the door, so picking an exit is a choice of route.
+      const label = reward === 'implant' ? `IMPLANT ${FAMILY_NAMES[fam]}` : DOOR_LABELS[reward];
+      const color = reward === 'implant' ? FAMILY_COLORS[fam] : '#e8e8ff';
+      txt(this, slot.x, slot.y + 22, label, 5, color).setOrigin(0.5).setDepth(21).setStroke('#05030f', 3);
+      this.physics.add.overlap(this.player, door, () => this.takeDoor(reward, fam));
     });
     audio.sfx('door');
   }
 
-  private takeDoor(reward: Reward) {
+  private takeDoor(reward: Reward, family?: import('../core/types').Family) {
     if (this.leaving) return;
     this.leaving = true;
     audio.sfx('door', { pitch: 1.3 });
     const ri = this.run.roomIndex;
     if (reward === 'implant') {
-      const owned = new Set(this.run.implants.map(i => i.id));
-      const options = shuffle(createRng(this.run.seed + ri * 13), IMPLANTS.filter(i => !owned.has(i.id))).slice(0, 3);
+      const options = offerImplants(createRng(this.run.seed + ri * 13), this.run.implants, ri, { family, allowBlack: ri >= 2 });
       if (options.length) {
-        this.physics.pause();
-        (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
-        audio.sfx('uiOpen');
-        this.choice = new ImplantChoice(this, options, this.controls, imp => {
-          audio.sfx('implant');
-          this.run.implants.push(imp);
-          const next = this.computeStats();
-          // Set the live HP: update() copies player.hp into run.hp every frame.
-          this.player.hp = this.run.hp = Math.min(next.maxHp, this.player.hp + Math.max(0, next.maxHp - this.stats.maxHp));
-          this.choice = undefined;
-          this.nextRoom();
-        });
+        this.openImplantChoice(options, () => this.nextRoom());
         return;
       }
       reward = 'credits';
     }
     if (reward === 'credits') this.run.creditsEarned += Math.round((8 + ri * 2) * this.stats.creditMult);
     if (reward === 'heal') {
-      const before = this.player.hp;
-      this.player.hp = this.run.hp = Math.min(this.stats.maxHp, before + this.stats.maxHp * CONFIG.HEAL_FRACTION);
-      this.run.hpHealed += Math.max(0, this.player.hp - before);
-      floatText(this, this.player.x, this.player.y - 14, `+${Math.round(this.player.hp - before)} PV`, '#39ff88', 9);
+      const gained = this.heal(this.stats.maxHp * CONFIG.HEAL_FRACTION);
+      floatText(this, this.player.x, this.player.y - 14, `+${Math.round(gained)} PV`, '#39ff88', 9);
+      audio.sfx('heal');
     }
     if (reward === 'chest') {
       this.run.creditsEarned += Math.round((5 + ri * 2) * this.stats.creditMult);
       if (Math.random() < 0.5) this.run.blockers++;
     }
     this.nextRoom();
+  }
+
+  /** Implant cards; `then` runs once one is taken. */
+  private openImplantChoice(options: import('../core/implantOffer').Offer[], then: () => void, title?: string) {
+    this.physics.pause();
+    (this.player.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
+    audio.sfx('uiOpen');
+    this.choice = new ImplantChoice(this, options, this.controls, this.run.implants, o => {
+      audio.sfx('implant');
+      const before = this.stats.maxHp;
+      const had = new Set(activeSynergies(this.run.implants).map(a => `${a.synergy}${a.tier}`));
+      this.run.implants = applyOffer(this.run.implants, o);
+      const next = this.computeStats();
+      // Set the live HP: update() copies player.hp into run.hp every frame.
+      this.player.hp = this.run.hp = Math.min(next.maxHp, this.player.hp + Math.max(0, next.maxHp - before));
+      this.stats = next;
+      this.player.setStats(next);
+      // A new synergy tier is a moment: announce it.
+      const fresh = activeSynergies(this.run.implants).filter(a => !had.has(`${a.synergy}${a.tier}`));
+      this.choice = undefined;
+      if (fresh.length) {
+        const t = SYNERGIES[fresh[0].synergy].tiers[fresh[0].tier];
+        const msg = this.screenText(`SYNERGIE ${FAMILY_NAMES[fresh[0].synergy]} — ${t.name.toUpperCase()}\n${t.description}`, 9, FAMILY_COLORS[fresh[0].synergy], 90);
+        audio.sfx('relic');
+        this.time.delayedCall(1300, () => { msg.destroy(); then(); });
+      } else then();
+    }, title);
   }
 
   private nextRoom() {
@@ -685,7 +761,9 @@ export class RunScene extends Phaser.Scene {
       hp: this.player.hp, maxHp: this.stats.maxHp, psy: this.run.psy, credits: this.run.creditsEarned,
       dash: this.player.dashCharges, dashMax: this.stats.dashCharges, blockers: this.run.blockers,
       room: this.run.roomIndex + 1, rooms: CONFIG.ROOMS_PER_RUN,
-      implants: this.run.implants.map(i => i.name), relics: this.run.relics.map(r => r.name),
+      implants: this.run.implants.map(i => i.name + (i.level && i.level > 1 ? ' ' + ['', 'I', 'II', 'III'][i.level] : '')), relics: this.run.relics.map(r => r.name),
+      synergies: activeSynergies(this.run.implants).map(a => SYNERGIES[a.synergy].tiers[a.tier].name),
+      psyBonus: psyBonusLabel(psyTier(this.run.psy)),
       boss: this.boss && !this.boss.dead ? { hp: this.boss.hp, max: this.boss.maxHp, name: this.boss.def.name } : undefined,
     };
     this.registry.set('hud', hud);

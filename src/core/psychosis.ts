@@ -11,9 +11,9 @@ export function psyTier(v: number): PsyTier {
   return 'stable';
 }
 
-export function tickPsychosis(v: number, load: number, dtMs: number, resist: number): number {
+export function tickPsychosis(v: number, load: number, dtMs: number, resist: number, rateMult = 1): number {
   const dtSec = Math.min(dtMs, CONFIG.MAX_DT_MS) / 1000;
-  return clamp(v + (CONFIG.PSY_BASE_RATE + load * CONFIG.PSY_RATE_PER_LOAD) * (1 - resist) * dtSec);
+  return clamp(v + (CONFIG.PSY_BASE_RATE + load * CONFIG.PSY_RATE_PER_LOAD) * rateMult * (1 - resist) * dtSec);
 }
 
 export function psyOnKill(v: number, resist: number): number {
@@ -30,8 +30,11 @@ export function hpDrainPerSec(tier: PsyTier): number {
   return 0;
 }
 
-export function crisisMultipliers(tier: PsyTier): { damage: number; speed: number } {
-  return tier === 'crisis'
-    ? { damage: CONFIG.CRISIS_DAMAGE_MULT, speed: CONFIG.CRISIS_SPEED_MULT }
-    : { damage: 1, speed: 1 };
+/** Psychosis is risk and reward: the higher it climbs, the harder you hit (and the faster you burn). */
+export function psyMultipliers(tier: PsyTier): { damage: number; speed: number } {
+  if (tier === 'crisis') return { damage: CONFIG.CRISIS_DAMAGE_MULT, speed: CONFIG.CRISIS_SPEED_MULT };
+  if (tier === 'drain') return { damage: CONFIG.PSY_DRAIN_DAMAGE, speed: CONFIG.PSY_DRAIN_SPEED };
+  if (tier === 'glitch') return { damage: CONFIG.PSY_GLITCH_DAMAGE, speed: 1 };
+  return { damage: 1, speed: 1 };
 }
+export const crisisMultipliers = psyMultipliers;

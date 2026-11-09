@@ -29,6 +29,15 @@ describe('psychosis', () => {
     expect(tickPsychosis(0, 10, 50, 0.5)).toBeCloseTo(tickPsychosis(0, 10, 50, 0) / 2);
     expect(psyOnKill(0, 0.5)).toBeCloseTo(CONFIG.PSY_PER_KILL / 2);
   });
+  it('a rate multiplier scales the passive rise (black-market leaks, notoriety)', () => {
+    expect(tickPsychosis(0, 10, 50, 0, 1.5)).toBeCloseTo(tickPsychosis(0, 10, 50, 0) * 1.5);
+  });
+  it('higher tiers hit harder: risk and reward', () => {
+    const d = (t: Parameters<typeof crisisMultipliers>[0]) => crisisMultipliers(t).damage;
+    expect(d('stable')).toBeLessThan(d('glitch'));
+    expect(d('glitch')).toBeLessThan(d('drain'));
+    expect(d('drain')).toBeLessThan(d('crisis'));
+  });
   it('blocker never goes below 0', () => {
     expect(applyBlocker(10, 30)).toBe(0);
     expect(applyBlocker(80, 30)).toBe(50);
@@ -38,7 +47,9 @@ describe('psychosis', () => {
     expect(hpDrainPerSec('glitch')).toBe(0);
     expect(hpDrainPerSec('drain')).toBe(CONFIG.PSY_DRAIN_SLOW);
     expect(hpDrainPerSec('crisis')).toBe(CONFIG.PSY_DRAIN_FAST);
-    expect(crisisMultipliers('drain')).toEqual({ damage: 1, speed: 1 });
+    expect(crisisMultipliers('stable')).toEqual({ damage: 1, speed: 1 });
+    expect(crisisMultipliers('glitch')).toEqual({ damage: CONFIG.PSY_GLITCH_DAMAGE, speed: 1 });
+    expect(crisisMultipliers('drain')).toEqual({ damage: CONFIG.PSY_DRAIN_DAMAGE, speed: CONFIG.PSY_DRAIN_SPEED });
     expect(crisisMultipliers('crisis')).toEqual({ damage: CONFIG.CRISIS_DAMAGE_MULT, speed: CONFIG.CRISIS_SPEED_MULT });
   });
 });

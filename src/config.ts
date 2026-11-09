@@ -32,8 +32,14 @@ export const CONFIG = {
   PSY_PER_KILL: 1,
   PSY_DRAIN_SLOW: 3,
   PSY_DRAIN_FAST: 8,
+  /** psychosis is also power: damage / speed bonuses per tier (glitch 50 %, drain 75 %, crisis 100 %) */
+  PSY_GLITCH_DAMAGE: 1.1,
+  PSY_DRAIN_DAMAGE: 1.25,
+  PSY_DRAIN_SPEED: 1.1,
   CRISIS_DAMAGE_MULT: 1.5,
   CRISIS_SPEED_MULT: 1.5,
+  /** in cyberpsychosis every kill heals a little: you can ride the edge if you keep killing */
+  CRISIS_KILL_HEAL: 4,
   BLOCKER_AMOUNT: 30,
   HEAL_FRACTION: 0.3,
 

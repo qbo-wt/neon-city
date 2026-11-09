@@ -40,6 +40,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private comboIndex = 0;
   private lungeUntil = 0;
   private lungeDir = { x: 0, y: 0 };
+  /** Increments on every dash: enemies remember which dash already cut them (Tranchant Cinétique). */
+  dashSerial = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, public stats: Stats, private controls: Controls, private mode: 'combat' | 'explore' = 'combat') {
     super(scene, x, y, playerKey('d', 'idle0'));
@@ -90,7 +92,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const aim = this.aimDir();
 
     // Priority: parry > dash > attack. Dash is allowed during attacks and whiff lock, never during an active parry.
-    if (this.mode === 'combat' && !dashing && !parrying && !locked && this.controls.wantsParry(now)) {
+    if (this.mode === 'combat' && !dashing && !parrying && !locked && !this.stats.parryLocked && this.controls.wantsParry(now)) {
       this.startParry(now);
     } else if (!parrying && this.dashCharges > 0 && this.controls.dash()) {
       this.startDash(now, move.x || move.y ? move : aim);
@@ -179,6 +181,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.dashCharges--;
     this.dashDir = dir;
     this.dashUntil = now + CONFIG.DASH_DURATION_MS;
+    this.dashSerial++;
     audio.sfx('dash');
     for (let i = 0; i < 5; i++) {
       const puff = this.scene.add.circle(this.x - dir.x * 4 + (Math.random() - 0.5) * 8, this.y + 7, 1.5, 0x8a86b0, 0.5).setDepth(4.5);
@@ -208,7 +211,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.lastAttackAt = now;
     this.attackAt = now;
     const finisher = this.comboIndex === CONFIG.COMBO_HITS;
-    this.nextAttackAt = now + CONFIG.ATTACK_COOLDOWN_MS + (finisher ? 120 : 0);
+    this.nextAttackAt = now + (CONFIG.ATTACK_COOLDOWN_MS + (finisher ? 120 : 0)) / this.stats.attackSpeed;
     this.lungeDir = aim;
     this.lungeUntil = now + 70;
     audio.sfx('swing', { pitch: finisher ? 0.8 : 1 + this.comboIndex * 0.06 });

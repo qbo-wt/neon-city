@@ -42,10 +42,10 @@ describe('relics', () => {
 });
 
 describe('content data', () => {
-  it('has 8 implants with positive load and unique ids', () => {
-    expect(IMPLANTS).toHaveLength(8);
+  it('has 24 implants with positive load and unique ids', () => {
+    expect(IMPLANTS).toHaveLength(24);
     IMPLANTS.forEach(i => expect(i.load).toBeGreaterThan(0));
-    expect(new Set(IMPLANTS.map(i => i.id)).size).toBe(8);
+    expect(new Set(IMPLANTS.map(i => i.id)).size).toBe(24);
   });
   it('has 16 body and 8 mind nodes with unique ids and valid prerequisites', () => {
     expect(SKILL_NODES.filter(n => n.tree === 'body')).toHaveLength(16);

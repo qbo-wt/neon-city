@@ -27,6 +27,9 @@ export interface HudData {
   hp: number; maxHp: number; psy: number; credits: number;
   dash: number; dashMax: number; blockers: number;
   room: number; rooms: number; implants: string[]; relics: string[];
+  synergies: string[];
+  /** what the current psychosis tier gives, e.g. "+25 % DÉG" */
+  psyBonus: string;
   boss?: { hp: number; max: number; name: string };
 }
 

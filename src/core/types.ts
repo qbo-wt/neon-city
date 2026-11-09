@@ -26,14 +26,50 @@ export interface Stats {
   rangeMult: number;
   /** golden pistols: fraction of damage fired as a bullet on each swing (0 = no gun) */
   gunDamage: number;
+  /** crit damage multiplier */
+  critMult: number;
+  /** damage dealt back to a melee attacker that hits you */
+  thorns: number;
+  /** HP regained per kill */
+  killHeal: number;
+  /** damage dealt to every enemy you dash through */
+  dashDamage: number;
+  /** > 0: parrying is impossible (OS Berserker) */
+  parryLocked: number;
+  /** multiplier on heals from pickups, doors and sector regen */
+  healMult: number;
+  /** psychosis change on each perfect parry (negative calms you down) */
+  parryPsy: number;
+  /** psychosis change on each critical hit */
+  critPsy: number;
+  /** psychosis added by each hit you land */
+  hitPsy: number;
+  /** extra damage multiplier while under 40 % HP */
+  lowHpDamage: number;
+  /** extra damage per psychosis point (0.003 = +30 % at 100 %) */
+  psyDamage: number;
+  /** multiplier on the passive psychosis rise */
+  psyRateMult: number;
+  /** attack rate multiplier (higher = faster swings) */
+  attackSpeed: number;
 }
+
+export type Family = 'chrome' | 'neural' | 'blood' | 'optic';
+export type Rarity = 'common' | 'rare' | 'epic' | 'black';
 
 export interface Implant {
   id: string;
   name: string;
+  /** level 1 text; `describe` gives the text for higher levels */
   description: string;
   load: number;
-  modify: (s: Stats) => Stats;
+  /** `level` 1-3: upgrades of an implant you already carry */
+  modify: (s: Stats, level?: number) => Stats;
+  describe?: (level: number) => string;
+  family?: Family;
+  rarity?: Rarity;
+  /** the level carried in this run (owned copies only) */
+  level?: number;
 }
 
 export interface Relic {
