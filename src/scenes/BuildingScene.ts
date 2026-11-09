@@ -59,11 +59,20 @@ export class BuildingScene extends InteriorScene {
     this.add.image(352, 16, 'elevator').setDepth(1);
     this.add.image(144, 38, 'doormat').setDepth(0.5);
 
-    // Pipes and cable trays along the top wall.
+    // Pipes along the top wall, interrupted at every door and at the elevator (they go into the wall there).
     const pipes = this.add.graphics().setDepth(1);
-    pipes.lineStyle(2, 0x3d3352).lineBetween(32, 29, 448, 29);
-    pipes.lineStyle(1, 0x1d1729).lineBetween(32, 26, 448, 26);
-    for (let x = 48; x < 448; x += 64) pipes.fillStyle(0x4a3f60).fillRect(x, 27, 4, 4);
+    const openings: [number, number][] = [[36, 60], [132, 156], [228, 252], [324, 380], [420, 444]];
+    let from = 32;
+    for (const [a, b] of [...openings, [448, 448] as [number, number]]) {
+      if (a - from >= 6) {
+        pipes.lineStyle(2, 0x3d3352).lineBetween(from, 29, a, 29);
+        pipes.lineStyle(1, 0x1d1729).lineBetween(from, 26, a, 26);
+        // Flanges where the pipe enters the wall, and one clamp in the middle of long runs.
+        pipes.fillStyle(0x4a3f60).fillRect(from, 26, 2, 5).fillRect(a - 2, 26, 2, 5);
+        if (a - from > 40) pipes.fillRect(Math.round((from + a) / 2) - 2, 27, 4, 4);
+      }
+      from = b;
+    }
 
     for (const [key, x, y] of WALL_DECOR) this.add.image(x, y, key).setDepth(1.5);
     for (const [key, x, y] of PROPS) this.solid(key, x, y);
