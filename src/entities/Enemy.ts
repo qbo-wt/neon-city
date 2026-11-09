@@ -9,6 +9,10 @@ export interface ShotOpts { psy?: number; key?: string }
 export interface EnemyHooks {
   player: Player;
   fireBullet(x: number, y: number, angle: number, speed: number, damage: number, opts?: ShotOpts): void;
+  /** Walking direction toward the player along the level's flow field (null = no path known). */
+  steer(x: number, y: number): { x: number; y: number } | null;
+  /** True when (x, y) lies in a tile taken by a crate or a large prop. */
+  occupied(x: number, y: number): boolean;
   onDeath(e: Enemy): void;
 }
 
@@ -48,6 +52,11 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private chevron: Phaser.GameObjects.Image;
   private baseKey: string;
   private quakeRing?: Phaser.GameObjects.Arc;
+  // Stuck detection: if an enemy trying to move stays in place, it side-steps for a moment.
+  private stuckCheckAt = 0;
+  private stuckFrom = { x: 0, y: 0 };
+  private unstickUntil = 0;
+  private unstickDir = { x: 0, y: 0 };
 
   constructor(scene: Phaser.Scene, x: number, y: number, readonly def: EnemyDef, private hooks: EnemyHooks) {
     super(scene, x, y, `enemy-${def.id}`);
@@ -190,17 +199,56 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  /** Where to walk: along the flow field (around obstacles) when far, straight at the player when close. */
+  private pathDir(nx: number, ny: number, dist: number) {
+    if (dist < 40) return { x: nx, y: ny };
+    return this.hooks.steer(this.x, this.y) ?? { x: nx, y: ny };
+  }
+
+  /** Called while chasing: if we barely moved in 400 ms while trying to, slide sideways for 350 ms. */
+  private checkStuck(now: number, dir: { x: number; y: number }) {
+    if (now < this.stuckCheckAt) return;
+    const moved = Phaser.Math.Distance.Between(this.x, this.y, this.stuckFrom.x, this.stuckFrom.y);
+    if (this.stuckCheckAt > 0 && moved < 4 && Math.hypot(dir.x, dir.y) > 0.1) {
+      // Snagged on a corner: first slide back to the middle of our tile, which frees big bodies;
+      // if already centred, side-step perpendicular to where we were trying to go.
+      const cx = Math.floor(this.x / 32) * 32 + 16 - this.x, cy = Math.floor(this.y / 32) * 32 + 16 - this.y, off = Math.hypot(cx, cy);
+      const side = Math.random() < 0.5 ? 1 : -1;
+      this.unstickDir = off > 5 ? { x: cx / off, y: cy / off } : { x: -dir.y * side, y: dir.x * side };
+      this.unstickUntil = now + (off > 5 ? Math.min(350, off / this.speed * 1000 + 60) : 350);
+      this.strafe = -this.strafe;
+    }
+    this.stuckCheckAt = now + 400;
+    this.stuckFrom = { x: this.x, y: this.y };
+  }
+
   private chase(now: number, body: Phaser.Physics.Arcade.Body, nx: number, ny: number, dist: number) {
     const b = this.def.behavior;
     const kite = KITE[b];
+    if (now < this.unstickUntil) {
+      body.setVelocity(this.unstickDir.x * this.speed, this.unstickDir.y * this.speed);
+      return;
+    }
+    if (kite && this.hooks.occupied(this.x, this.y)) {
+      // Wedged against a crate or a bench: step out of that tile before kiting again.
+      const out = this.hooks.steer(this.x, this.y) ?? { x: -nx, y: -ny };
+      body.setVelocity(out.x * this.speed, out.y * this.speed);
+      this.checkStuck(now, out);
+      return;
+    }
     if (kite) {
-      // Keep a firing distance and strafe around the player.
+      // Keep a firing distance and strafe around the player; approach along the path, never through walls.
       const want = dist < kite[0] ? -1 : dist > kite[1] ? 1 : 0;
-      body.setVelocity((nx * want - ny * this.strafe * 0.6) * this.speed, (ny * want + nx * this.strafe * 0.6) * this.speed);
+      const p = want === 1 ? this.pathDir(nx, ny, dist) : { x: nx, y: ny };
+      const vx = p.x * want - p.y * this.strafe * 0.6, vy = p.y * want + p.x * this.strafe * 0.6;
+      body.setVelocity(vx * this.speed, vy * this.speed);
+      this.checkStuck(now, { x: vx, y: vy });
       if (now >= this.nextAttackAt && dist < 240) this.enter('windup', this.telegraph);
       return;
     }
-    body.setVelocity(nx * this.speed, ny * this.speed);
+    const p = this.pathDir(nx, ny, dist);
+    body.setVelocity(p.x * this.speed, p.y * this.speed);
+    this.checkStuck(now, p);
     if (now < this.nextAttackAt) return;
     if ((b === 'melee' && dist < 22) || (b === 'explode' && dist < 26) || (b === 'charge' && dist < 140)) {
       this.chargeDir = { x: nx, y: ny };

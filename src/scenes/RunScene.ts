@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG, COLORS, SCENES } from '../config';
 import { computeHitDamage } from '../core/combat';
 import { addRecord } from '../core/history';
+import { buildFlowField, nextStep, reachableCount } from '../core/flowField';
 import { rollLoot } from '../core/loot';
 import { applyBlocker, crisisMultipliers, hpDrainPerSec, psyOnKill, psyTier, tickPsychosis } from '../core/psychosis';
 import { TILE, spawnPoints, type Reward, type RoomPlan } from '../core/runMap';
@@ -57,6 +58,12 @@ export class RunScene extends Phaser.Scene {
   private breakables!: Phaser.Physics.Arcade.StaticGroup;
   private pickups!: Phaser.Physics.Arcade.Group;
   private blockedTiles = new Set<string>();
+  /** Tiles enemies must path around (breakables and large props). Small posts are not in here. */
+  private navBlocked = new Set<string>();
+  /** Shared enemy navigation: distance to the player for every tile, rebuilt as the player moves. */
+  private flow?: Int16Array;
+  private flowFrom = '';
+  private nextFlowAt = 0;
   private bullets!: Bullets;
   private rain!: Rain;
   private lighting!: Lighting;
@@ -80,6 +87,7 @@ export class RunScene extends Phaser.Scene {
     this.roomActive = this.leaving = this.ending = false;
     this.boss = this.choice = undefined;
     this.blockedTiles = new Set();
+    this.navBlocked = new Set();
   }
 
   private computeStats() { return computeStats(this.run.implants, this.run.ownedNodes, this.run.relics); }
@@ -112,13 +120,12 @@ export class RunScene extends Phaser.Scene {
     this.bullets = new Bullets(this);
     this.breakables = this.physics.add.staticGroup();
     this.placeBreakables(style, rng);
-    placeStreetProps(this, this.room.template, style, rng, this.built.walls, this.blockedTiles);
+    placeStreetProps(this, this.room.template, style, rng, this.built.walls, this.blockedTiles, this.navBlocked);
 
     this.physics.add.collider(this.player, this.built.walls);
     this.physics.add.collider(this.player, this.breakables);
     this.physics.add.collider(this.enemies, this.built.walls);
     this.physics.add.collider(this.enemies, this.breakables);
-    this.physics.add.collider(this.enemies, this.enemies);
     this.physics.add.collider(this.bullets.group, this.built.walls, b => (b as Phaser.GameObjects.GameObject).destroy());
     this.physics.add.collider(this.bullets.group, this.breakables, (b, br) => {
       const bullet = b as Phaser.Physics.Arcade.Image;
@@ -133,6 +140,8 @@ export class RunScene extends Phaser.Scene {
       player: this.player,
       fireBullet: (x, y, a, s, d, o) => this.bullets.fire(x, y, a, s, d, 'enemy', o),
       onDeath: e => this.onEnemyDeath(e),
+      steer: (x, y) => this.steer(x, y),
+      occupied: (x, y) => this.navBlocked.has(`${Math.floor(x / TILE)},${Math.floor(y / TILE)}`),
     };
 
     this.events.on(PLAYER_ATTACK, this.onPlayerAttack, this);
@@ -178,7 +187,9 @@ export class RunScene extends Phaser.Scene {
     const tier = psyTier(this.run.psy);
     this.player.speedMult = crisisMultipliers(tier).speed;
     this.player.tick(time);
+    this.updateFlow(time);
     this.enemies.getChildren().forEach(e => (e as Enemy).tick(time));
+    this.separateEnemies();
     this.magnetPickups();
     this.followCamera(dt);
 
@@ -201,6 +212,58 @@ export class RunScene extends Phaser.Scene {
     this.publishHud();
   }
 
+  // ---------- enemy navigation ----------
+
+  /**
+   * Soft crowd separation instead of rigid enemy-enemy collisions: overlapping enemies drift apart,
+   * so two of them meeting in a narrow passage slide past each other instead of locking up.
+   */
+  private separateEnemies() {
+    const list = this.enemies.getChildren() as Enemy[];
+    for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+      const a = list[i], b = list[j];
+      if (a.dead || b.dead) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+      const min = a.def.radius + b.def.radius;
+      if (d >= min) continue;
+      const push = (min - d) * 0.25, ux = dx / d, uy = dy / d;
+      a.setPosition(a.x - ux * push, a.y - uy * push);
+      b.setPosition(b.x + ux * push, b.y + uy * push);
+    }
+  }
+
+  private passable = (tx: number, ty: number) => {
+    const c = this.room.template.grid[ty]?.[tx];
+    return (c === '.' || c === 'P') && !this.navBlocked.has(`${tx},${ty}`);
+  };
+
+  private updateFlow(time: number) {
+    const t = this.playerTile(), key = `${t.x},${t.y}`;
+    if (key === this.flowFrom && time < this.nextFlowAt) return;
+    const g = this.room.template.grid;
+    // The player's own tile is always a valid target, even if a prop sits on part of it.
+    this.flow = buildFlowField((x, y) => (x === t.x && y === t.y) || this.passable(x, y), g[0].length, g.length, t);
+    this.flowFrom = key;
+    this.nextFlowAt = time + 300;
+  }
+
+  private steer(x: number, y: number): { x: number; y: number } | null {
+    if (!this.flow) return null;
+    const g = this.room.template.grid, t = this.playerTile(), w = g[0].length;
+    const cur = { x: Math.floor(x / TILE), y: Math.floor(y / TILE) };
+    const ok = (tx: number, ty: number) => (tx === t.x && ty === t.y) || this.passable(tx, ty);
+    let step = nextStep(this.flow, w, g.length, cur, ok);
+    if (!ok(cur.x, cur.y)) {
+      // Pushed into an occupied tile (crate, bench…): leave it through a free side first, never diagonally past it.
+      const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => ({ x: cur.x + dx, y: cur.y + dy }))
+        .filter(p => ok(p.x, p.y)).sort((a, b) => this.flow![a.y * w + a.x] - this.flow![b.y * w + b.x]);
+      step = sides[0] ?? step;
+    }
+    if (!step) return null;
+    const cx = step.x * TILE + TILE / 2 - x, cy = step.y * TILE + TILE / 2 - y, l = Math.hypot(cx, cy) || 1;
+    return { x: cx / l, y: cy / l };
+  }
+
   // ---------- breakables and loot ----------
 
   private placeBreakables(style: StreetStyle, rng: Rng) {
@@ -213,8 +276,15 @@ export class RunScene extends Phaser.Scene {
       free.push({ x: tx, y: ty });
     }));
     const count = this.room.isBoss ? 4 : Math.round(free.length / 20);
+    const reach = () => reachableCount(this.passable, g[0].length, g.length, start);
+    let reachable = reach();
     for (let i = 0; i < count && free.length; i++) {
       const t = free.splice(Math.floor(rng() * free.length), 1)[0];
+      // Never wall off part of the map with a crate.
+      this.navBlocked.add(`${t.x},${t.y}`);
+      const after = reach();
+      if (after < reachable - 1) { this.navBlocked.delete(`${t.x},${t.y}`); continue; }
+      reachable = after;
       const kind = pick(rng, BREAK_BY_STYLE[style]);
       const def = BREAKABLES[kind];
       const b = this.breakables.create(t.x * TILE + 16, t.y * TILE + 16, def.key) as Phaser.Physics.Arcade.Image;
@@ -239,6 +309,8 @@ export class RunScene extends Phaser.Scene {
     const rolls = b.getData('rolls') as number;
     for (let i = 0; i < rolls; i++) this.dropLoot(b.x + (i ? 8 : 0), b.y);
     this.blockedTiles.delete(`${Math.floor(b.x / TILE)},${Math.floor(b.y / TILE)}`);
+    this.navBlocked.delete(`${Math.floor(b.x / TILE)},${Math.floor(b.y / TILE)}`);
+    this.nextFlowAt = 0; // a path just opened
     b.destroy();
   }
 

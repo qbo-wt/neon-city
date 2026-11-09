@@ -5,6 +5,7 @@ import { TILE } from '../core/runMap';
 import type { RoomTemplate } from '../data/rooms';
 import type { CanvasTex, Px } from './generateTextures';
 import type { StreetStyle } from './streetArt';
+import { reachableCount } from '../core/flowField';
 
 /** Street furniture sprites. */
 export function generatePropTextures(scene: Phaser.Scene, tex: CanvasTex, px: Px) {
@@ -87,7 +88,7 @@ const BY_STYLE: Record<StreetStyle, (keyof typeof P)[]> = {
  * Solid props get a small static body in `walls`; tree crowns and lamp heads are drawn above the player.
  */
 export function placeStreetProps(scene: Phaser.Scene, template: RoomTemplate, style: StreetStyle, rng: Rng,
-  walls: Phaser.Physics.Arcade.StaticGroup, blocked: Set<string>) {
+  walls: Phaser.Physics.Arcade.StaticGroup, blocked: Set<string>, navBlocked: Set<string>) {
   const g = template.grid;
   const isFloor = (x: number, y: number) => { const c = g[y]?.[x]; return c === '.' || c === 'P'; };
   const built = (x: number, y: number) => { const c = g[y]?.[x]; return c === undefined || c === '#' || c === ' ' || c === 'D'; };
@@ -100,6 +101,9 @@ export function placeStreetProps(scene: Phaser.Scene, template: RoomTemplate, st
     const dir = [[0, -1], [0, 1], [-1, 0], [1, 0]].find(([dx, dy]) => built(tx + dx, ty + dy));
     if (dir && isFloor(tx - dir[0], ty - dir[1])) spots.push({ x: tx, y: ty, dx: dir[0], dy: dir[1] });
   }));
+  // Navigation must stay connected: a prop that would cut the map in two is not counted as blocking.
+  const navPassable = (x: number, y: number) => isFloor(x, y) && !navBlocked.has(`${x},${y}`);
+  let reach = reachableCount(navPassable, g[0].length, g.length, start);
   const count = Math.min(spots.length, Math.round(spots.length / 2.6));
   for (let i = 0; i < count; i++) {
     const s = spots.splice(Math.floor(rng() * spots.length), 1)[0];
@@ -114,6 +118,10 @@ export function placeStreetProps(scene: Phaser.Scene, template: RoomTemplate, st
       o.setDepth(2.5);
       (o.body as Phaser.Physics.Arcade.StaticBody).setSize(def.body[0], def.body[1]);
       blocked.add(`${s.x},${s.y}`);
+      const k = `${s.x},${s.y}`;
+      navBlocked.add(k);
+      const after = reachableCount(navPassable, g[0].length, g.length, start);
+      if (after < reach - 1) navBlocked.delete(k); else reach = after;
     } else {
       scene.add.image(x, y, def.key).setDepth(1.8);
     }
