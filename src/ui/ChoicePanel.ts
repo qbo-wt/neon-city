@@ -26,7 +26,7 @@ export class ChoicePanel {
     const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, h = 64 + options.length * 34;
     const top = (H - h) / 2;
     const hex = '#' + accent.toString(16).padStart(6, '0');
-    this.root = scene.add.container(0, 0).setDepth(200);
+    this.root = scene.add.container(0, 0).setDepth(5000);
     this.root.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x05030f, 0.7));
     this.root.add(scene.add.rectangle(W / 2, H / 2, 360, h, 0x0b0820, 0.97).setStrokeStyle(1, accent));
     this.root.add(txt(scene, W / 2 - 170, top + 8, speaker.toUpperCase(), 8, hex));

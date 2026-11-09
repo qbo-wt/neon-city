@@ -1024,6 +1024,11 @@ export class RunScene extends Phaser.Scene {
     const real = Math.min(delta, CONFIG.MAX_DT_MS);
     this.rain.update(real);
     if (this.ending) return;
+    // Modal windows (implant cards, street events) hide the fight bar and its spell card.
+    const modal = !!(this.choice || this.panel);
+    this.ui.setVisible(!modal);
+    this.registry.set('modal', modal);
+    if (modal && this.hoverSlot !== null) { this.hoverSlot = null; this.refreshUi(); }
     if (this.choice) { this.choice.tick(); this.publishHud(); return; }
     if (this.panel) { this.panel.tick(); this.publishHud(); return; }
     this.run.timeMs += real;

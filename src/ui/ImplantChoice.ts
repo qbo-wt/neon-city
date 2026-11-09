@@ -23,7 +23,7 @@ export class ImplantChoice {
     private onPick: (o: Offer) => void, title = 'CLINIQUE CLANDESTINE — CHOISIS UN IMPLANT') {
     const { WIDTH: W, HEIGHT: H } = CONFIG;
     const counts = familyCounts(owned);
-    this.root = scene.add.container(0, 0).setScrollFactor(0).setDepth(200);
+    this.root = scene.add.container(0, 0).setScrollFactor(0).setDepth(5000);
     this.root.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x05030f, 0.86));
     this.root.add(txt(scene, W / 2, 30, title, 10, '#00f0ff').setOrigin(0.5));
     this.root.add(txt(scene, W / 2, 45, 'Chaque implant augmente ta charge de psychose. 2 et 3 implants d\'une famille débloquent une synergie.', 6, '#8a86b0').setOrigin(0.5));

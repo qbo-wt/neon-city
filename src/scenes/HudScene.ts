@@ -64,7 +64,8 @@ export class HudScene extends Phaser.Scene {
     [0.5, 0.75].forEach(f => g.lineBetween(178 + 80 * f, 3, 178 + 80 * f, 11));
     this.rightText.setText(`NEURO[F] ${d.blockers}   ${d.credits}¢   SECTEUR ${d.room}/${d.rooms}`);
     const parts = [d.weapon.toUpperCase(), d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
-    this.implantsText.setText(parts.filter(Boolean).join('   |   '));
+    this.implantsText.setText(parts.filter(Boolean).join('   |   ')).setVisible(!this.registry.get('modal'));
+    this.synergyText.setVisible(!this.registry.get('modal'));
     this.synergyText.setText(d.synergies.length ? 'SYNERGIES : ' + d.synergies.join(' · ') : '');
     this.tagText.setText(d.tag);
     this.noticeText.setText(d.notice ?? '').setColor(d.notice?.includes('ÉCHOUÉ') ? '#ff2a6d' : d.notice?.startsWith('ÉLITE') ? '#ff2a6d' : '#f5e663');
