@@ -27,6 +27,9 @@ export interface RunState {
   /** a fixer contract waiting for (or running in) the next combat sector */
   contract?: Contract & { room?: number };
   weapon: WeaponId;
+  /** equipped aspect of the weapon and its rank */
+  aspect?: string;
+  aspectRank: number;
   heat: HeatRanks;
   heatPoints: number;
   /** date key when this is the daily run */
@@ -56,7 +59,7 @@ export interface HudData {
 
 const KEY = 'run';
 
-export function newRun(seed: number, ownedNodes: string[], weapon: WeaponId = 'blade', opts: { heat?: HeatRanks; daily?: string } = {}): RunState {
+export function newRun(seed: number, ownedNodes: string[], weapon: WeaponId = 'blade', opts: { heat?: HeatRanks; daily?: string; aspect?: string; aspectRank?: number } = {}): RunState {
   const base = computeStats([], ownedNodes);
   const heat = opts.heat ?? {};
   let rooms = generateRun(seed);
@@ -65,6 +68,7 @@ export function newRun(seed: number, ownedNodes: string[], weapon: WeaponId = 'b
   return {
     seed, rooms, roomIndex: 0, implants: [], relics: [], ownedNodes,
     heat, heatPoints: heatPoints(heat), daily: opts.daily, killsByType: {},
+    aspect: opts.aspect, aspectRank: opts.aspectRank ?? 0,
     psy: 0, hp: base.maxHp, creditsEarned: 0, blockers: base.startBlockers,
     kills: 0, damageDealt: 0, hpHealed: 0, timeMs: 0, weapon,
   };

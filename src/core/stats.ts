@@ -37,6 +37,9 @@ export function baseStats(): Stats {
     psyDamage: 0,
     psyRateMult: 1,
     attackSpeed: 1,
+    critHeal: 0,
+    dazedDamage: 0,
+    pierce: 0,
   };
 }
 

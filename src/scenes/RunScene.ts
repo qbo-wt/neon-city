@@ -20,6 +20,7 @@ import { Bullets } from '../entities/Bullets';
 import { Enemy, type EnemyHooks } from '../entities/Enemy';
 import { PLAYER_ATTACK, PLAYER_HURT, PLAYER_PARRY, PLAYER_SHOOT, PLAYER_SPECIAL, Player, type AttackEvent, type ShootEvent, type SpecialEvent } from '../entities/Player';
 import { WEAPONS, type Weapon } from '../data/weapons';
+import { ASPECT_BY_ID, aspectRank, defaultAspect, equip } from '../data/aspects';
 import { heatCreditMult, heatEffects, heatRecordBonus } from '../data/heat';
 import { dailySeed, dateKey, recordDaily } from '../core/daily';
 import { bossIntro } from '../core/story';
@@ -151,7 +152,10 @@ export class RunScene extends Phaser.Scene {
       const sv = loadSave(getStorage());
       // The daily run is the same city for everyone today: fixed seed, mono-blade, no notoriety.
       if (data.daily) { const key = dateKey(); setRun(this.registry, newRun(dailySeed(key), sv.ownedNodes, 'blade', { daily: key })); }
-      else setRun(this.registry, newRun(data.seed, sv.ownedNodes, sv.weapon, { heat: sv.heat }));
+      else {
+        const aspect = sv.aspect[sv.weapon] ?? defaultAspect(sv.weapon);
+        setRun(this.registry, newRun(data.seed, sv.ownedNodes, sv.weapon, { heat: sv.heat, aspect, aspectRank: aspectRank(sv.aspects, aspect) }));
+      }
     }
     this.run = getRun(this.registry);
     this.waveIndex = 0;
@@ -171,10 +175,13 @@ export class RunScene extends Phaser.Scene {
     this.navBlocked = new Set();
   }
 
-  private get weapon(): Weapon { return WEAPONS[this.run.weapon] ?? WEAPONS.blade; }
+  /** The run's weapon with its aspect applied (set by computeStats). */
+  private weaponCfg?: Weapon;
+  private get weapon(): Weapon { return this.weaponCfg ?? WEAPONS[this.run.weapon] ?? WEAPONS.blade; }
   private computeStats() {
-    let s = computeStats(this.run.implants, this.run.ownedNodes, this.run.relics);
-    if (this.weapon.modify) s = this.weapon.modify(s);
+    const geared = equip(this.run.weapon, computeStats(this.run.implants, this.run.ownedNodes, this.run.relics), this.run.aspect, this.run.aspectRank);
+    this.weaponCfg = geared.weapon;
+    const s = geared.stats;
     const h = heatEffects(this.run.heat);
     return { ...s, healMult: s.healMult * h.healMult, psyRateMult: s.psyRateMult * h.psyRateMult };
   }
@@ -475,7 +482,7 @@ export class RunScene extends Phaser.Scene {
         if (e.dead || e.getData('windcut') === this.player.cutSerial) continue;
         if (Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) > e.def.radius + 14) continue;
         e.setData('windcut', this.player.cutSerial);
-        this.strike(e, 1.6 * this.weapon.damageMult, 1.5);
+        this.strike(e, this.weapon.special.power * this.weapon.damageMult, 1.5);
         this.hitstop(40);
       }
     }
@@ -670,8 +677,10 @@ export class RunScene extends Phaser.Scene {
       const e = obj as Enemy;
       if (e.dead || Phaser.Math.Distance.Between(ev.x, ev.y, e.x, e.y) > ev.radius + e.def.radius) continue;
       const countered = e.consumeVulnerable();
-      const { amount, crit } = computeHitDamage(this.stats, { countered, tier, roll: Math.random(), mult: ev.mult, psy: this.run.psy, hpRatio: this.player.hp / this.stats.maxHp });
+      const dazed = e.stunned && !countered ? 1 + this.stats.dazedDamage : 1;
+      const { amount, crit } = computeHitDamage(this.stats, { countered, tier, roll: Math.random(), mult: ev.mult * dazed, psy: this.run.psy, hpRatio: this.player.hp / this.stats.maxHp });
       this.addPsy(this.stats.hitPsy + (crit ? this.stats.critPsy : 0));
+      if (crit && this.stats.critHeal > 0) this.heal(this.stats.critHeal, true);
       this.run.damageDealt += Math.min(amount, Math.max(0, e.hp));
       const finisher = ev.finisher;
       e.takeHit(amount, crit, countered, this.player.x, this.player.y, finisher, ev.knock);
@@ -696,7 +705,9 @@ export class RunScene extends Phaser.Scene {
   /** One weapon blow on an enemy (specials): damage with crits and psychosis bonuses, tracked. */
   private strike(e: Enemy, mult: number, knock = 1) {
     if (e.dead) return;
-    const { amount, crit } = computeHitDamage(this.stats, { countered: e.consumeVulnerable(), tier: psyTier(this.run.psy), roll: Math.random(), mult, psy: this.run.psy, hpRatio: this.player.hp / this.stats.maxHp });
+    const dazed = e.stunned ? 1 + this.stats.dazedDamage : 1;
+    const { amount, crit } = computeHitDamage(this.stats, { countered: e.consumeVulnerable(), tier: psyTier(this.run.psy), roll: Math.random(), mult: mult * dazed, psy: this.run.psy, hpRatio: this.player.hp / this.stats.maxHp });
+    if (crit && this.stats.critHeal > 0) this.heal(this.stats.critHeal, true);
     this.run.damageDealt += Math.min(amount, Math.max(0, e.hp));
     e.takeHit(amount, crit, false, this.player.x, this.player.y, true, knock);
     audio.sfx(crit ? 'crit' : 'hit');
@@ -722,7 +733,7 @@ export class RunScene extends Phaser.Scene {
   }
 
   private onShoot(ev: ShootEvent) {
-    this.bullets.fire(ev.x, ev.y, ev.angle, ev.speed, this.stats.damage * ev.mult, 'player', { key: ev.charged ? 'bullet-gold' : 'bullet-player' });
+    this.bullets.fire(ev.x, ev.y, ev.angle, ev.speed, this.stats.damage * ev.mult, 'player', { key: ev.charged ? 'bullet-gold' : 'bullet-player', pierce: this.stats.pierce });
     const fl = this.add.image(ev.x, ev.y, 'glow').setTint(COLORS.yellow).setScale(ev.charged ? 0.5 : 0.3).setBlendMode(Phaser.BlendModes.ADD).setDepth(30);
     this.tweens.add({ targets: fl, alpha: 0, duration: 90, onComplete: () => fl.destroy() });
   }
@@ -731,14 +742,14 @@ export class RunScene extends Phaser.Scene {
   private onSpecial(ev: SpecialEvent) {
     const W = this.weapon;
     if (ev.id === 'leap-land') {
-      this.aoe(ev.x, ev.y, 40, 2 * W.damageMult);
-      this.ring(ev.x, ev.y, 40, COLORS.magenta);
+      this.aoe(ev.x, ev.y, W.special.radius, W.special.power * W.damageMult);
+      this.ring(ev.x, ev.y, W.special.radius, COLORS.magenta);
       this.cameras.main.shake(140, 0.007);
       audio.sfx('quake', { vol: 0.6, pitch: 1.4 });
       this.hitstop(60);
     } else if (ev.id === 'shockwave') {
-      this.aoe(ev.x, ev.y, 62, 1.5, 900);
-      this.ring(ev.x, ev.y, 62, COLORS.white);
+      this.aoe(ev.x, ev.y, W.special.radius, W.special.power, W.special.daze ?? 900);
+      this.ring(ev.x, ev.y, W.special.radius, COLORS.white);
       sparks(this, ev.x, ev.y, COLORS.white, 16, 50);
       this.cameras.main.shake(200, 0.01);
       audio.sfx('quake');
@@ -748,17 +759,18 @@ export class RunScene extends Phaser.Scene {
       for (const obj of [...this.enemies.getChildren()]) {
         const e = obj as Enemy;
         const d = Phaser.Math.Distance.Between(ev.x, ev.y, e.x, e.y);
-        if (e.dead || d > 110) continue;
+        if (e.dead || d > W.special.radius) continue;
         g.lineStyle(1, COLORS.cyan, 0.9).lineBetween(ev.x, ev.y, e.x, e.y);
         e.yank((ev.x - e.x) * 4, (ev.y - e.y) * 4, 200);
-        this.strike(e, 0.8 * W.damageMult, 0);
-        if (!e.dead) e.daze(this.simNow, 600);
+        this.strike(e, W.special.power * W.damageMult, 0);
+        if (!e.dead) e.daze(this.simNow, W.special.daze ?? 600);
       }
       this.tweens.add({ targets: g, alpha: 0, duration: 260, onComplete: () => g.destroy() });
       audio.sfx('hack', { pitch: 0.6 });
     } else if (ev.id === 'volley') {
       const base = Math.atan2(ev.dirY, ev.dirX);
-      for (let i = 0; i < 7; i++) this.bullets.fire(ev.x + ev.dirX * 8, ev.y + ev.dirY * 8, base - 0.45 + i * 0.15, 360, this.stats.damage * 0.7, 'player', { key: 'bullet-player' });
+      const n = W.special.count ?? 7, spread = Math.min(1.4, 0.9 + (n - 7) * 0.06);
+      for (let i = 0; i < n; i++) this.bullets.fire(ev.x + ev.dirX * 8, ev.y + ev.dirY * 8, base - spread / 2 + (spread * i) / (n - 1), 360, this.stats.damage * W.special.power, 'player', { key: 'bullet-player', pierce: this.stats.pierce });
       audio.sfx('playerShoot', { pitch: 0.6 });
       this.cameras.main.shake(80, 0.004);
     } else if (ev.id === 'windcut') {
@@ -785,11 +797,16 @@ export class RunScene extends Phaser.Scene {
 
   private bulletHitsEnemy(b: Phaser.Physics.Arcade.Image, e: Enemy) {
     if (!b.active || b.getData('owner') !== 'player' || e.dead) return;
-    const dmg = Math.round(b.getData('damage'));
+    // A piercing bullet hits each enemy once, then keeps going.
+    const hit = b.getData('hit') as unknown[] | undefined;
+    if (hit?.includes(e)) return;
+    const dmg = Math.round(b.getData('damage') * (e.stunned ? 1 + this.stats.dazedDamage : 1));
     this.run.damageDealt += Math.min(dmg, Math.max(0, e.hp));
     e.takeHit(dmg, false, false, b.x, b.y, true);
     audio.sfx('hit', { pitch: 1.3, vol: 0.7 });
     this.hitstop(e.dead ? 40 : 18);
+    const pierce = (b.getData('pierce') as number | undefined) ?? 0;
+    if (pierce > 0) { b.setData('pierce', pierce - 1); hit?.push(e); return; }
     b.destroy();
   }
 
@@ -1101,7 +1118,7 @@ export class RunScene extends Phaser.Scene {
         : this.run.contract ? 'CONTRAT EN ATTENTE' : this.room.elite ? `ÉLITE — ${ELITE_LABELS[this.room.elite]}` : undefined,
       boss: this.boss && !this.boss.dead ? { hp: this.boss.hp, max: this.boss.maxHp, name: this.boss.def.name } : undefined,
       special: { name: this.weapon.special.name, charge: this.player.specialCharge(this.simNow) },
-      weapon: this.weapon.name,
+      weapon: this.weapon.name + (this.run.aspect ? ` (${ASPECT_BY_ID.get(this.run.aspect)?.name} ${['', 'I', 'II', 'III'][this.run.aspectRank] ?? ''})` : ''),
       tag: [this.run.daily ? 'RUN DU JOUR' : '', this.run.heatPoints ? `NOTORIÉTÉ ${this.run.heatPoints}` : ''].filter(Boolean).join(' · '),
     };
     this.registry.set('hud', hud);

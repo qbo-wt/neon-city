@@ -37,7 +37,7 @@ Appart → couloir de l'immeuble → ascenseur → run de 10 secteurs → mort o
 ## Systèmes
 
 - **Sensations** : hitstop selon le poids du coup, ralenti et flash chromatique sur parade parfaite, boss abattus au ralenti. Bruitages synthétisés et musique synthwave qui suit l'action (planque, combat, rue nettoyée, boss).
-- **Armes** (râtelier de l'appart) : Lame-mono, Lames mantes, Poings Titan, Fil-mono, Pistolet « Vautour », chacune avec son rythme et sa capacité spéciale.
+- **Armes** (râtelier de l'appart) : Lame-mono, Lames mantes, Poings Titan, Fil-mono, Pistolet « Vautour », chacune avec son rythme et sa capacité spéciale. Chaque arme a 3 **aspects** (celui de base et 2 à débloquer) qui changent sa façon de jouer, chacun jusqu'au rang III.
 - **Implants** : 24 implants, 4 familles (chrome, neural, sang, optique), 3 raretés plus le marché noir (gros bonus, vrai défaut). Retrouver un implant l'améliore (jusqu'au niveau III). 2 et 3 implants d'une famille débloquent une synergie.
 - **Psychose** : la jauge monte pendant les combats, plus vite avec la charge des implants et à chaque ennemi tué. C'est aussi une force : +10 % de dégâts à 50 %, +25 % et +10 % de vitesse à 75 % (mais la vie baisse), x1,5 en crise (la vie fond, chaque élimination soigne un peu).
 - **Route** : chaque porte annonce sa récompense (implant d'une famille, soin, crédits, coffre), une **rencontre** (fixer et ses contrats, charcudoc de rue, pari de netrunner, marchande ambulante) ou un **secteur d'élite** (boucliers, explosifs, camouflés ou enragés, meilleur butin).

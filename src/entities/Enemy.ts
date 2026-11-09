@@ -126,6 +126,9 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   private get telegraph() { return this.def.telegraphMs * (this.frenzy ? 0.55 : this.enraged ? 0.7 : 1); }
   private get heavy() { return this.def.behavior === 'boss' || this.def.behavior === 'charge'; }
 
+  /** Stunned or dazed right now (Démolisseur / Marionnettiste aspects hit these harder). */
+  get stunned() { return this.ai === 'stunned'; }
+
   /** True once per stun: the next player hit counts as a counter-attack. */
   consumeVulnerable(): boolean {
     const v = this.vulnerable;

@@ -52,6 +52,12 @@ export interface Stats {
   psyRateMult: number;
   /** attack rate multiplier (higher = faster swings) */
   attackSpeed: number;
+  /** HP regained on each critical hit */
+  critHeal: number;
+  /** extra damage on stunned / dazed enemies */
+  dazedDamage: number;
+  /** enemies each of your bullets passes through */
+  pierce: number;
 }
 
 export type Family = 'chrome' | 'neural' | 'blood' | 'optic';

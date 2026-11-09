@@ -2,6 +2,7 @@ import { SKILL_NODES } from '../data/skillNodes';
 import { WEAPON_IDS, isWeaponId, type WeaponId } from '../data/weapons';
 import { HEAT_PACTS, type HeatRanks } from '../data/heat';
 import { HISTORY_CAP, isRunRecord, type RunRecord } from './history';
+import { ASPECT_BY_ID, MAX_ASPECT_RANK, aspectRank } from '../data/aspects';
 
 /** Best result of the daily run for one date (YYYY-MM-DD). */
 export interface DailyRecord { date: string; sector: number; victory: boolean; timeMs: number; kills: number }
@@ -34,6 +35,10 @@ export interface SaveData {
   /** most recent last, capped at DAILY_CAP */
   daily: DailyRecord[];
   story: StoryState;
+  /** weapon aspects: rank bought per aspect id (default aspects count as rank 1 even when absent) */
+  aspects: Record<string, number>;
+  /** equipped aspect per weapon id */
+  aspect: Partial<Record<WeaponId, string>>;
 }
 
 export const SAVE_KEY = 'neon-city-save';
@@ -44,6 +49,7 @@ export function defaultSave(): SaveData {
     version: 1, credits: 0, ownedNodes: [], runs: 0, bestRoom: 0, history: [],
     weapons: ['blade'], weapon: 'blade', codex: {}, deaths: {}, heat: {}, bestHeat: 0, daily: [],
     story: { talks: {}, flags: [] },
+    aspects: {}, aspect: {},
   };
 }
 
@@ -75,6 +81,18 @@ function story(v: unknown): StoryState {
   return s;
 }
 
+/** Known aspects only, ranks capped; an equipped aspect must belong to its weapon and be owned. */
+function aspects(rawRanks: unknown, rawEquip: unknown): Pick<SaveData, 'aspects' | 'aspect'> {
+  const ranks: Record<string, number> = {};
+  for (const [id, n] of Object.entries(counts(rawRanks))) if (ASPECT_BY_ID.has(id) && n > 0) ranks[id] = Math.min(MAX_ASPECT_RANK, n);
+  const aspect: Partial<Record<WeaponId, string>> = {};
+  if (isObj(rawEquip)) for (const [w, id] of Object.entries(rawEquip)) {
+    const a = typeof id === 'string' ? ASPECT_BY_ID.get(id) : undefined;
+    if (a && a.weapon === w && aspectRank(ranks, a.id) > 0) aspect[w as WeaponId] = a.id;
+  }
+  return { aspects: ranks, aspect };
+}
+
 /** Never throws: any missing, corrupt or outdated save yields a fresh default. Missing new fields get defaults. */
 export function loadSave(storage: Pick<Storage, 'getItem'>): SaveData {
   try {
@@ -104,6 +122,7 @@ export function loadSave(storage: Pick<Storage, 'getItem'>): SaveData {
       bestHeat: isCount(d.bestHeat) ? Math.floor(d.bestHeat) : 0,
       daily: Array.isArray(d.daily) ? d.daily.filter(isDaily).slice(-DAILY_CAP) : [],
       story: story(d.story),
+      ...aspects(d.aspects, d.aspect),
     };
   } catch {
     return defaultSave();

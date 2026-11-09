@@ -67,7 +67,7 @@ export class HideoutScene extends InteriorScene {
 
   protected onModalTick() {
     const n = this.controls.numberPressed();
-    if (this.weapons.isOpen) { if (n) this.weapons.select(n - 1); return; }
+    if (this.weapons.isOpen) { if (n) this.weapons.select(n); if (this.controls.tab()) this.weapons.back(); return; }
     if (n === 1) this.history.setFilter('recent');
     if (n === 2) this.history.setFilter('best');
     if (n === 3) this.history.setFilter('daily');

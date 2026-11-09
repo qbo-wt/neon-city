@@ -9,9 +9,9 @@ export class Bullets {
     this.group = scene.physics.add.group();
   }
 
-  fire(x: number, y: number, angle: number, speed: number, damage: number, owner: BulletOwner = 'enemy', opts: { psy?: number; key?: string; from?: string } = {}) {
+  fire(x: number, y: number, angle: number, speed: number, damage: number, owner: BulletOwner = 'enemy', opts: { psy?: number; key?: string; from?: string; pierce?: number } = {}) {
     const b = this.group.create(x, y, opts.key ?? (owner === 'enemy' ? 'bullet' : 'bullet-player')) as Phaser.Physics.Arcade.Image;
-    b.setDepth(15).setData({ damage, owner, psy: opts.psy ?? 0, from: opts.from });
+    b.setDepth(15).setData({ damage, owner, psy: opts.psy ?? 0, from: opts.from, pierce: opts.pierce ?? 0, hit: [] as unknown[] });
     (b.body as Phaser.Physics.Arcade.Body).setCircle(2).setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     this.scene.time.delayedCall(4000, () => b.active && b.destroy());
     return b;
