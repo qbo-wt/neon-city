@@ -40,6 +40,15 @@ export function environment(w: World3D) {
   return envLoaded;
 }
 
+/** How visible a Phaser camera is through its fade (1 = not faded). */
+export function fadeVisibility(f: { isRunning: boolean; isComplete: boolean; direction: boolean; progress: number }) {
+  if (f.isRunning) return f.direction ? 1 - f.progress : f.progress;
+  return f.isComplete && f.direction ? 0 : 1;
+}
+
+/** Follows the Phaser camera fades (0 = hidden, 1 = shown). */
+export function stageOpacity(v: number) { if (canvas) canvas.style.opacity = String(v); }
+
 export function showStage(on: boolean, phaser?: HTMLCanvasElement) {
   if (!canvas) return;
   canvas.style.display = on ? 'block' : 'none';

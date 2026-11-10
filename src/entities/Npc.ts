@@ -48,8 +48,12 @@ export class Npc extends Phaser.Physics.Arcade.Sprite {
   private prop?: Phaser.GameObjects.GameObject & { setPosition: (x: number, y: number) => unknown; setVisible: (v: boolean) => unknown };
   private bubble?: Phaser.GameObjects.Container;
   private facing: Facing;
+  /** u (back to the camera) or d / s, and the mirror: the 3D view turns the character the same way. */
+  get faceDir() { return { facing: this.facing, flip: this.flipX }; }
+  /** Talking right now (speech bubble shown). */
+  get speaking() { return !!this.bubble; }
 
-  constructor(scene: Phaser.Scene, x: number, y: number, private look: string, private activity: NpcActivity,
+  constructor(scene: Phaser.Scene, x: number, y: number, readonly look: string, readonly activity: NpcActivity,
     private bounds: Phaser.Geom.Rectangle, opts: NpcOpts = {}) {
     super(scene, x, y, look, 'd-idle0');
     scene.add.existing(this);
@@ -147,7 +151,8 @@ export class Npc extends Phaser.Physics.Arcade.Sprite {
       this.nextEmoteAt = now + 4000 + Math.random() * 6000;
       floatText(this.scene, this.x, this.y - 16, Phaser.Utils.Array.GetRandom(emotes), this.activity === 'dance' ? '#ff2a6d' : '#8a86b0', 6);
     }
-    this.shadow.setPosition(this.x, this.y + 7);
+    this.shadow.setPosition(this.x, this.y + 7).setVisible(this.visible);
+    this.prop?.setVisible(this.visible);
     this.bubble?.setPosition(this.x, this.bubble.y);
   }
 }

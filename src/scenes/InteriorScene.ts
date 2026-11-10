@@ -15,6 +15,16 @@ import { nextLine } from '../core/story';
 import type { StoryNpc } from '../data/story';
 import { ENEMIES, type EnemyId } from '../data/enemies';
 import { floatText } from '../fx/effects';
+import { Interior3D, type InteriorStyle } from '../three/Interior3D';
+import { environment, showStage, stage, stageOpacity, fadeVisibility } from '../three/stage';
+import type { AnimName } from '../three/rigs';
+
+/** Which Mixamo model plays which 2D look. Residents cycle through the street faces. */
+const RESIDENT_MODELS = ['civil2', 'runner', 'gunner', 'hacker', 'civil5', 'bomber', 'civil3', 'brute', 'civil1', 'civil4'];
+const modelFor = (look: string) => look === 'npc-lo' ? 'civil1' : look === 'npc-doc' ? 'civil4' : look === 'npc-nyx' ? 'civil3'
+  : look.startsWith('res-') ? RESIDENT_MODELS[Number(look.slice(4)) % RESIDENT_MODELS.length] : 'civil2';
+/** 2D textures the 3D room builds itself (floor, walls, doors) or that only mark light. */
+const SKIP_3D = /^(floor-|wall-|cap-|door|shadow$|glow$|tile-)/;
 
 export const HUD_H = 14;
 
@@ -49,6 +59,11 @@ export abstract class InteriorScene extends Phaser.Scene {
   protected abstract readonly grid: RoomTemplate;
   protected abstract readonly roomOptions: RoomOptions;
   protected abstract readonly placeName: string;
+  /** Materials and lighting of the 3D version of the room. */
+  protected readonly style3d: InteriorStyle = 'home';
+  private view3d?: Interior3D;
+  private signs3d: { x: number; y: number; label: string; color: number }[] = [];
+  private glows3d: { x: number; y: number; color: number; alpha: number; sx: number }[] = [];
   /** Build props, NPCs and interactions. Called before the player exists. */
   protected abstract layout(data: Record<string, unknown>): void;
   /** Where the player appears, depending on where they came from. */
@@ -61,6 +76,8 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.interactions = [];
     this.modals = [];
     this.npcs = [];
+    this.signs3d = [];
+    this.glows3d = [];
     this.save = loadSave(getStorage());
     setupCamera(this, -HUD_H).fadeIn(250, 11, 8, 32);
     audio.setMusic('hub');
@@ -75,6 +92,7 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.built.walls);
     this.physics.add.collider(this.player, this.npcGroup);
     this.physics.add.collider(this.npcGroup, this.built.walls);
+    this.setup3d();
 
     this.help = new HelpOverlay(this);
     txt(this, 4, -HUD_H + 3, `NEON CITY — ${this.placeName}`, 7, '#00f0ff');
@@ -117,7 +135,47 @@ export abstract class InteriorScene extends Phaser.Scene {
     return f;
   }
 
+  /**
+   * The room in 3D under the Phaser scene: everything drawn so far (floor, walls, props, decor,
+   * characters) is hidden in 2D and rebuilt from real models; Phaser keeps the logic, the prompts,
+   * the speech bubbles and the panels, which stay aligned (same pixel mapping).
+   */
+  private setup3d() {
+    const world = stage(this.game.canvas);
+    showStage(true, this.game.canvas);
+    const view = new Interior3D(world, this.style3d);
+    this.view3d = view;
+    const decor: { key: string; x: number; y: number; w: number; h: number; flip: boolean }[] = [];
+    for (const o of this.children.list) {
+      const img = o as Phaser.GameObjects.Image;
+      if (o === this.player || this.npcs.includes(o as Npc)) { img.setVisible(false); continue; }
+      if (img.texture && !SKIP_3D.test(img.texture.key)) decor.push({ key: img.texture.key, x: img.x, y: img.y, w: img.displayWidth, h: img.displayHeight, flip: img.flipX });
+      (o as unknown as { setVisible?: (v: boolean) => void }).setVisible?.(false);
+    }
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { showStage(false); stageOpacity(1); this.view3d = undefined; });
+    void environment(world).then(() => view.build(this.grid.grid)).then(async () => {
+      if (this.view3d !== view) return;
+      for (const g of this.glows3d) view.light(g.x, g.y, g.color, g.alpha, g.sx);
+      for (const s of this.signs3d) view.sign(s.x, s.y, s.label, s.color);
+      const p = this.player;
+      view.character(p, 'player', undefined, () => p.lookDir, () => (Math.hypot((p.body as Phaser.Physics.Arcade.Body).velocity.x, (p.body as Phaser.Physics.Arcade.Body).velocity.y) > 5 ? 'walk' : 'idle'));
+      for (const n of this.npcs) {
+        const body = n.body as Phaser.Physics.Arcade.Body;
+        const moving = () => Math.hypot(body.velocity.x, body.velocity.y) > 3;
+        view.character(n, 'npc', modelFor(n.look), () => {
+          if (moving()) return { x: body.velocity.x, y: body.velocity.y };
+          const f = n.faceDir;
+          if (n.activity === 'sit' && n.look !== 'npc-nyx') return { x: 0, y: 1 };
+          return f.facing === 'u' ? { x: 0, y: -1 } : f.facing === 's' ? { x: f.flip ? -1 : 1, y: 0 } : { x: 0, y: 1 };
+        }, (): AnimName => (moving() ? 'walk' : n.speaking || n.activity === 'talk' || n.activity === 'phone' || n.activity === 'cook' ? 'talk' : 'idle'),
+        n.activity === 'sit' && n.look !== 'npc-nyx' ? 16 : 0);
+      }
+      for (const d of decor) await view.decor(d.key, d.x, d.y, d.w, d.h, d.flip).catch(() => undefined);
+    });
+  }
+
   protected glow(x: number, y: number, color: number, alpha = 0.3, sx = 1, sy = 1) {
+    this.glows3d.push({ x, y, color, alpha, sx });
     return this.add.image(x, y, 'glow').setTint(color).setAlpha(alpha).setScale(sx, sy).setBlendMode(Phaser.BlendModes.ADD).setDepth(1);
   }
 
@@ -131,6 +189,7 @@ export abstract class InteriorScene extends Phaser.Scene {
 
   /** Neon sign on a wall: boxed label plus a light pool. */
   protected sign(x: number, y: number, label: string, color: number, size = 7) {
+    this.signs3d.push({ x, y, label, color });
     const hexc = '#' + color.toString(16).padStart(6, '0');
     const t = txt(this, x, y, label, size, hexc).setOrigin(0.5).setDepth(4);
     this.add.rectangle(x, y, t.width + 8, t.height + 2, 0x05030f, 0.85).setStrokeStyle(1, color).setDepth(3.9);
@@ -147,7 +206,12 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start(key, data));
   }
 
-  update(time: number) {
+  update(time: number, delta = 16) {
+    if (this.view3d) {
+      this.view3d.update(Math.min(delta, 50) / 1000);
+      stageOpacity(fadeVisibility(this.cameras.main.fadeEffect));
+      stage(this.game.canvas).frame();
+    }
     const open = this.modals.find(m => m.isOpen);
     this.npcs.forEach(n => n.tick(time));
     if (open || this.help.isOpen) {

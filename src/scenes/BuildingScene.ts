@@ -28,6 +28,7 @@ const WALL_DECOR: [string, number, number][] = [
  */
 export class BuildingScene extends InteriorScene {
   protected readonly placeName = 'IMMEUBLE H-12, ÉTAGE 37';
+  protected readonly style3d = 'corridor' as const;
   protected readonly grid: RoomTemplate = { id: 'building', grid: [
     '#a##A##a##LL#a#',
     '#.............#',
@@ -154,6 +155,7 @@ export class BuildingScene extends InteriorScene {
 
   /** Small lit label above a door: its own dark plate hides the texture's indicator bar underneath. */
   private plate(x: number, y: number, label: string, color: string, border: number) {
+    this.sign(x, y, label, border, 5).destroy();
     const t = txt(this, x, y, label, 5, color).setOrigin(0.5).setDepth(3);
     this.add.rectangle(x, y, Math.ceil(t.width) + 6, Math.ceil(t.height) + 1, 0x05030f).setStrokeStyle(1, border, 0.6).setDepth(2.9);
   }

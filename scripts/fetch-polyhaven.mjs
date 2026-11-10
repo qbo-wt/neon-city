@@ -12,8 +12,15 @@ export const MODELS = [
   'metal_trash_can', 'street_lamp_01', 'street_lamp_02', 'utility_box_01', 'utility_box_02', 'rollershutter_door', 'exterior_aircon_unit',
   'fire_hydrant', 'water_manhole_cover', 'security_camera_01', 'barrel_stove', 'old_tyre', 'modular_chainlink_fence', 'modular_street_seating',
   'modular_electricity_poles', 'security_light', 'modular_airduct_circular_01',
+  // Interiors: apartment, corridor, clinic, den.
+  'metal_office_desk', 'classic_laptop', 'television_02', 'Television_01', 'old_bed_frame', 'sofa_02', 'sofa_03', 'modern_coffee_table_01',
+  'electric_stove', 'drawer_cabinet', 'potted_plant_01', 'potted_plant_02', 'steel_frame_shelves_01', 'steel_frame_shelves_02', 'worn_metal_rack',
+  'katana_stand_01', 'cardboard_box_01', 'WetFloorSign_01', 'CoffeeCart_01', 'painted_wooden_bench', 'plastic_crate_01', 'BarberShopChair_01',
+  'desk_lamp_arm_01', 'vintage_cabinet_01', 'medical_box', 'modern_arm_chair_01', 'mounted_fluorescent_lights', 'hanging_picture_frame_01',
+  'hanging_picture_frame_02', 'tool_cart', 'vintage_microwave', 'metal_stool_01', 'throw_pillows_01', 'industrial_wall_lamp',
 ];
-export const TEXTURES = ['asphalt_02', 'road_damaged', 'concrete_pavement_02', 'square_tiles_03'];
+export const TEXTURES = ['asphalt_02', 'road_damaged', 'concrete_pavement_02', 'square_tiles_03',
+  'laminate_floor_02', 'grey_plaster_02', 'worn_tile_floor', 'worn_plaster_wall', 'interior_tiles', 'concrete_floor_worn_001', 'concrete_block_wall'];
 export const HDRIS = ['modern_buildings_night'];
 
 const get = async url => { const r = await fetch(url); if (!r.ok) throw new Error(`${r.status} ${url}`); return r; };

@@ -36,11 +36,14 @@ export class World3D {
   readonly scene = new THREE.Scene();
   readonly camera: THREE.OrthographicCamera;
   private composer: EffectComposer;
+  /** Glow on bright things: strong in the wet street, softer indoors. */
+  bloom: UnrealBloomPass;
   private gltf = new GLTFLoader();
   private models = new Map<string, Promise<THREE.Group>>();
   private tex = new THREE.TextureLoader();
-  private boardGroup = new THREE.Group();
-  private rain?: THREE.LineSegments;
+  /** Everything of the current place (street or interior); cleared when a new one is built. */
+  readonly boardGroup = new THREE.Group();
+  rain?: THREE.LineSegments;
   private clock = new THREE.Clock();
   private board?: Board;
   /** Called every frame before rendering (units animate here). */
@@ -60,7 +63,8 @@ export class World3D {
     this.scene.add(this.boardGroup);
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.5, 0.82));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.5, 0.82);
+    this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.composer.addPass(new SMAAPass());
     this.composer.setSize(w, h);
@@ -95,7 +99,7 @@ export class World3D {
   }
 
   /** A copy of one node of a model (or the whole model), with its own transform cleared. */
-  private async piece(id: string, node?: string): Promise<THREE.Object3D> {
+  async piece(id: string, node?: string): Promise<THREE.Object3D> {
     const root = await this.model(id);
     const src = node ? root.getObjectByName(node) : root;
     if (!src) throw new Error(`${id}: no node ${node}`);
@@ -104,7 +108,7 @@ export class World3D {
     return c;
   }
 
-  private pbr(id: string, repeat: number, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
+  pbr(id: string, repeat: number, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
     const load = (k: string, srgb = false) => {
       const t = this.tex.load(`${PH}tex/${id}/${k}.jpg`);
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -198,6 +202,11 @@ export class World3D {
   async buildBoard(b: Board, seed: number) {
     this.board = b;
     this.boardGroup.clear();
+    this.renderer.toneMappingExposure = 1.35;
+    this.bloom.strength = 0.55;
+    this.scene.environmentIntensity = 0.7;
+    this.scene.fog = new THREE.FogExp2(0x120a24, 0.022);
+    this.scene.background = new THREE.Color(0x07040f);
     this.raised.clear();
     const rng = createRng(seed);
     const g = this.boardGroup;

@@ -9,6 +9,7 @@ import { SPECIAL_LINES } from '../data/dialogue';
 /** Dark den full of servers and cables. Sells the MIND branches (psychosis resistance, implant load, network). */
 export class NetrunnerScene extends InteriorScene {
   protected readonly placeName = 'REPAIRE DE NYX';
+  protected readonly style3d = 'den' as const;
   protected readonly grid: RoomTemplate = { id: 'den', grid: [
     '###############',
     '#.............#',

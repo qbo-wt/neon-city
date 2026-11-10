@@ -105,8 +105,8 @@ export class MixamoRig implements Rig {
   private mats: THREE.MeshStandardMaterial[] = [];
   ready: Promise<boolean>;
 
-  constructor(kind: string, scale = 1) {
-    this.ready = Promise.all([loadModel(MODEL_FOR[kind] ?? 'civil1'), loadClips()]).then(([model, cl]) => {
+  constructor(kind: string, scale = 1, modelName?: string) {
+    this.ready = Promise.all([loadModel(modelName ?? MODEL_FOR[kind] ?? 'civil1'), loadClips()]).then(([model, cl]) => {
       if (!model) return false;
       const body = cloneSkinned(model.group) as THREE.Group;
       body.scale.multiplyScalar(model.unit * scale);
@@ -118,8 +118,11 @@ export class MixamoRig implements Rig {
         m.material = Array.isArray(m.material) ? list : list[0];
       });
       this.root.add(body);
-      const h = new THREE.Box3().setFromObject(body).max.y;
-      this.height = h > 0.8 && h < 4 ? h : 1.8 * scale;
+      // Mixamo characters come at assorted sizes: bring every one to a human height (x scale).
+      body.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(body, true), h = box.max.y - box.min.y, target = 1.78 * scale;
+      if (h > 0.2 && h < 20) body.scale.multiplyScalar(target / h);
+      this.height = target;
       this.mixer = new THREE.AnimationMixer(body);
       for (const [name, clip] of cl) {
         const a = this.mixer.clipAction(clip);

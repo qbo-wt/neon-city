@@ -32,7 +32,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     body.setVelocity(move.x * CONFIG.PLAYER_SPEED, move.y * CONFIG.PLAYER_SPEED);
     if (move.x || move.y) this.walkDir = move;
     this.shadow ??= this.scene.add.image(this.x, this.y, 'shadow').setDepth(4);
-    this.shadow.setPosition(this.x, this.y + 7);
+    this.shadow.setPosition(this.x, this.y + 7).setVisible(this.visible);
     this.animate(this.walkDir, !!(move.x || move.y));
   }
 
@@ -55,4 +55,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   get face() { return this.facing; }
+  /** Last walking direction (the 3D character keeps facing it when it stops). */
+  get lookDir() { return this.walkDir; }
 }

@@ -8,6 +8,7 @@ import { SPECIAL_LINES } from '../data/dialogue';
 /** Back-room clinic: chair, surgical arm, chrome limbs on the wall. Sells the BODY branches. */
 export class RipperdocScene extends InteriorScene {
   protected readonly placeName = 'CLINIQUE DU DOC KESSLER';
+  protected readonly style3d = 'clinic' as const;
   protected readonly grid: RoomTemplate = { id: 'clinic', grid: [
     '###############',
     '#.............#',

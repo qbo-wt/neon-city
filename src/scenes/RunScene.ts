@@ -42,7 +42,7 @@ import { nextAction } from '../tactics/ai';
 import { makeBreakable, makeEnemy, makePlayer, makeSummon, type EnemyScaling } from '../tactics/units';
 import type { Board, FightEvent, Pt, SpellDef, Unit } from '../tactics/types';
 import { UnitView3D as UnitView } from '../three/UnitView3D';
-import { stage, environment, showStage } from '../three/stage';
+import { stage, environment, showStage, stageOpacity, fadeVisibility } from '../three/stage';
 import type { World3D } from '../three/World3D';
 import { BAR_H, TacticalUi } from './run/TacticalUi';
 
@@ -1055,6 +1055,7 @@ export class RunScene extends Phaser.Scene {
     for (const l of [this.overlay, this.hoverG, this.markLayer]) if (l.dirty) { this.world.setOverlay(l.name, l.cells, l.order); l.dirty = false; }
     this.views.forEach(v => v.update(real / 1000));
     if (this.ready) this.moveCamera(real);
+    stageOpacity(fadeVisibility(this.cameras.main.fadeEffect));
     this.world.frame();
     if (!this.ready || this.ending) return;
     // Modal windows (implant cards, street events) hide the fight bar and its spell card.
