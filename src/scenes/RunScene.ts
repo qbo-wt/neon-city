@@ -22,7 +22,7 @@ import { BOSS_LINES } from '../data/story';
 import { spell } from '../data/spells';
 import { WEAPONS } from '../data/weapons';
 import { audio } from '../audio/audio';
-import { Rain, floatText, sparks } from '../fx/effects';
+import { floatText, sparks } from '../fx/effects';
 import { Controls } from '../input/controls';
 import { getRun, newRun, setRun, type HudData, type RunState } from '../systems/runState';
 import { ImplantChoice } from '../ui/ImplantChoice';
@@ -41,8 +41,9 @@ import {
 import { nextAction } from '../tactics/ai';
 import { makeBreakable, makeEnemy, makePlayer, makeSummon, type EnemyScaling } from '../tactics/units';
 import type { Board, FightEvent, Pt, SpellDef, Unit } from '../tactics/types';
-import { cellCentre, cellFromScreen, paintBoard, paintSkyline, type BoardArt } from '../gfx/isoArt';
-import { UnitView } from './run/UnitView';
+import { UnitView3D as UnitView } from '../three/UnitView3D';
+import { stage, environment, showStage } from '../three/stage';
+import type { World3D } from '../three/World3D';
 import { BAR_H, TacticalUi } from './run/TacticalUi';
 
 export const HUD_H = 14;
@@ -64,6 +65,15 @@ export const STREET_NAMES: Record<ArenaStyle, string[]> = {
 
 const wait = (scene: Phaser.Scene, ms: number) => new Promise<void>(res => scene.time.delayedCall(ms, res));
 
+/** Cells to light on the 3D ground; flushed to the world when they change. */
+class CellLayer {
+  cells: { p: Pt; color: number; alpha: number }[] = [];
+  dirty = true;
+  constructor(readonly name: string, readonly order: number) {}
+  clear() { if (this.cells.length) { this.cells = []; this.dirty = true; } }
+  add(p: Pt, color: number, alpha: number) { this.cells.push({ p, color, alpha }); this.dirty = true; }
+}
+
 type Mode = 'explore' | 'placement' | 'input' | 'busy' | 'ai' | 'done';
 
 /**
@@ -78,17 +88,17 @@ export class RunScene extends Phaser.Scene {
   private spells: SpellDef[] = [];
   private controls!: Controls;
   private board!: Board;
-  private art!: BoardArt;
-  private bx = 0;
-  private by = 0;
+  private world!: World3D;
+  private ready = false;
+  private markLayer!: CellLayer;
   private hero!: Unit;
   private units: Unit[] = [];
   private views = new Map<number, UnitView>();
   private fight?: Fight;
   private mode: Mode = 'explore';
   private ui!: TacticalUi;
-  private overlay!: Phaser.GameObjects.Graphics;
-  private hoverG!: Phaser.GameObjects.Graphics;
+  private overlay!: CellLayer;
+  private hoverG!: CellLayer;
   private markers: Phaser.GameObjects.GameObject[] = [];
   private selected: number | null = null;
   private hoverCell?: Pt;
@@ -108,7 +118,6 @@ export class RunScene extends Phaser.Scene {
   private turnKills = 0;
   private meta!: SaveData;
   private bossLine?: Phaser.GameObjects.Text;
-  private rain!: Rain;
   private uidSeq = 1000;
 
   constructor() { super(SCENES.Run); }
@@ -129,7 +138,6 @@ export class RunScene extends Phaser.Scene {
     this.fight = undefined;
     this.mode = 'explore';
     this.markers = [];
-    this.props = [];
     this.selected = null;
     this.hoverCell = undefined;
     this.hoverSlot = null;
@@ -163,28 +171,22 @@ export class RunScene extends Phaser.Scene {
     this.build();
     this.controls = new Controls(this);
 
-    // Board: skyline, ground and facades, props; centred in the space between the HUD and the bar.
-    paintSkyline(this, 'iso-skyline', CONFIG.WIDTH, CONFIG.HEIGHT, 7);
-    this.add.image(0, 0, 'iso-skyline').setOrigin(0).setScrollFactor(0).setDepth(-10);
-    this.art = paintBoard(this, 'iso-board', this.board, this.run.seed + this.run.roomIndex * 97);
-    const cellsH = (this.board.w + this.board.h) * 8, areaTop = HUD_H + 16, areaH = CONFIG.HEIGHT - BAR_H - areaTop - 4;
-    this.bx = Math.round((CONFIG.WIDTH - this.art.width) / 2);
-    this.by = Math.round(areaTop + (areaH - cellsH) / 2 - this.art.oy);
-    this.add.image(this.bx, this.by, 'iso-board').setOrigin(0).setDepth(0);
-    for (let y = 0; y < this.board.h; y++) for (let x = 0; x < this.board.w; x++) {
-      const prop = this.board.props[y * this.board.w + x];
-      if (!prop || this.board.cells[y * this.board.w + x] !== 'block') continue;
-      const c = this.centre({ x, y });
-      this.props.push(this.add.image(c.x, c.y + 8, `iso-${prop}`).setOrigin(0.5, 1).setDepth(100 + c.y));
-    }
-    this.overlay = this.add.graphics().setDepth(40);
-    this.hoverG = this.add.graphics().setDepth(45);
-    this.rain = new Rain(this, CONFIG.WIDTH, CONFIG.HEIGHT, 50, 950);
+    // The street in 3D, under the interface: Phaser keeps the bar, the texts and the windows.
+    this.ready = false;
+    this.world = stage(this.game.canvas);
+    showStage(true, this.game.canvas);
+    this.overlay = new CellLayer('range', 0);
+    this.hoverG = new CellLayer('hover', 1);
+    this.markLayer = new CellLayer('marks', 0);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.views.forEach(v => v.destroy());
+      for (const l of ['range', 'hover', 'marks']) this.world.setOverlay(l, []);
+      showStage(false);
+    });
+    const loading = this.screenText('CHARGEMENT DU SECTEUR…', 9, '#8a86b0', 135);
 
-    // The player.
     this.hero = makePlayer(this.stats, this.spells, this.run.hp, this.board.playerStarts[0]);
     this.hero.uid = 1;
-    this.addUnit(this.hero);
 
     this.ui = new TacticalUi(this, {
       selectSpell: i => this.selectSpell(i),
@@ -208,25 +210,31 @@ export class RunScene extends Phaser.Scene {
     this.tweens.add({ targets: banner, alpha: 0, delay: 1100, duration: 400, onComplete: () => banner.destroy() });
     if (this.room.elite) audio.sfx('elite');
 
-    if (event) this.setupEvent(createRng(this.run.seed + this.run.roomIndex));
-    else this.setupFight(arena.breakables, rng);
-    this.refreshUi();
+    void environment(this.world).then(() => this.world.buildBoard(this.board, this.run.seed + this.run.roomIndex * 97)).then(() => {
+      if (!this.scene.isActive()) return;
+      this.world.frameBoard(CONFIG.WIDTH * CONFIG.ZOOM, CONFIG.HEIGHT * CONFIG.ZOOM, 1.5, (BAR_H - HUD_H) / 2 / CONFIG.HEIGHT);
+      loading.destroy();
+      this.addUnit(this.hero);
+      if (event) this.setupEvent(createRng(this.run.seed + this.run.roomIndex));
+      else this.setupFight(arena.breakables, rng);
+      this.ready = true;
+      this.refreshUi();
+    });
   }
 
   // ---------- board helpers ----------
 
-  private centre(p: Pt) { return cellCentre(this.art, this.bx, this.by, p); }
+  /** Screen position (Phaser world units) of a cell's centre on the ground. */
+  private centre(p: Pt) { return this.world.toScreen(this.world.cellPos(p), CONFIG.WIDTH, CONFIG.HEIGHT); }
   private cellAtPointer(p: Phaser.Input.Pointer): Pt | undefined {
-    const w = this.cameras.main.getWorldPoint(p.x, p.y);
-    const c = cellFromScreen(this.art, this.bx, this.by, w.x, w.y);
-    return c.x >= 0 && c.y >= 0 && c.x < this.board.w && c.y < this.board.h && this.board.cells[c.y * this.board.w + c.x] !== 'void' ? c : undefined;
+    return this.ready ? this.world.pickCell(p.x, p.y, CONFIG.WIDTH * CONFIG.ZOOM, CONFIG.HEIGHT * CONFIG.ZOOM) : undefined;
   }
   private liveUnits() { return this.fight ? this.fight.units.filter(u => !u.dead) : this.units.filter(u => !u.dead); }
   private unitOn(p: Pt) { return this.fight ? unitAt(this.fight, p) : this.liveUnits().find(u => same(u, p)); }
 
   private addUnit(u: Unit, npcKey?: string) {
     if (!this.fight) this.units.push(u);
-    const v = new UnitView(this, u, p => this.centre(p), this.weaponArt(), npcKey);
+    const v = new UnitView(this, this.world, u, this.weaponArt(), npcKey);
     v.place(u);
     v.face(u.team === 0 ? { x: -1, y: 0 } : { x: 1, y: 0 });
     v.rest();
@@ -253,7 +261,8 @@ export class RunScene extends Phaser.Scene {
     const v = this.addUnit(npc, ev.look);
     v.face({ x: 1, y: 0 });
     const c = this.centre(at);
-    this.add.image(c.x, c.y, 'glow').setTint(ev.color).setAlpha(0.45).setScale(1.4, 0.6).setBlendMode(Phaser.BlendModes.ADD).setDepth(41);
+    void c;
+    this.markLayer.add(at, ev.color, 0.3);
     this.ui.setButton(null);
     this.time.delayedCall(300, () => this.openExits());
   }
@@ -375,10 +384,10 @@ export class RunScene extends Phaser.Scene {
 
   private showStarts() {
     this.clearMarkers();
-    for (const p of this.board.playerStarts) { const c = this.centre(p); this.markers.push(this.add.image(c.x, c.y, 'iso-start-player').setDepth(42)); }
-    for (const p of this.board.enemyStarts) if (this.unitOn(p)?.team === 1) { const c = this.centre(p); this.markers.push(this.add.image(c.x, c.y, 'iso-start-enemy').setDepth(42)); }
+    for (const p of this.board.playerStarts) this.markLayer.add(p, 0x00f0ff, 0.45);
+    for (const p of this.board.enemyStarts) if (this.unitOn(p)?.team === 1) this.markLayer.add(p, 0xff2a6d, 0.35);
   }
-  private clearMarkers() { this.markers.forEach(m => m.destroy()); this.markers = []; }
+  private clearMarkers() { this.markers.forEach(m => m.destroy()); this.markers = []; this.markLayer.clear(); }
 
   private async startFight() {
     this.clearMarkers();
@@ -469,7 +478,7 @@ export class RunScene extends Phaser.Scene {
         if (!view || !u) break;
         const s = u.spells.find(x => x.id === e.spell) ?? spell(e.spell);
         if (!same(u, e.cell)) view.face({ x: Math.sign(e.cell.x - u.x), y: Math.sign(e.cell.y - u.y) });
-        view.pose('windup', s.id);
+        view.pose('windup', s.id, s.fx);
         audio.sfx(s.fx === 'shot' ? (u.team === 0 ? 'playerShoot' : 'enemyShoot') : s.fx === 'hack' ? 'hack' : s.fx === 'blast' ? 'swingHeavy' : s.fx === 'buff' || s.fx === 'heal' ? 'special' : 'swing');
         await wait(this, 110);
         view.pose('strike', s.id);
@@ -509,7 +518,7 @@ export class RunScene extends Phaser.Scene {
       case 'prime': if (view) { view.setPrimed(true); audio.sfx('windup'); floatText(this, view.x, view.y - 30, 'AMORCÉ !', '#f5e663', 8); } break;
       case 'explode': {
         if (view) { sparks(this, view.x, view.y - 6, COLORS.yellow, 16, 34); }
-        for (const p of e.cells) { const c = this.centre(p); const fl = this.add.image(c.x, c.y, 'iso-start-enemy').setDepth(43).setTint(0xff8c2a); this.tweens.add({ targets: fl, alpha: 0, duration: 450, onComplete: () => fl.destroy() }); }
+        this.world.flashCells(e.cells, 0xff8c2a, 500);
         audio.sfx('explode'); this.cameras.main.shake(200, 0.008);
         await wait(this, 200);
         break;
@@ -554,11 +563,7 @@ export class RunScene extends Phaser.Scene {
       this.tweens.add({ targets: sl, alpha: 0, scale: 1.1, duration: 180, onComplete: () => sl.destroy() });
     }
     if (s.fx === 'blast' || zone.length > 1) {
-      for (const p of zone) {
-        const c = this.centre(p);
-        const fl = this.add.image(c.x, c.y, 'iso-start-enemy').setDepth(43).setTint(col);
-        this.tweens.add({ targets: fl, alpha: 0, duration: 380, onComplete: () => fl.destroy() });
-      }
+      this.world.flashCells(zone, col, 420);
       if (s.fx === 'blast') sparks(this, to.x, to.y - 6, col, 10, 22);
     }
   }
@@ -769,7 +774,7 @@ export class RunScene extends Phaser.Scene {
       if (!reward) return;
       const fam = this.room.doorFamilies[i];
       const c = this.centre(p);
-      this.markers.push(this.add.image(c.x, c.y, 'iso-exit').setDepth(42));
+      this.markLayer.add(p, 0x39ff88, 0.45);
       const icon = this.add.image(c.x, c.y - 14, REWARD_ICON[reward]).setDepth(960);
       if (reward === 'implant') icon.setTint(Phaser.Display.Color.HexStringToColor(FAMILY_COLORS[fam]).color);
       this.tweens.add({ targets: icon, y: c.y - 18, yoyo: true, repeat: -1, duration: 500 });
@@ -1022,8 +1027,10 @@ export class RunScene extends Phaser.Scene {
 
   update(_time: number, delta: number) {
     const real = Math.min(delta, CONFIG.MAX_DT_MS);
-    this.rain.update(real);
-    if (this.ending) return;
+    for (const l of [this.overlay, this.hoverG, this.markLayer]) if (l.dirty) { this.world.setOverlay(l.name, l.cells, l.order); l.dirty = false; }
+    this.views.forEach(v => v.update(real / 1000));
+    this.world.frame();
+    if (!this.ready || this.ending) return;
     // Modal windows (implant cards, street events) hide the fight bar and its spell card.
     const modal = !!(this.choice || this.panel);
     this.ui.setVisible(!modal);
@@ -1036,7 +1043,6 @@ export class RunScene extends Phaser.Scene {
     if (this.controls.escape()) { this.selected = null; this.refreshUi(); }
     const n = this.controls.numberPressed();
     if (n && this.mode === 'input') this.selectSpell(n - 1);
-    this.fadeProps();
     if (!this.hoverCell || this.selected === null) this.ui.hint('');
     if (this.controls.blocker() && this.mode === 'input') { const i = this.spells.findIndex(s => s.id === 'blocker'); if (i >= 0) this.selectSpell(i); }
     this.publishHud();
@@ -1044,11 +1050,8 @@ export class RunScene extends Phaser.Scene {
 
   // ---------- overlays ----------
 
-  private diamond(g: Phaser.GameObjects.Graphics, p: Pt, fill: number, alpha: number, edge?: number) {
-    const c = this.centre(p);
-    const pts = [new Phaser.Math.Vector2(c.x, c.y - 7.5), new Phaser.Math.Vector2(c.x + 15, c.y), new Phaser.Math.Vector2(c.x, c.y + 7.5), new Phaser.Math.Vector2(c.x - 15, c.y)];
-    g.fillStyle(fill, alpha).fillPoints(pts, true);
-    if (edge !== undefined) g.lineStyle(1, edge, 0.9).strokePoints(pts, true);
+  private diamond(g: CellLayer, p: Pt, fill: number, alpha: number, edge?: number) {
+    g.add(p, fill, edge !== undefined ? Math.max(alpha, 0.3) : alpha);
   }
 
   /** Movement range (green) or spell range (blue; grey where sight is blocked). */
@@ -1134,16 +1137,6 @@ export class RunScene extends Phaser.Scene {
   private dmgText(s: SpellDef) {
     const d = s.effects.find(e => e.k === 'dmg' || e.k === 'dash');
     return d && (d.k === 'dmg' || d.k === 'dash') ? `${d.min + this.hero.st.flat}-${d.max + this.hero.st.flat} dégâts` : s.desc;
-  }
-
-  /** Tall props see-through when a unit stands behind them. */
-  private props: Phaser.GameObjects.Image[] = [];
-  private fadeProps() {
-    for (const img of this.props) {
-      const b = img.getBounds();
-      const hidden = [...this.views.values()].some(v => v.sprite.depth < img.depth && v.x > b.left - 4 && v.x < b.right + 4 && v.y - 10 > b.top && v.y - 10 < b.bottom);
-      img.setAlpha(hidden ? 0.4 : 1);
-    }
   }
 
   private refreshUi() {

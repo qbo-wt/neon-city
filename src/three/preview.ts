@@ -41,7 +41,7 @@ for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) {
   if (Math.abs(dx) + Math.abs(dy) > 3 || !(dx || dy) || p.x < 0 || p.y < 0 || p.x >= board.w || p.y >= board.h || board.cells[p.y * board.w + p.x] !== 'floor') continue;
   range.push({ p, color: 0x39ff88, alpha: 0.35 });
 }
-world.setOverlay(range);
+world.setOverlay('range', range);
 const loop = () => { world.frame(); requestAnimationFrame(loop); };
 loop();
 (window as unknown as { __READY__: boolean }).__READY__ = true;

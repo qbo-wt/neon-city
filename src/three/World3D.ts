@@ -40,7 +40,6 @@ export class World3D {
   private models = new Map<string, Promise<THREE.Group>>();
   private tex = new THREE.TextureLoader();
   private boardGroup = new THREE.Group();
-  private overlay?: THREE.InstancedMesh;
   private rain?: THREE.LineSegments;
   private clock = new THREE.Clock();
   private board?: Board;
@@ -118,10 +117,14 @@ export class World3D {
   }
 
   /** Centre of a cell on the ground, in world metres. */
-  cellPos(p: Pt, y = 0) { return new THREE.Vector3((p.x + 0.5) * CELL, y, (p.y + 0.5) * CELL); }
+  cellPos(p: Pt, y = 0) { return new THREE.Vector3((p.x + 0.5) * CELL, y + this.groundY(p), (p.y + 0.5) * CELL); }
 
-  /** Frames the board: centred, the whole of it visible, `pad` metres of margin. */
-  frameBoard(viewW: number, viewH: number, pad = 2, offsetY = 0) {
+  /** Top of the ground at a cell: the pavement along the back edges is a 6 cm curb. */
+  private raised = new Set<string>();
+  groundY(p: Pt) { return this.raised.has(`${Math.floor(p.x)},${Math.floor(p.y)}`) ? 0.06 : 0; }
+
+  /** Frames the board: centred, the whole of it visible, `pad` metres of margin; `shiftUp` raises it (fraction of the view). */
+  frameBoard(viewW: number, viewH: number, pad = 2, shiftUp = 0) {
     const b = this.board!;
     const centre = new THREE.Vector3(b.w * CELL / 2, 0, b.h * CELL / 2);
     const elev = THREE.MathUtils.degToRad(32);
@@ -134,7 +137,8 @@ export class World3D {
     const halfW = span / 2, halfH = Math.max(halfW / aspect, (span * 0.62) / 2);
     const hw = Math.max(halfW, halfH * aspect);
     this.camera.left = -hw; this.camera.right = hw;
-    this.camera.top = hw / aspect + offsetY; this.camera.bottom = -hw / aspect + offsetY;
+    const lift = shiftUp * 2 * hw / aspect;
+    this.camera.top = hw / aspect - lift; this.camera.bottom = -hw / aspect - lift;
     this.camera.updateProjectionMatrix();
   }
 
@@ -142,6 +146,7 @@ export class World3D {
   async buildBoard(b: Board, seed: number) {
     this.board = b;
     this.boardGroup.clear();
+    this.raised.clear();
     const rng = createRng(seed);
     const g = this.boardGroup;
     const cellOn = (x: number, y: number) => x >= 0 && y >= 0 && x < b.w && y < b.h && b.cells[y * b.w + x] !== 'void';
@@ -162,8 +167,9 @@ export class World3D {
       if (!cellOn(x, y)) continue;
       const back = !cellOn(x, y - 1) || !cellOn(x - 1, y);
       const top = back ? walk : road;
+      if (back) this.raised.add(`${x},${y}`);
       const m = new THREE.Mesh(uv(tileGeo, x, y), [side, side, top, side, side, side]);
-      m.position.copy(this.cellPos({ x, y }, back ? -0.04 : -0.1));
+      m.position.set((x + 0.5) * CELL, back ? -0.04 : -0.1, (y + 0.5) * CELL);
       m.receiveShadow = true;
       g.add(m);
     }
@@ -381,22 +387,56 @@ export class World3D {
     a.needsUpdate = true;
   }
 
-  /** Coloured cells on the ground (movement range, spell range, zones, start cells). */
-  setOverlay(cells: { p: Pt; color: number; alpha: number }[]) {
-    if (this.overlay) { this.scene.remove(this.overlay); this.overlay.dispose(); }
-    if (!cells.length) { this.overlay = undefined; return; }
-    const geo = new THREE.PlaneGeometry(CELL * 0.94, CELL * 0.94).rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.45, depthWrite: false, toneMapped: false });
-    const m = new THREE.InstancedMesh(geo, mat, cells.length);
+  private layers = new Map<string, THREE.InstancedMesh>();
+  private layerGeo = new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92).rotateX(-Math.PI / 2);
+  private layerMat = new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+
+  /** Coloured cells on the ground, one named layer each (range, hover, markers, flashes). */
+  setOverlay(layer: string, cells: { p: Pt; color: number; alpha: number }[], order = 0) {
+    const old = this.layers.get(layer);
+    if (old) { this.scene.remove(old); old.dispose(); this.layers.delete(layer); }
+    if (!cells.length) return;
+    const m = new THREE.InstancedMesh(this.layerGeo, this.layerMat, cells.length);
     const mx = new THREE.Matrix4(), col = new THREE.Color();
     cells.forEach((c, i) => {
-      mx.makeTranslation(this.cellPos(c.p, 0.02 + i * 1e-5));
+      mx.makeTranslation(this.cellPos(c.p, 0.02 + order * 0.004));
       m.setMatrixAt(i, mx);
-      m.setColorAt(i, col.setHex(c.color).multiplyScalar(c.alpha * 2));
+      m.setColorAt(i, col.setHex(c.color).multiplyScalar(c.alpha * 1.6));
     });
-    m.renderOrder = 2;
+    m.renderOrder = 2 + order;
     this.scene.add(m);
-    this.overlay = m;
+    this.layers.set(layer, m);
+  }
+
+  /** Cells that light up then fade (blasts, zones of a spell that just went off). */
+  flashCells(cells: Pt[], color: number, ms = 420) {
+    const key = `flash-${Math.random()}`;
+    this.setOverlay(key, cells.map(p => ({ p, color, alpha: 0.9 })), 3);
+    const m = this.layers.get(key);
+    if (!m) return;
+    const start = performance.now();
+    const tick = () => {
+      const t = (performance.now() - start) / ms;
+      if (t >= 1 || !this.layers.has(key)) { this.setOverlay(key, []); return; }
+      (m.material as THREE.MeshBasicMaterial).opacity = 1 - t;
+      requestAnimationFrame(tick);
+    };
+    m.material = this.layerMat.clone();
+    tick();
+  }
+
+  /** A real-scale prop model (breakables), centred on the origin with its base on y = 0. */
+  async propModel(id: string, maxSize = CELL * 0.8): Promise<THREE.Object3D> {
+    const o = await this.piece(id);
+    o.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(o), size = bb.getSize(new THREE.Vector3());
+    o.scale.multiplyScalar(Math.min(1, maxSize / Math.max(size.x, size.z)));
+    o.updateMatrixWorld(true);
+    const bb2 = new THREE.Box3().setFromObject(o), c = bb2.getCenter(new THREE.Vector3());
+    o.position.sub(new THREE.Vector3(c.x, bb2.min.y, c.z));
+    const g = new THREE.Group();
+    g.add(o);
+    return g;
   }
 
   /** Board cell under a canvas pixel, or undefined. */

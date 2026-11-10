@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CONFIG, COLORS } from './config';
+import { CONFIG } from './config';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { HideoutScene } from './scenes/HideoutScene';
@@ -17,7 +17,8 @@ const game = new Phaser.Game({
   parent: 'game',
   width: CONFIG.WIDTH * CONFIG.ZOOM,
   height: CONFIG.HEIGHT * CONFIG.ZOOM,
-  backgroundColor: COLORS.night,
+  // Transparent: the 3D streets are drawn on a canvas underneath.
+  transparent: true,
   pixelArt: true,
   roundPixels: true,
   disableContextMenu: true,
