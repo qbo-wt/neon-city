@@ -4,6 +4,7 @@ import { Rain } from '../fx/effects';
 import { txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
 import { audio } from '../audio/audio';
+import { fadeVisibility, showStage, stage, stageOpacity } from '../three/stage';
 
 export class DeathScene extends Phaser.Scene {
   private rain!: Rain;
@@ -15,6 +16,10 @@ export class DeathScene extends Phaser.Scene {
     audio.setMusic(data.victory ? 'hub' : 'off');
     if (data.victory) audio.sfx('relic');
     this.rain = new Rain(this, W, CONFIG.HEIGHT, 80);
+    // The street of the last sector, darkened, behind the results.
+    showStage(true, this.game.canvas);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { showStage(false); stageOpacity(1); });
+    this.add.rectangle(W / 2, CONFIG.HEIGHT / 2, W, CONFIG.HEIGHT, 0x05030f, 0.72);
     txt(this, W / 2, 70, data.victory ? 'DISTRICT NETTOYÉ' : 'SIGNAL VITAL PERDU', 22, data.victory ? '#f5e663' : '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 4);
     txt(this, W / 2, 104, data.victory ? 'Le contrat est rempli.' : data.killer ? `Abattu par ${data.killer}. Ton chrome reste sur le trottoir.` : 'Ton corps a lâché, ton chrome reste sur le trottoir.', 8, '#8a86b0').setOrigin(0.5);
     const extra: string[] = [];
@@ -29,5 +34,9 @@ export class DeathScene extends Phaser.Scene {
     this.time.delayedCall(500, () => this.input.once('pointerdown', () => this.scene.start(SCENES.Hideout)));
   }
 
-  update(_t: number, dt: number) { this.rain.update(dt); }
+  update(_t: number, dt: number) {
+    this.rain.update(dt);
+    stageOpacity(fadeVisibility(this.cameras.main.fadeEffect));
+    stage(this.game.canvas).frame();
+  }
 }

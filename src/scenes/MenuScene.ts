@@ -1,31 +1,52 @@
 import Phaser from 'phaser';
 import { CONFIG, COLORS, SCENES } from '../config';
-import { Rain } from '../fx/effects';
 import { txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
 import { audio } from '../audio/audio';
+import { environment, fadeVisibility, showStage, stage, stageOpacity } from '../three/stage';
+import { generateArena } from '../tactics/arena';
+import { createRng } from '../core/rng';
+import { MixamoRig } from '../three/mixamo';
+import type * as THREE from 'three';
 
 export class MenuScene extends Phaser.Scene {
-  private rain!: Rain;
   private title!: Phaser.GameObjects.Text;
   private ghost!: Phaser.GameObjects.Text;
 
   constructor() { super(SCENES.Menu); }
 
+  private rigs: MixamoRig[] = [];
+  private t = 0;
+
   create() {
     setupCamera(this);
     const { WIDTH: W, HEIGHT: H } = CONFIG;
-    // Skyline silhouettes with lit windows.
-    const g = this.add.graphics();
-    for (let x = 0; x < W; x += 24 + Math.floor(Math.random() * 16)) {
-      const h = 60 + Math.random() * 120, w = 20 + Math.random() * 20;
-      g.fillStyle(0x140f2b).fillRect(x, H - h, w, h);
-      for (let wy = H - h + 6; wy < H - 6; wy += 7) for (let wx = x + 3; wx < x + w - 3; wx += 5)
-        if (Math.random() < 0.18) g.fillStyle(Math.random() < 0.7 ? 0xf5e663 : 0xff2a6d, 0.8).fillRect(wx, wy, 2, 3);
-    }
-    this.add.image(W / 2, 80, 'glow').setScale(5, 2).setTint(0xff2a6d).setAlpha(0.35);
-    this.rain = new Rain(this, W, H, 90);
+    // Behind the title: the 3D street at night, the camera drifting along it, a few people in the rain.
+    this.rigs = [];
+    const world = stage(this.game.canvas);
+    showStage(true, this.game.canvas);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { showStage(false); stageOpacity(1); this.rigs.forEach(r => world.scene.remove(r.root)); this.rigs = []; });
+    const { board } = generateArena('avenue', createRng(12), 0);
+    void environment(world).then(() => world.buildBoard(board, 12)).then(() => {
+      if (!this.scene.isActive()) return;
+      world.frameBoard(W * CONFIG.ZOOM, H * CONFIG.ZOOM, 0);
+      world.zoomAt(1.9, W * CONFIG.ZOOM * 0.5, H * CONFIG.ZOOM * 0.62, W * CONFIG.ZOOM, H * CONFIG.ZOOM);
+      const people: [string, number, number, number][] = [['player', 7, 8, 0.4], ['runner', 9, 7, -2.4], ['hacker', 10, 7, -2], ['civil2', 5, 9, 1.2], ['civil3', 6, 10, 1.6]];
+      for (const [kind, x, y, yaw] of people) {
+        const r = new MixamoRig(kind === 'civil2' || kind === 'civil3' ? 'npc' : kind, 1, kind.startsWith('civil') ? kind : undefined);
+        // Never on a parked car: the first free cell along the row.
+        let cx = x;
+        while (cx < board.w - 1 && board.cells[y * board.w + cx] !== 'floor') cx++;
+        r.root.position.copy(world.cellPos({ x: cx, y }));
+        r.root.rotation.y = yaw;
+        world.scene.add(r.root as THREE.Object3D);
+        this.rigs.push(r);
+        void r.ready.then(() => r.play(kind === 'runner' || kind === 'hacker' ? 'talk' : 'idle'));
+      }
+    });
+    this.add.rectangle(W / 2, 90, W, 90, 0x05030f, 0.45);
+    this.add.image(W / 2, 80, 'glow').setScale(5, 2).setTint(0xff2a6d).setAlpha(0.25);
 
     this.ghost = txt(this, W / 2, 70, 'NEON CITY', 40, '#00f0ff').setOrigin(0.5).setAlpha(0.6);
     this.title = txt(this, W / 2, 70, 'NEON CITY', 40, '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 4);
@@ -55,7 +76,12 @@ export class MenuScene extends Phaser.Scene {
   }
 
   update(_t: number, dt: number) {
-    this.rain.update(dt);
+    const world = stage(this.game.canvas);
+    this.t += dt / 1000;
+    this.rigs.forEach(r => r.update(dt / 1000));
+    world.panScreen(Math.sin(this.t * 0.15) * dt * 0.012, 0, CONFIG.WIDTH * CONFIG.ZOOM);
+    stageOpacity(fadeVisibility(this.cameras.main.fadeEffect));
+    world.frame();
     // Occasional chromatic glitch on the title.
     const glitch = Math.random() < 0.06;
     this.ghost.setPosition(CONFIG.WIDTH / 2 + (glitch ? Phaser.Math.Between(-4, 4) : 2), 70 + (glitch ? Phaser.Math.Between(-2, 2) : 0));

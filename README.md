@@ -1,17 +1,20 @@
 # Neon City
 
-Rogue-lite tactique au tour par tour, dans le navigateur. Pixel art cyberpunk en vue isométrique, bruitages et musique entièrement générés par le code (aucun fichier image ni son).
+Rogue-lite tactique au tour par tour, dans le navigateur. Cyberpunk en 3D réaliste vue de trois quarts : décors et textures scannés (Poly Haven, CC0), persos animés Mixamo, éclairage de nuit, pluie, sol mouillé. Bruitages et musique générés par le code.
 
-> Branche `tactique` : combat au tour par tour sur damier. La version action en temps réel (frappe, dash, parade) reste sur `main`.
+> Branche `tactique-3d` : la version 3D réaliste du jeu tactique. `tactique` garde la version pixel art, `main` la version action en temps réel.
 
 ## Lancer
 
 ```bash
 npm install
+npm run assets     # télécharge les décors 3D Poly Haven (CC0, ~185 Mo, hors git)
 npm run dev        # http://localhost:5173
 npm test           # tests de la logique de jeu (Vitest)
 npm run build      # vérification des types + build statique dans dist/
 ```
+
+Les persos viennent de Mixamo : les GLB compacts sont dans `public/assets/mixamo/glb`, les animations dans `public/assets/mixamo/anims`. Pour en changer un, déposer le FBX Mixamo dans `public/assets/mixamo/characters/` puis lancer `npm run convert-mixamo` (serveur de dev lancé).
 
 ## Contrôles
 
@@ -25,6 +28,7 @@ npm run build      # vérification des types + build statique dans dist/
 | Fin du tour / prêt au placement | Espace ou Entrée |
 | Neuro-bloqueur (2 PA, -30 psychose) | F |
 | Infos d'une créature, chemin, portée, dégâts prévus | Survol |
+| Zoomer / déplacer la caméra (combat) | Molette / ZQSD ou flèches |
 | Couper / remettre le son | M |
 | Aide des commandes | I ou bouton « i » |
 
@@ -69,7 +73,8 @@ src/
   data/            contenu : sorts, ennemis, armes, aspects, implants, synergies, notoriété, récit, bestiaire
   core/            logique pure de la méta (stats, psychose, offres, contrats, sauvegarde, run du jour)
   scenes/          Boot, Menu, Hideout, Building, Ripperdoc, Netrunner, Run (+ run/ : vue des unités, interface), Hud, Death
-  gfx/             art iso (sol, façades, obstacles), rig de personnages animés, décors
+  three/           rendu 3D : rues (World3D), intérieurs (Interior3D), unités, persos Mixamo
+  gfx/             art 2D restant (icônes, interface)
   audio/ entities/ systems/ ui/ fx/ input/
 tests/             tests Vitest (core et tactics)
 docs/              conception
