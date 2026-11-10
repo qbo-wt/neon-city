@@ -41,14 +41,18 @@ export class MannequinRig implements Rig {
   private t = 0;
   private once = false;
   private flashT = 0;
+  private baseEmissive: THREE.Color[] = [];
 
   constructor(kind: string) {
     const look = LOOKS[kind] ?? LOOKS.npc;
-    const armour = new THREE.MeshStandardMaterial({ color: look.body, roughness: 0.35, metalness: 0.6 });
+    // A faint self-glow keeps the figures readable on the dark street (no per-unit lights: adding
+    // and removing lights would recompile every material).
+    const armour = new THREE.MeshStandardMaterial({ color: look.body, roughness: 0.35, metalness: 0.5, emissive: look.body, emissiveIntensity: 0.25 });
     const cloth = new THREE.MeshStandardMaterial({ color: 0x111018, roughness: 0.8 });
     const skin = new THREE.MeshStandardMaterial({ color: 0x8a6a5a, roughness: 0.6 });
     const glow = new THREE.MeshBasicMaterial({ color: look.glow, toneMapped: false });
     this.mats.push(armour, cloth, skin);
+    this.baseEmissive = this.mats.map(m => m.emissive.clone());
     const cap = (r: number, l: number, m: THREE.Material) => { const x = new THREE.Mesh(new THREE.CapsuleGeometry(r, l, 6, 12), m); x.castShadow = true; return x; };
     const torso = cap(0.2, 0.42, armour); torso.position.y = 1.18; torso.scale.set(1.15, 1, 0.75);
     const hips = cap(0.17, 0.12, cloth); hips.position.y = 0.88; hips.scale.set(1.1, 1, 0.8);
@@ -64,9 +68,6 @@ export class MannequinRig implements Rig {
     this.body.add(torso, hips, head, visor, stripe);
     this.body.scale.setScalar(look.scale);
     this.root.add(this.body);
-    const key = new THREE.PointLight(look.glow, 2.2, 3, 2);
-    key.position.set(0.4, 2.1, 0.6);
-    this.root.add(key);
     this.height = 1.8 * look.scale;
   }
 
@@ -82,7 +83,7 @@ export class MannequinRig implements Rig {
 
   update(dt: number) {
     this.t += dt;
-    if (this.flashT > 0 && (this.flashT -= dt) <= 0) for (const m of this.mats) m.emissive.setHex(0);
+    if (this.flashT > 0 && (this.flashT -= dt) <= 0) this.mats.forEach((m, i) => m.emissive.copy(this.baseEmissive[i]));
     const t = this.t, b = this.body;
     b.rotation.set(0, 0, 0); b.position.set(0, 0, 0);
     this.legs.forEach(l => l.rotation.set(0, 0, 0));

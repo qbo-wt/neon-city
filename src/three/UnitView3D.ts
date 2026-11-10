@@ -4,6 +4,7 @@ import { COLORS, CONFIG } from '../config';
 import type { Pt, Unit } from '../tactics/types';
 import { CELL, type World3D } from './World3D';
 import { DroneRig, MannequinRig, PropRig, type AnimName, type Rig } from './rigs';
+import { MixamoRig, mixamoAvailable } from './mixamo';
 
 export type PoseKind = 'windup' | 'strike' | 'hurt' | 'charge';
 
@@ -11,6 +12,21 @@ export type PoseKind = 'windup' | 'strike' | 'hurt' | 'charge';
 const FX_ANIM: Record<string, AnimName> = { slash: 'slash', blast: 'punch', shot: 'shoot', wire: 'slash', hack: 'cast', buff: 'cast', heal: 'cast', jump: 'jump' };
 /** Breakables: the CC0 prop that stands for each kind. */
 const BREAKABLE_MODEL: Record<string, string> = { crate: 'utility_box_02', barrel: 'barrel_stove', trash: 'metal_trash_can', vending: 'utility_box_01' };
+
+/** A soft additive halo (auras, primed bombs): a sprite, not a light, so no shader recompiles. */
+let glowTex: THREE.Texture | undefined;
+function halo(color: number, size: number) {
+  if (!glowTex) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d')!, gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    glowTex = new THREE.CanvasTexture(c);
+  }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false }));
+  sp.scale.setScalar(size);
+  return sp;
+}
 
 /** Turns a step on the board into a yaw: board +x is world +x, board +y is world +z. */
 const yawOf = (d: Pt) => Math.atan2(d.x, d.y);
@@ -25,7 +41,7 @@ export class UnitView3D {
   private holder = new THREE.Group();
   private bar: Phaser.GameObjects.Graphics;
   private ring?: THREE.Mesh;
-  private primeLight?: THREE.PointLight;
+  private primeLight?: THREE.Sprite;
   private cell: Pt;
   private busy = 0;
   private dead = false;
@@ -51,11 +67,26 @@ export class UnitView3D {
       [base, head].forEach(m => { m.castShadow = true; });
       g.add(base, head, eye);
       this.rig = new PropRig(g);
-    } else this.rig = new MannequinRig(npcKey ? 'npc' : k);
+    } else {
+      this.rig = new MannequinRig(npcKey ? 'npc' : k);
+      // The real character replaces the stand-in as soon as it is loaded (if its files are there).
+      const kindKey = npcKey ? 'npc' : k;
+      void mixamoAvailable().then(ok => {
+        if (!ok || this.dead) return;
+        const real = new MixamoRig(kindKey, kindKey === 'brute' ? 1.15 : kindKey === 'boss' || kindKey === 'warden' ? 1.2 : 1);
+        void real.ready.then(loaded => {
+          if (!loaded || this.dead) return;
+          this.holder.remove(this.rig.root);
+          this.holder.add(real.root);
+          this.rig = real;
+          real.play('idle');
+        });
+      });
+    }
     this.holder.add(this.rig.root);
     if (unit.elite === 'cloak') this.holder.traverse(o => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m) { m.transparent = true; m.opacity = 0.45; } });
     if (unit.elite === 'frenzy' || unit.elite === 'explosive') {
-      const l = new THREE.PointLight(unit.elite === 'frenzy' ? 0xff3b3b : COLORS.yellow, 3, 2.5);
+      const l = halo(unit.elite === 'frenzy' ? 0xff3b3b : COLORS.yellow, 2.2);
       l.position.y = 1; this.holder.add(l);
     }
     world.scene.add(this.holder);
@@ -140,7 +171,7 @@ export class UnitView3D {
   update(dt: number) {
     this.rig.update(dt);
     if (this.ring) this.ring.rotation.z += dt * 0.8;
-    if (this.primeLight) this.primeLight.intensity = 4 + Math.sin(performance.now() / 90) * 3;
+    if (this.primeLight) this.primeLight.scale.setScalar(1.4 + Math.sin(performance.now() / 90) * 0.5);
     this.sync();
   }
 
@@ -162,7 +193,7 @@ export class UnitView3D {
   /** Primed bomber: a pulsing yellow light on it. */
   setPrimed(on: boolean) {
     if (on && !this.primeLight) {
-      this.primeLight = new THREE.PointLight(0xf5e663, 6, 3.5);
+      this.primeLight = halo(0xf5e663, 1.6);
       this.primeLight.position.y = 1.2;
       this.holder.add(this.primeLight);
     } else if (!on && this.primeLight) { this.holder.remove(this.primeLight); this.primeLight = undefined; }
