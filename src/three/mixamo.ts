@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { AnimName, Rig } from './rigs';
 
@@ -18,7 +19,12 @@ const ANIMS: AnimName[] = ['idle', 'walk', 'slash', 'punch', 'kick', 'shoot', 'c
 const ONCE = new Set<AnimName>(['slash', 'punch', 'kick', 'shoot', 'cast', 'jump', 'roll', 'hit', 'death', 'victory']);
 
 const loader = new FBXLoader();
-const models = new Map<string, Promise<THREE.Group | null>>();
+/** Mixamo prefixes bones with mixamorig, mixamorig1, mixamorig4… depending on the export: strip it on both sides. */
+const bare = (name: string) => name.replace(/^mixamorig\d*:?/, '');
+/** A loaded model and the scale that turns it into metres (the raw FBX is in centimetres). */
+type Model = { group: THREE.Group; unit: number };
+const models = new Map<string, Promise<Model | null>>();
+const gltf = new GLTFLoader();
 let clips: Promise<Map<AnimName, THREE.AnimationClip>> | undefined;
 let available: Promise<boolean> | undefined;
 
@@ -26,26 +32,39 @@ const exists = (url: string) => fetch(url, { method: 'HEAD' }).then(r => r.ok &&
 
 /** True once the hero model is there (the rest is optional, kind by kind). */
 export function mixamoAvailable(): Promise<boolean> {
-  available ??= exists(`${BASE}characters/hero.fbx`);
+  available ??= exists(`${BASE}glb/hero.glb`).then(ok => ok || exists(`${BASE}characters/hero.fbx`));
   return available;
 }
 
-function loadModel(name: string): Promise<THREE.Group | null> {
+/**
+ * The compact GLB made by scripts/convert-mixamo.mjs when it is there (metres, PBR, 1024 px
+ * textures), the raw Mixamo FBX otherwise (centimetres, Phong materials made PBR here).
+ */
+function loadModel(name: string): Promise<Model | null> {
   let p = models.get(name);
   if (!p) {
-    p = exists(`${BASE}characters/${name}.fbx`).then(ok => (ok ? loader.loadAsync(`${BASE}characters/${name}.fbx`) : null)).then(g => {
-      if (!g) return null;
-      g.traverse(o => {
+    p = (async (): Promise<Model | null> => {
+      let group: THREE.Group | null = null, unit = 1;
+      if (await exists(`${BASE}glb/${name}.glb`)) group = (await gltf.loadAsync(`${BASE}glb/${name}.glb`)).scene;
+      else if (await exists(`${BASE}characters/${name}.fbx`)) {
+        group = await loader.loadAsync(`${BASE}characters/${name}.fbx`);
+        unit = 0.01;
+        group.traverse(o => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          const old = (Array.isArray(m.material) ? m.material : [m.material]) as THREE.MeshPhongMaterial[];
+          const next = old.map(o2 => new THREE.MeshStandardMaterial({ map: o2.map ?? null, normalMap: o2.normalMap ?? null, color: o2.map ? 0xffffff : o2.color, roughness: 0.6, metalness: 0.1, transparent: o2.transparent, opacity: o2.opacity }));
+          m.material = Array.isArray(m.material) ? next : next[0];
+        });
+      }
+      if (!group) return null;
+      group.traverse(o => {
+        if ((o as THREE.Bone).isBone) o.name = bare(o.name);
         const m = o as THREE.Mesh;
-        if (!m.isMesh) return;
-        m.castShadow = true; m.receiveShadow = true;
-        // Mixamo materials come as Phong: make them physically based so they sit in the lit street.
-        const old = (Array.isArray(m.material) ? m.material : [m.material]) as THREE.MeshPhongMaterial[];
-        const next = old.map(o2 => new THREE.MeshStandardMaterial({ map: o2.map ?? null, normalMap: o2.normalMap ?? null, color: o2.map ? 0xffffff : o2.color, roughness: 0.6, metalness: 0.1, transparent: o2.transparent, opacity: o2.opacity }));
-        m.material = Array.isArray(m.material) ? next : next[0];
+        if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; }
       });
-      return g;
-    }).catch(() => null);
+      return { group, unit };
+    })().catch(() => null);
     models.set(name, p);
   }
   return p;
@@ -69,6 +88,7 @@ function loadClips(): Promise<Map<AnimName, THREE.AnimationClip>> {
     const clip = g?.animations[0];
     if (!clip) return null;
     clip.name = name;
+    for (const t of clip.tracks) t.name = bare(t.name);
     return [name, inPlace(clip)] as const;
   })).then(list => new Map(list.filter((x): x is readonly [AnimName, THREE.AnimationClip] => !!x)));
   return clips;
@@ -88,9 +108,8 @@ export class MixamoRig implements Rig {
   constructor(kind: string, scale = 1) {
     this.ready = Promise.all([loadModel(MODEL_FOR[kind] ?? 'civil1'), loadClips()]).then(([model, cl]) => {
       if (!model) return false;
-      const body = cloneSkinned(model) as THREE.Group;
-      // Mixamo exports in centimetres.
-      body.scale.setScalar(0.01 * scale);
+      const body = cloneSkinned(model.group) as THREE.Group;
+      body.scale.multiplyScalar(model.unit * scale);
       body.traverse(o => {
         const m = o as THREE.Mesh;
         if (!m.isMesh) return;
@@ -99,7 +118,8 @@ export class MixamoRig implements Rig {
         m.material = Array.isArray(m.material) ? list : list[0];
       });
       this.root.add(body);
-      this.height = new THREE.Box3().setFromObject(body).max.y || 1.8 * scale;
+      const h = new THREE.Box3().setFromObject(body).max.y;
+      this.height = h > 0.8 && h < 4 ? h : 1.8 * scale;
       this.mixer = new THREE.AnimationMixer(body);
       for (const [name, clip] of cl) {
         const a = this.mixer.clipAction(clip);

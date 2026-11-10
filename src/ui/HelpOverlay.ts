@@ -11,6 +11,7 @@ const HUB_KEYS: [string, string][] = [
 ];
 const RUN_KEYS: [string, string][] = [
   ['CLIC sur une case', 'Se déplacer (coût en PM affiché)'],
+  ['MOLETTE / ZQSD', 'Zoomer / déplacer la caméra'],
   ['1 à 9 ou clic', 'Choisir un sort, puis clic sur la cible'],
   ['CLIC DROIT / ÉCHAP', 'Annuler le sort choisi'],
   ['ESPACE / ENTRÉE', 'Fin du tour (ou PRÊT au placement)'],

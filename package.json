@@ -6,7 +6,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "assets": "node scripts/fetch-polyhaven.mjs"
+    "assets": "node scripts/fetch-polyhaven.mjs",
+    "convert-mixamo": "node scripts/convert-mixamo.mjs"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.181.0",
+    "playwright-core": "^1.65.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"

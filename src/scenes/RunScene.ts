@@ -138,6 +138,8 @@ export class RunScene extends Phaser.Scene {
     this.fight = undefined;
     this.mode = 'explore';
     this.markers = [];
+    this.tags = [];
+    this.camKey = '';
     this.selected = null;
     this.hoverCell = undefined;
     this.hoverSlot = null;
@@ -196,6 +198,10 @@ export class RunScene extends Phaser.Scene {
     this.help = new HelpOverlay(this, CONFIG.WIDTH - 12, HUD_H + 40, 'run');
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.onPointerMove(p));
+    this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
+      if (!this.ready || this.modal()) return;
+      this.world.zoomAt(dy < 0 ? 1.15 : 1 / 1.15, p.x, p.y, CONFIG.WIDTH * CONFIG.ZOOM, CONFIG.HEIGHT * CONFIG.ZOOM);
+    });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.onPointerDown(p));
     if (!this.scene.isActive(SCENES.Hud)) this.scene.launch(SCENES.Hud);
     audio.setMusic(this.room.isBoss ? 'boss' : 'run');
@@ -387,7 +393,25 @@ export class RunScene extends Phaser.Scene {
     for (const p of this.board.playerStarts) this.markLayer.add(p, 0x00f0ff, 0.45);
     for (const p of this.board.enemyStarts) if (this.unitOn(p)?.team === 1) this.markLayer.add(p, 0xff2a6d, 0.35);
   }
-  private clearMarkers() { this.markers.forEach(m => m.destroy()); this.markers = []; this.markLayer.clear(); }
+  private clearMarkers() { this.markers.forEach(m => m.destroy()); this.markers = []; this.tags = []; this.markLayer.clear(); }
+  /** Things drawn by Phaser over a cell, moved when the camera moves. */
+  private tags: { cell: Pt; icon: Phaser.GameObjects.Image; label: Phaser.GameObjects.Text }[] = [];
+  private camKey = '';
+  /** Wheel zooms, ZQSD / WASD / arrows move the view; overlays drawn by Phaser follow. */
+  private moveCamera(dt: number) {
+    const m = this.modal() ? { x: 0, y: 0 } : this.controls.move();
+    if (m.x || m.y) this.world.panScreen(m.x * dt * 0.6, m.y * dt * 0.6, CONFIG.WIDTH * CONFIG.ZOOM);
+    const cam = this.world.camera, key = `${cam.position.x.toFixed(3)},${cam.position.z.toFixed(3)},${cam.zoom.toFixed(3)}`;
+    if (key === this.camKey) return;
+    this.camKey = key;
+    for (const t of this.tags) {
+      const c = this.centre(t.cell);
+      t.icon.setPosition(c.x, c.y - 14 * cam.zoom);
+      t.label.setPosition(c.x, c.y - 28 * cam.zoom);
+      t.icon.setScale(Math.min(2, cam.zoom));
+    }
+    this.drawHover();
+  }
 
   private async startFight() {
     this.clearMarkers();
@@ -781,6 +805,7 @@ export class RunScene extends Phaser.Scene {
       const label = reward === 'implant' ? `IMPLANT ${FAMILY_NAMES[fam]}` : DOOR_LABELS[reward];
       const t = txt(this, c.x, c.y - 28, label, 5, reward === 'implant' ? FAMILY_COLORS[fam] : '#e8e8ff').setOrigin(0.5).setDepth(961).setStroke('#05030f', 3);
       this.markers.push(icon, t);
+      this.tags.push({ cell: p, icon, label: t });
     });
     if (this.room.doorRewards.length) {
       audio.sfx('door');
@@ -1029,6 +1054,7 @@ export class RunScene extends Phaser.Scene {
     const real = Math.min(delta, CONFIG.MAX_DT_MS);
     for (const l of [this.overlay, this.hoverG, this.markLayer]) if (l.dirty) { this.world.setOverlay(l.name, l.cells, l.order); l.dirty = false; }
     this.views.forEach(v => v.update(real / 1000));
+    if (this.ready) this.moveCamera(real);
     this.world.frame();
     if (!this.ready || this.ending) return;
     // Modal windows (implant cards, street events) hide the fight bar and its spell card.

@@ -6,3 +6,6 @@ dist/
 
 # Poly Haven assets are fetched by scripts/fetch-polyhaven.mjs (npm run assets)
 public/assets/ph/
+
+# Raw Mixamo characters (460 MB): converted to public/assets/mixamo/glb by scripts/convert-mixamo.mjs
+public/assets/mixamo/characters/

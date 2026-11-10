@@ -129,8 +129,11 @@ export class World3D {
     const centre = new THREE.Vector3(b.w * CELL / 2, 0, b.h * CELL / 2);
     const elev = THREE.MathUtils.degToRad(32);
     const dir = new THREE.Vector3(1, Math.SQRT2 * Math.tan(elev), 1).normalize();
-    this.camera.position.copy(centre).addScaledVector(dir, 60);
-    this.camera.lookAt(centre);
+    this.focus.copy(centre);
+    this.home.copy(centre);
+    this.camDir.copy(dir);
+    this.camera.zoom = 1;
+    this.placeCamera();
     // Screen width of the board diagonal decides the zoom.
     const span = (b.w + b.h) * CELL / Math.SQRT2 + pad * 2;
     const aspect = viewW / viewH;
@@ -140,6 +143,55 @@ export class World3D {
     const lift = shiftUp * 2 * hw / aspect;
     this.camera.top = hw / aspect - lift; this.camera.bottom = -hw / aspect - lift;
     this.camera.updateProjectionMatrix();
+  }
+
+  private focus = new THREE.Vector3();
+  private home = new THREE.Vector3();
+  private camDir = new THREE.Vector3(1, 1, 1).normalize();
+  private placeCamera() {
+    this.camera.position.copy(this.focus).addScaledVector(this.camDir, 60);
+    this.camera.lookAt(this.focus);
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld();
+  }
+
+  /** Moves the view on the ground by a screen-space amount (pixels of a viewW x viewH view). */
+  panScreen(dx: number, dy: number, viewW: number) {
+    const perPx = (this.camera.right - this.camera.left) / this.camera.zoom / viewW;
+    const right = new THREE.Vector3(1, 0, -1).normalize(), down = new THREE.Vector3(1, 0, 1).normalize();
+    const elev = Math.asin(this.camDir.y);
+    this.focus.addScaledVector(right, dx * perPx).addScaledVector(down, (dy * perPx) / Math.sin(elev));
+    this.clampFocus();
+    this.placeCamera();
+  }
+
+  /** Zooms around a canvas pixel (keeps the ground point under it in place). */
+  zoomAt(factor: number, px: number, py: number, w: number, h: number) {
+    const before = this.groundAt(px, py, w, h);
+    this.camera.zoom = THREE.MathUtils.clamp(this.camera.zoom * factor, 1, 3.2);
+    this.placeCamera();
+    const after = this.groundAt(px, py, w, h);
+    if (before && after) this.focus.add(before.sub(after));
+    if (this.camera.zoom <= 1.001) this.focus.copy(this.home);
+    this.clampFocus();
+    this.placeCamera();
+  }
+
+  get zoom() { return this.camera.zoom; }
+
+  private clampFocus() {
+    const b = this.board;
+    if (!b) return;
+    this.focus.x = THREE.MathUtils.clamp(this.focus.x, 0, b.w * CELL);
+    this.focus.z = THREE.MathUtils.clamp(this.focus.z, 0, b.h * CELL);
+    this.focus.y = 0;
+  }
+
+  private groundAt(px: number, py: number, w: number, h: number) {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2((px / w) * 2 - 1, -(py / h) * 2 + 1), this.camera);
+    const hit = new THREE.Vector3();
+    return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit) ? hit : null;
   }
 
   /** Builds the street of a board: ground, curbs, facades, props, lights, puddles, rain. */
