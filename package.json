@@ -5,16 +5,19 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "assets": "node scripts/fetch-polyhaven.mjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "phaser": "^4.2.1"
+    "phaser": "^4.2.1",
+    "three": "^0.181.2"
   },
   "devDependencies": {
+    "@types/three": "^0.181.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"

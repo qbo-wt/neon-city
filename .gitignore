@@ -3,3 +3,6 @@ dist/
 .superpowers/
 *.log
 .vitest/
+
+# Poly Haven assets are fetched by scripts/fetch-polyhaven.mjs (npm run assets)
+public/assets/ph/

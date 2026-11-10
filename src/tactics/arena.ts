@@ -21,11 +21,14 @@ const SHAPES: Record<ArenaStyle, Shape> = {
 /** Fixed props of a style: [x, y, cell, prop]. Random clutter is added on top. */
 function layout(style: ArenaStyle, rng: Rng): [number, number, Cell, string][] {
   const out: [number, number, Cell, string][] = [];
+  const out2 = out;
   const car = () => pick(rng, ['car-0', 'car-1', 'car-2']);
+  /** A parked car: two cells along x. */
+  const park = (x: number, y: number) => { out2.push([x, y, 'block', car()], [x + 1, y, 'block', 'car-tail']); };
   switch (style) {
     case 'avenue':
-      for (const x of [1, 4, 9, 12]) out.push([x, 2, 'block', car()]);
-      for (const x of [2, 6, 11]) out.push([x, 8, 'block', car()]);
+      for (const x of [1, 4, 9]) park(x, 2);
+      for (const x of [2, 6, 11]) park(x, 8);
       out.push([7, 5, 'hole', 'manhole'], [0, 5, 'block', 'lamp'], [13, 5, 'block', 'lamp']);
       break;
     case 'alley':
@@ -40,7 +43,7 @@ function layout(style: ArenaStyle, rng: Rng): [number, number, Cell, string][] {
       break;
     case 'parking':
       for (const [x, y] of [[3, 3], [7, 3], [11, 3], [3, 8], [7, 8], [11, 8]]) out.push([x, y, 'block', 'pillar']);
-      for (const [x, y] of [[1, 1], [5, 1], [9, 5], [12, 10], [5, 10]]) out.push([x, y, 'block', car()]);
+      for (const [x, y] of [[1, 1], [5, 1], [9, 5], [11, 10], [5, 10]]) park(x, y);
       break;
     case 'plaza':
       out.push([6, 6, 'block', 'totem'], [3, 3, 'block', 'planter'], [9, 3, 'block', 'planter'], [3, 9, 'block', 'planter'], [9, 9, 'block', 'planter'], [6, 2, 'hole', 'fountain']);
