@@ -28,7 +28,7 @@ export class MenuScene extends Phaser.Scene {
     showStage(true, this.game.canvas);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { showStage(false); stageOpacity(1); this.rigs.forEach(r => world.scene.remove(r.root)); this.rigs = []; });
     const { board } = generateArena('avenue', createRng(12), 0);
-    void environment(world).then(() => world.buildBoard(board, 12)).then(() => {
+    void environment(world).then(() => (this.scene.isActive() ? world.buildBoard(board, 12) : undefined)).then(() => {
       if (!this.scene.isActive()) return;
       world.frameBoard(W * CONFIG.ZOOM, H * CONFIG.ZOOM, 0);
       world.zoomAt(1.9, W * CONFIG.ZOOM * 0.5, H * CONFIG.ZOOM * 0.62, W * CONFIG.ZOOM, H * CONFIG.ZOOM);

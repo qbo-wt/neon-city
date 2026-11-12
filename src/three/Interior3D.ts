@@ -19,11 +19,11 @@ export const at = (px: number, py: number, h = 0) => new THREE.Vector3(px * K, h
 const heightFor = (screenY: number, groundY: number) => ((groundY - screenY) * K) / COS;
 
 export type InteriorStyle = 'home' | 'corridor' | 'clinic' | 'den';
-const STYLES: Record<InteriorStyle, { floor: string; wall: string; tint: number; ambient: number; sky: number }> = {
-  home: { floor: 'laminate_floor_02', wall: 'grey_plaster_02', tint: 0x5a5672, ambient: 0.45, sky: 0x4a3a8a },
-  corridor: { floor: 'worn_tile_floor', wall: 'worn_plaster_wall', tint: 0x4a4258, ambient: 0.45, sky: 0x3a2a6a },
-  clinic: { floor: 'interior_tiles', wall: 'worn_plaster_wall', tint: 0x7a7a88, ambient: 0.5, sky: 0x5a3a4a },
-  den: { floor: 'concrete_floor_worn_001', wall: 'concrete_block_wall', tint: 0x6a7a70, ambient: 0.35, sky: 0x1a4a2a },
+const STYLES: Record<InteriorStyle, { floor: string; floorTint: number; wall: string; tint: number; ambient: number; sky: number }> = {
+  home: { floor: 'laminate_floor_02', floorTint: 0xb8a0c0, wall: 'grey_plaster_02', tint: 0x5a5672, ambient: 0.45, sky: 0x6a5a9a },
+  corridor: { floor: 'worn_tile_floor', floorTint: 0x8a8ab0, wall: 'worn_plaster_wall', tint: 0x4a4258, ambient: 0.5, sky: 0x5a4a9a },
+  clinic: { floor: 'interior_tiles', floorTint: 0xb0e0e0, wall: 'worn_plaster_wall', tint: 0x7a7a88, ambient: 0.5, sky: 0x6a9aa8 },
+  den: { floor: 'concrete_floor_worn_001', floorTint: 0x80a8a0, wall: 'concrete_block_wall', tint: 0x6a7a70, ambient: 0.35, sky: 0x1a4a2a },
 };
 const WALL_H = 2.7, LOW_H = 0.25;
 
@@ -48,20 +48,21 @@ export class Interior3D {
 
   constructor(private world: World3D, private style: InteriorStyle) {}
 
-  private add(o: THREE.Object3D) { this.world.boardGroup.add(o); return o; }
+  /** This room's own group: what loads after the player left goes nowhere. */
+  private group = new THREE.Group();
+  private add(o: THREE.Object3D) { this.group.add(o); return o; }
 
   /** Floor, walls (full height at the back and sides, low at the front so the room stays visible), doors. */
   async build(grid: string[]) {
     const w = this.world, st = STYLES[this.style];
     this.grid = grid;
-    w.boardGroup.clear();
-    w.rain = undefined;
+    this.group = w.resetBoard();
     w.scene.fog = null;
     w.scene.background = new THREE.Color(0x030208);
-    w.renderer.toneMappingExposure = 0.9;
+    w.renderer.toneMappingExposure = 1.2;
     w.bloom.strength = 0.22;
     w.scene.environmentIntensity = 0.12;
-    const floorMat = w.pbr(st.floor, 1, { roughness: 0.55 });
+    const floorMat = w.pbr(st.floor, 1, { roughness: 0.55, color: st.floorTint });
     const wallMat = w.pbr(st.wall, 1, { roughness: 0.9, color: st.tint });
     const dark = new THREE.MeshStandardMaterial({ color: 0x15121e, roughness: 0.8 });
     const floorAt = (tx: number, ty: number) => '.oP'.includes(grid[ty]?.[tx] ?? '#');
@@ -98,7 +99,7 @@ export class Interior3D {
     skirt.position.copy(at(grid[0].length * 16, TILE, 0.06)).add(new THREE.Vector3(0, 0, 0.02));
     this.add(skirt);
     // Ambient: a dim bluish fill and a cool key light from the front-left for soft shadows.
-    this.add(new THREE.HemisphereLight(st.sky, 0x0a0610, st.ambient));
+    this.add(new THREE.HemisphereLight(st.sky, 0x1a1028, st.ambient * 2));
     const key = new THREE.DirectionalLight(0xb8c4ff, 0.55);
     const mid = at(240, 128);
     key.position.copy(mid).add(new THREE.Vector3(-6, 12, 10));

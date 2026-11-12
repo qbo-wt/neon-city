@@ -2,18 +2,19 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { createRng, pick, type Rng } from '../core/rng';
 import type { Board, Pt } from '../tactics/types';
+import { StylePass, stylizeScene } from './stylize';
 
 /** One board cell in metres: characters are ~1.8 m tall, props keep their real size. */
 export const CELL = 1.5;
 const PH = 'assets/ph/';
 
 const NEON = [0x00f0ff, 0xff2a6d, 0xf5e663, 0x39ff88, 0xb84dff, 0xff8c2a];
+const CAR_COLORS = [0x3fd0d8, 0xe0405a, 0xf2c94c, 0x7a5cff, 0x46c47a, 0xff8a3d, 0xd8d8e8];
 const SIGNS = ['RAMEN', 'BAR', 'HÔTEL', '24/7', 'CLUB', 'PHARMA', 'ARCADE', 'SUSHI', 'MOTEL', 'KARAOKÉ', 'NOODLES', 'TATOUAGE'];
 
 /** Board props → Poly Haven model and how it sits in its cell. */
@@ -41,8 +42,8 @@ export class World3D {
   private gltf = new GLTFLoader();
   private models = new Map<string, Promise<THREE.Group>>();
   private tex = new THREE.TextureLoader();
-  /** Everything of the current place (street or interior); cleared when a new one is built. */
-  readonly boardGroup = new THREE.Group();
+  /** Everything of the current place (street or interior); replaced when a new one is built. */
+  boardGroup = new THREE.Group();
   rain?: THREE.LineSegments;
   private clock = new THREE.Clock();
   private board?: Board;
@@ -53,7 +54,7 @@ export class World3D {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     this.renderer.setSize(w, h, false);
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
     this.renderer.toneMappingExposure = 1.35;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -62,7 +63,7 @@ export class World3D {
     this.scene.fog = new THREE.FogExp2(0x120a24, 0.022);
     this.scene.add(this.boardGroup);
     this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(new StylePass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.5, 0.82);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
@@ -198,14 +199,26 @@ export class World3D {
     return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit) ? hit : null;
   }
 
+  /**
+   * A new, empty place. The old one leaves the scene; a build still loading for it keeps adding to
+   * its own detached group, so a place left early (menu, quick scene change) never leaks into the next.
+   */
+  resetBoard() {
+    this.scene.remove(this.boardGroup);
+    this.boardGroup = new THREE.Group();
+    this.scene.add(this.boardGroup);
+    this.rain = undefined;
+    return this.boardGroup;
+  }
+
   /** Builds the street of a board: ground, curbs, facades, props, lights, puddles, rain. */
   async buildBoard(b: Board, seed: number) {
     this.board = b;
-    this.boardGroup.clear();
+    this.resetBoard();
     this.renderer.toneMappingExposure = 1.35;
     this.bloom.strength = 0.55;
     this.scene.environmentIntensity = 0.7;
-    this.scene.fog = new THREE.FogExp2(0x120a24, 0.022);
+    this.scene.fog = new THREE.FogExp2(0x0c1430, 0.018);
     this.scene.background = new THREE.Color(0x07040f);
     this.raised.clear();
     const rng = createRng(seed);
@@ -213,8 +226,8 @@ export class World3D {
     const cellOn = (x: number, y: number) => x >= 0 && y >= 0 && x < b.w && y < b.h && b.cells[y * b.w + x] !== 'void';
 
     // Ground: one tile per cell, asphalt in the street, pavement at the back edges.
-    const road = this.pbr(b.style === 'market' || b.style === 'plaza' ? 'square_tiles_03' : b.style === 'alley' ? 'road_damaged' : 'asphalt_02', 0.5, { roughness: 0.42, metalness: 0.08 });
-    const walk = this.pbr('concrete_pavement_02', 0.5, { roughness: 0.55 });
+    const road = this.pbr(b.style === 'market' || b.style === 'plaza' ? 'square_tiles_03' : b.style === 'alley' ? 'road_damaged' : 'asphalt_02', 0.5, { roughness: 0.42, metalness: 0.08, color: 0x8a9cc8 });
+    const walk = this.pbr('concrete_pavement_02', 0.5, { roughness: 0.55, color: 0xd8c4b4 });
     road.envMapIntensity = 1.4; walk.envMapIntensity = 1.2;
     const tileGeo = new THREE.BoxGeometry(CELL, 0.2, CELL);
     const side = new THREE.MeshStandardMaterial({ color: 0x1c1826, roughness: 0.9 });
@@ -257,7 +270,9 @@ export class World3D {
     g.add(out);
 
     await this.buildFacades(b, rng);
+    if (this.boardGroup !== g) return;
     await this.buildProps(b, rng);
+    if (this.boardGroup !== g) return;
     this.buildLights(b, rng);
     this.buildRain(b);
   }
@@ -268,6 +283,7 @@ export class World3D {
    * x = -3 to 0, face on z = 0 looking at +z), so a wall and its window drop in at the same place.
    */
   private async buildFacades(b: Board, rng: Rng) {
+    const group = this.boardGroup;
     const id = 'modular_urban_apartments_facade';
     const cellOn = (x: number, y: number) => x >= 0 && y >= 0 && x < b.w && y < b.h && b.cells[y * b.w + x] !== 'void';
     const floors = 3;
@@ -326,7 +342,7 @@ export class World3D {
         });
         if (run.along === 'x') seg.position.set(i * 3, 0, 0);
         else { seg.rotation.y = Math.PI / 2; seg.position.set(0, 0, (i + 1) * 3); }
-        this.boardGroup.add(seg);
+        group.add(seg);
       }
     }
   }
@@ -356,6 +372,7 @@ export class World3D {
 
   /** The board's blocking props, at real scale, centred in their cell. */
   private async buildProps(b: Board, rng: Rng) {
+    const group = this.boardGroup;
     for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
       const prop = b.props[y * b.w + x], cell = b.cells[y * b.w + x];
       if (!prop) continue;
@@ -363,11 +380,11 @@ export class World3D {
         if (prop === 'water') {
           const w = new THREE.Mesh(new THREE.BoxGeometry(CELL, 0.05, CELL), new THREE.MeshPhysicalMaterial({ color: 0x020812, roughness: 0.05, clearcoat: 1, envMapIntensity: 2.5 }));
           w.position.copy(this.cellPos({ x, y }, -0.2));
-          this.boardGroup.add(w);
+          group.add(w);
         } else {
           const o = await this.piece('water_manhole_cover');
           o.position.copy(this.cellPos({ x, y }, 0.01));
-          this.boardGroup.add(o);
+          group.add(o);
         }
         continue;
       }
@@ -376,6 +393,8 @@ export class World3D {
       if (!def) continue;
       const car = prop.startsWith('car-');
       const o = await this.piece(def.id, def.node);
+      // Cars under their covers, each in a colour of the city.
+      if (car) { const tint = new THREE.Color(pick(rng, CAR_COLORS)); o.traverse(m => { const mesh = m as THREE.Mesh; if (mesh.isMesh) { const mat = (mesh.material as THREE.MeshStandardMaterial).clone(); mat.color.multiply(tint); mesh.material = mat; } }); }
       o.rotation.y = car ? Math.PI / 2 + (rng() < 0.5 ? Math.PI : 0) : def.yaw ?? (Math.floor(rng() * 4) * Math.PI) / 2;
       o.updateMatrixWorld(true);
       // Real size, but never wider than its cell (a car is shrunk to a compact one).
@@ -386,15 +405,15 @@ export class World3D {
       const bb2 = new THREE.Box3().setFromObject(o), c = bb2.getCenter(new THREE.Vector3());
       const at = car ? this.cellPos({ x: x + 0.5, y }) : this.cellPos({ x, y });
       o.position.add(new THREE.Vector3(at.x - c.x, -bb2.min.y, at.z - c.z));
-      this.boardGroup.add(o);
+      group.add(o);
     }
   }
 
   /** Moonlight with shadows, warm street lamps, a cold fill. */
   private buildLights(b: Board, rng: Rng) {
     const g = this.boardGroup;
-    g.add(new THREE.HemisphereLight(0x5a4ab0, 0x1a0c22, 0.55));
-    const moon = new THREE.DirectionalLight(0x8fa4ff, 0.9);
+    g.add(new THREE.HemisphereLight(0x3a8ac8, 0x5a1a5a, 0.8));
+    const moon = new THREE.DirectionalLight(0x9fdcff, 1.1);
     const cx = b.w * CELL / 2, cz = b.h * CELL / 2;
     moon.position.set(cx - 10, 22, cz + 14);
     moon.target.position.set(cx, 0, cz);
@@ -432,7 +451,7 @@ export class World3D {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.rain = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x9fb6ff, transparent: true, opacity: 0.35 }));
+    this.rain = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x9fb6ff, transparent: true, opacity: 0.35, depthWrite: false }));
     this.rain.frustumCulled = false;
     this.boardGroup.add(this.rain);
   }
@@ -521,6 +540,7 @@ export class World3D {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.tickRain(dt);
     this.onFrame?.(dt);
+    stylizeScene(this.scene);
     this.composer.render(dt);
   }
 }
