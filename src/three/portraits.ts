@@ -40,8 +40,8 @@ async function render(kind: string): Promise<HTMLCanvasElement | null> {
   const drone = kind === 'drone';
   const head = (rig as unknown as { vrm?: { humanoid: { getNormalizedBoneNode(n: string): THREE.Object3D | null } } }).vrm?.humanoid.getNormalizedBoneNode('head');
   const headY = head ? head.getWorldPosition(new THREE.Vector3()).y : rig.height * 0.9;
-  const span = drone ? 1.1 : headY * 0.5;
-  const cy = drone ? 1.3 : headY * 0.93;
+  const span = drone ? 1.1 : headY * 0.3;
+  const cy = drone ? 1.3 : headY * 0.97;
   const cam = new THREE.PerspectiveCamera(22, 1, 0.05, 50);
   const dist = (span / 2) / Math.tan(THREE.MathUtils.degToRad(11)) + 0.2;
   cam.position.set(0, cy + (drone ? dist * 0.45 : span * 0.08), dist);

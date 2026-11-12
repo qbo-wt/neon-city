@@ -217,13 +217,16 @@ export class RunScene extends Phaser.Scene {
       : `SECTEUR ${this.run.roomIndex + 1} / ${CONFIG.ROOMS_PER_RUN}\n${streetName.toUpperCase()}`;
     const sub = this.room.elite ? `\n★ SECTEUR ÉLITE — ${ELITE_LABELS[this.room.elite]} ★` : '';
     const banner = this.screenText(label + sub, 12, this.room.isBoss || this.room.elite ? '#ff2a6d' : event ? '#f5e663' : '#00f0ff', 100);
-    this.tweens.add({ targets: banner, alpha: 0, delay: 1100, duration: 400, onComplete: () => banner.destroy() });
+    // Shown once the loading cover lifts, so it is not lost under it.
+    banner.setAlpha(0);
+    const showBanner = () => this.tweens.chain({ targets: banner, tweens: [{ alpha: 1, duration: 150 }, { alpha: 0, delay: 1300, duration: 400 }], onComplete: () => banner.destroy() });
     if (this.room.elite) audio.sfx('elite');
 
     void environment(this.world).then(() => this.world.buildBoard(this.board, this.run.seed + this.run.roomIndex * 97)).then(() => {
       if (!this.scene.isActive()) return;
       this.world.frameBoard(CONFIG.WIDTH * CONFIG.ZOOM, CONFIG.HEIGHT * CONFIG.ZOOM, 1.5, (BAR_H - HUD_H) / 2 / CONFIG.HEIGHT);
       hideLoading();
+      this.time.delayedCall(250, showBanner);
       this.addUnit(this.hero);
       if (event) this.setupEvent(createRng(this.run.seed + this.run.roomIndex));
       else this.setupFight(arena.breakables, rng);
