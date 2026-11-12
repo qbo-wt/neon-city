@@ -62,7 +62,7 @@ export async function buildApartment(v: Interior3D) {
   v.neon('COULOIR', APT.door.x - 10, 2.86, 0.9, 0x00f0ff, { light: 3 });
   v.plate('3712', APT.door.x - 26, 1.5, 0.14, '#00f0ff');
   // Posters and frames on the bare bits of wall.
-  wallPoster(v, 128, 2.05, 0.5, 31, 'KRAKEN', ['#140a2a', '#ff2a6d', '#00f0ff'], { tilt: 0.04 });
+  wallPoster(v, 352, 2.45, 0.45, 31, 'KRAKEN', ['#140a2a', '#ff2a6d', '#00f0ff'], { tilt: 0.04 });
   wallPoster(v, 318, 2.65, 0.42, 7, 'NULL//', ['#0a1a20', '#39ff88', '#f5e663'], { tilt: -0.05 });
   fairyLights(v, 136, 300, 3.3);
   void W;
