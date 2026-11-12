@@ -36,18 +36,17 @@ export const HALL = {
     [372, 196, 76, 28], // game corner
     [150, 200, 56, 12], // bench
     [262, 200, 56, 12], // bench
-    [32, 80, 10, 14], // plant by the clinic
+    [64, 80, 12, 12], // plant between the clinic and 3710
     [112, 172, 14, 12], // bin + mop
   ] as [number, number, number, number][],
 };
 
-const KIT = ['arcade/arcade-machine', 'arcade/claw-machine', 'arcade/gambling-machine', 'arcade/vending-machine', 'kaykit/couch', 'station/container', 'market/shopping-basket'];
+const KIT = ['arcade/arcade-machine', 'arcade/claw-machine', 'kaykit/couch'];
 
 export async function buildCorridor(v: Interior3D) {
   void preloadKit(KIT);
   wallDressing(v);
   // Doors and their signs.
-  v.door(4, 0x8a86b0);
   v.door(HALL.clinic.x, 0xff3b3b, { panel: 0x3a1c28 });
   const clinic = v.neon('CLINIQUE', HALL.clinic.x + 4, 2.86, 0.8, 0xff3b3b, { light: 4 });
   crossSign(v, HALL.clinic.x - 22, 1.6);
@@ -59,12 +58,10 @@ export async function buildCorridor(v: Interior3D) {
   v.neon('APPART', HALL.home.x, 2.86, 0.8, 0x00f0ff, { light: 3 });
   v.plate('3712', HALL.home.x + 25, 1.5, 0.13, '#00f0ff');
   elevator(v);
-  v.door(402, 0x8a86b0);
-  v.plate('3716', 402, 2.42, 0.13, '#c8c4e8');
   v.door(HALL.den.x, 0x39ff88, { panel: 0x14261e });
   v.neon('NET//DEN', HALL.den.x - 6, 2.86, 0.8, 0x39ff88, { light: 4 });
   // Doormats.
-  for (const [x, c] of [[100, 0x2a2030], [HALL.home.x, 0x1a3040], [402, 0x2a2030]] as const) v.decal(x, B + 9, 0.9, 0.45, v.mat(c, { rough: 1 }), 0.005);
+  for (const [x, c] of [[100, 0x2a2030], [HALL.home.x, 0x1a3040]] as const) v.decal(x, B + 9, 0.9, 0.45, v.mat(c, { rough: 1 }), 0.005);
 
   await ramenStand(v);
   await games(v);
@@ -106,7 +103,7 @@ function wallDressing(v: Interior3D) {
     v.wash(x, 2.1, 1.0, 1.6, 0xffc890, 0.22);
   }
   // Posters, stickers, a noticeboard.
-  wallPoster(v, 72, 1.35, 0.4, 3, 'SYNTH', ['#1a0a2a', '#ff2a6d', '#f5e663'], { tilt: -0.06 });
+  wallPoster(v, 72, 1.55, 0.36, 3, 'SYNTH', ['#1a0a2a', '#ff2a6d', '#f5e663'], { tilt: -0.06 });
   wallPoster(v, 124, 1.3, 0.36, 11, 'ROUILLE', ['#0a1420', '#00f0ff', '#ff8c2a'], { tilt: 0.05 });
   wallPoster(v, 383, 1.3, 0.36, 19, 'GRID', ['#160a1a', '#39ff88', '#b84dff'], { tilt: 0.03 });
   const notes = canvasTex(128, 96, (c) => {
@@ -124,10 +121,10 @@ function wallDressing(v: Interior3D) {
 /** A red cross in a lit box, next to the clinic door. */
 function crossSign(v: Interior3D, px: number, h: number) {
   v.box(v.onWall(px, h - 0.22, 0.02), 0.44, 0.44, 0.06, v.mat(0x1a0c12));
-  const m = v.glow(0xff3b3b, 2);
+  const m = v.glow(0xff3b3b, 1.1);
   v.box(v.onWall(px, h - 0.18, 0.06), 0.3, 0.09, 0.02, m);
   v.box(v.onWall(px, h - 0.31, 0.06), 0.09, 0.3, 0.02, m);
-  flicker(v.anim, m, 2);
+  flicker(v.anim, m, 1.1);
   v.wash(px, h, 1.2, 1.2, 0xff3b3b, 0.3);
 }
 
@@ -249,12 +246,10 @@ async function games(v: Interior3D) {
   v.wash(ax, 1.3, 1.2, 1.6, 0x6a2cff, 0.35);
   v.light(ax, B + 18, 1.4, 0x8a4dff, 3, 3.5);
   // Game corner at the front right: claw machine, slot machine, a second cabinet.
-  await v.model('arcade/claw-machine', 384, 214, { height: 1.85, yaw: 0.2 });
-  halo(v, at(384, 214, 1.6), 1.2, 0xff6fb0, 0.35);
-  await v.model('arcade/gambling-machine', 412, 216, { height: 1.55, yaw: -0.1 });
-  await v.model('arcade/arcade-machine', 437, 212, { height: 1.8, yaw: -0.35, stretch: [0.82, 1, 0.8] });
-  const s2 = v.screen(at(437, 218, 1.38), 0.46, 0.34, arcadeGame(8, 320), { fps: 12, res: 96, yaw: -0.35, tilt: 0.25 });
-  void s2;
+  await v.model('arcade/claw-machine', 386, 212, { height: 1.6 });
+  halo(v, at(386, 212, 1.4), 1.1, 0xff6fb0, 0.35);
+  await v.model('arcade/arcade-machine', 431, 212, { height: 1.8, stretch: [0.82, 1, 0.8] });
+  v.screen(at(431, 207, 1.38), 0.5, 0.38, arcadeGame(8, 320), { fps: 12, res: 96, tilt: -0.2 });
   v.light(410, 206, 1.6, 0xff6fb0, 4, 4.5);
   v.pool(410, 200, 1.8, 0xff2a6d, 0.22);
 }
@@ -275,7 +270,7 @@ async function lounge(v: Interior3D) {
     v.box(at(bx, 197, 0.45), 1.7, 0.4, 0.05, v.mat(0x4a3a6a, { rough: 0.6 }));
     for (const dx of [-22, 22]) v.box(at(bx + dx, 206), 0.06, 0.42, 0.38, v.mat(0x1a1428, { metal: 0.5 }));
   }
-  plant(v, 37, B + 8, 1.2, { seed: 21 });
+  plant(v, 71, B + 7, 0.75, { seed: 21 });
   plant(v, 236, 216, 0.9, { seed: 4 });
   cans(v, 170, 206, 0.48, 2, 9);
 }
