@@ -11,6 +11,13 @@ import { RipperdocScene } from './scenes/RipperdocScene';
 import { NetrunnerScene } from './scenes/NetrunnerScene';
 import { nextAction } from './tactics/ai';
 import { cast, moveTo } from './tactics/fight';
+import '@fontsource/chakra-petch/latin-500.css';
+import '@fontsource/chakra-petch/latin-700.css';
+import '@fontsource/teko/latin-500.css';
+import '@fontsource/teko/latin-600.css';
+
+// The interface fonts are bundled; Phaser draws text to canvases, so they must be loaded first.
+await Promise.all(['500 16px "Chakra Petch"', '700 16px "Chakra Petch"', '500 16px Teko', '600 16px Teko'].map(f => document.fonts.load(f))).catch(() => undefined);
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,

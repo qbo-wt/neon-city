@@ -2,7 +2,7 @@
 export const CONFIG = {
   WIDTH: 480,
   /** Internal canvas is WIDTH*ZOOM; cameras zoom so world units stay 480x270 and text renders sharp. */
-  ZOOM: 2,
+  ZOOM: 4,
   HEIGHT: 270,
   MAX_DT_MS: 50,
 
