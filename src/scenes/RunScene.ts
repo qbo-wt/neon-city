@@ -23,6 +23,7 @@ import { spell } from '../data/spells';
 import { WEAPONS } from '../data/weapons';
 import { audio } from '../audio/audio';
 import { floatText, sparks } from '../fx/effects';
+import { AnimeFx } from '../fx/animeFx';
 import { Controls } from '../input/controls';
 import { getRun, newRun, setRun, type HudData, type RunState } from '../systems/runState';
 import { ImplantChoice } from '../ui/ImplantChoice';
@@ -32,6 +33,7 @@ import { contractMet, contractProgress, type SectorTally } from '../core/contrac
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
 import { txt } from '../ui/text';
+import { hideLoading, showLoading, wipeTo } from '../ui/transition';
 import { DIRS, dist, keyOf, pathTo, reachable, same, walkable } from '../tactics/board';
 import { generateArena, type ArenaStyle, type BreakableKind } from '../tactics/arena';
 import {
@@ -89,6 +91,7 @@ export class RunScene extends Phaser.Scene {
   private controls!: Controls;
   private board!: Board;
   private world!: World3D;
+  private fx!: AnimeFx;
   private ready = false;
   private markLayer!: CellLayer;
   private hero!: Unit;
@@ -176,6 +179,7 @@ export class RunScene extends Phaser.Scene {
     // The street in 3D, under the interface: Phaser keeps the bar, the texts and the windows.
     this.ready = false;
     this.world = stage(this.game.canvas);
+    this.fx = new AnimeFx(this, this.world);
     showStage(true, this.game.canvas);
     this.overlay = new CellLayer('range', 0);
     this.hoverG = new CellLayer('hover', 1);
@@ -185,7 +189,7 @@ export class RunScene extends Phaser.Scene {
       for (const l of ['range', 'hover', 'marks']) this.world.setOverlay(l, []);
       showStage(false);
     });
-    const loading = this.screenText('CHARGEMENT DU SECTEUR…', 9, '#8a86b0', 135);
+    showLoading(this, 'CHARGEMENT DU SECTEUR');
 
     this.hero = makePlayer(this.stats, this.spells, this.run.hp, this.board.playerStarts[0]);
     this.hero.uid = 1;
@@ -219,7 +223,7 @@ export class RunScene extends Phaser.Scene {
     void environment(this.world).then(() => this.world.buildBoard(this.board, this.run.seed + this.run.roomIndex * 97)).then(() => {
       if (!this.scene.isActive()) return;
       this.world.frameBoard(CONFIG.WIDTH * CONFIG.ZOOM, CONFIG.HEIGHT * CONFIG.ZOOM, 1.5, (BAR_H - HUD_H) / 2 / CONFIG.HEIGHT);
-      loading.destroy();
+      hideLoading();
       this.addUnit(this.hero);
       if (event) this.setupEvent(createRng(this.run.seed + this.run.roomIndex));
       else this.setupFight(arena.breakables, rng);
@@ -522,6 +526,8 @@ export class RunScene extends Phaser.Scene {
         if (e.absorbed) floatText(this, view.x + 10, view.y - 16, `-${e.absorbed} bouclier`, '#e8e8ff', 6);
         audio.sfx(e.crit ? 'crit' : e.push ? 'quake' : 'hit', { vol: 0.7 });
         if (e.crit || e.push) this.cameras.main.shake(80, 0.004);
+        // Anime impact: crits get the full treatment, other blows a short colour split and shake.
+        this.fx.hit(view.x, view.y - 12, e.crit ? 'crit' : hurtPlayer ? 'hurt' : 'hit', e.crit ? COLORS.yellow : undefined);
         if (hurtPlayer) { this.registry.set('hurtAt', this.game.loop.time); this.tally.hitsTaken++; audio.sfx('hurt'); }
         if (u.team === 1) this.run.damageDealt += e.amount;
         view.drawBar();
@@ -544,6 +550,7 @@ export class RunScene extends Phaser.Scene {
         if (view) { sparks(this, view.x, view.y - 6, COLORS.yellow, 16, 34); }
         this.world.flashCells(e.cells, 0xff8c2a, 500);
         audio.sfx('explode'); this.cameras.main.shake(200, 0.008);
+        if (view) this.fx.hit(view.x, view.y - 8, 'blast', 0xff8c2a);
         await wait(this, 200);
         break;
       }
@@ -665,6 +672,7 @@ export class RunScene extends Phaser.Scene {
         }
       }
       audio.sfx('kill');
+      if (view) this.fx.hit(view.x, view.y - 12, u.boss ? 'boss' : 'kill', COLORS.magenta);
       if (u.boss) {
         this.bossSay(BOSS_LINES[u.kind as 'warden' | 'boss'].death);
         this.cameras.main.flash(300, 255, 42, 109);
@@ -856,8 +864,7 @@ export class RunScene extends Phaser.Scene {
   private nextRoom() {
     this.run.hp = this.hero.hp;
     this.run.roomIndex++;
-    this.cameras.main.fadeOut(200, 11, 8, 32);
-    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.restart({}));
+    wipeTo(this, SCENES.Run, {});
   }
 
   private endRun(victory: boolean) {
@@ -901,7 +908,7 @@ export class RunScene extends Phaser.Scene {
     writeSave(storage, save);
     this.registry.remove('run');
     this.scene.stop(SCENES.Hud);
-    this.scene.start(SCENES.Death, {
+    wipeTo(this, SCENES.Death, {
       victory, creditsEarned: earned, roomReached: sector, heat: pts, recordBonus: record, daily: this.run.daily, dailyBest,
       killer: killer === 'psychosis' ? 'la cyberpsychose' : killer ? ENEMIES[killer as EnemyId]?.name : undefined,
     });

@@ -1,50 +1,54 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createRng, pick, type Rng } from '../core/rng';
 import type { Board, Pt } from '../tactics/types';
-import { StylePass, stylizeScene } from './stylize';
+import { StylePass, stylizeScene, type ScreenFx } from './stylize';
+import { KitLibrary, fitObject } from './street/kit';
+import { StreetLife } from './street/life';
+import { GroundReflection, REFLECT_LAYER } from './street/reflect';
+import { themeOf, type Theme } from './street/styles';
+import { fontsReady, glowTexture } from './street/paint';
+import { paintGround, paintOuter } from './street/ground';
+import { RANGE, buildCables, buildCity, buildPools, planCity, reflective, type StreetCtx } from './street/city';
+import { carModel, dressStreet, makeHole, makeProp, trashBin } from './street/props';
 
 /** One board cell in metres: characters are ~1.8 m tall, props keep their real size. */
 export const CELL = 1.5;
 const PH = 'assets/ph/';
-
-const NEON = [0x00f0ff, 0xff2a6d, 0xf5e663, 0x39ff88, 0xb84dff, 0xff8c2a];
-const CAR_COLORS = [0x3fd0d8, 0xe0405a, 0xf2c94c, 0x7a5cff, 0x46c47a, 0xff8a3d, 0xd8d8e8];
-const SIGNS = ['RAMEN', 'BAR', 'HÔTEL', '24/7', 'CLUB', 'PHARMA', 'ARCADE', 'SUSHI', 'MOTEL', 'KARAOKÉ', 'NOODLES', 'TATOUAGE'];
-
-/** Board props → Poly Haven model and how it sits in its cell. */
-const PROP_MODELS: Record<string, { id: string; node?: string; fit?: number; yaw?: number }> = {
-  'car-0': { id: 'covered_car' }, 'car-1': { id: 'covered_car' }, 'car-2': { id: 'covered_car' },
-  crate: { id: 'utility_box_02' }, barrel: { id: 'barrel_stove' }, dumpster: { id: 'metal_trash_can' },
-  pillar: { id: 'utility_box_01' }, stall: { id: 'modular_street_seating', node: 'seat' }, container: { id: 'exterior_aircon_unit' },
-  barrier: { id: 'concrete_road_barrier' }, planter: { id: 'old_tyre' }, vending: { id: 'utility_box_01' },
-  lamp: { id: 'street_lamp_01' }, totem: { id: 'security_light' }, generator: { id: 'exterior_aircon_unit' },
-};
+/** Coloured point lights of a street: always this many (a changing light count recompiles every shader). */
+const POINT_LIGHTS = 8;
+/** Distance from the camera to its focus point (the fog starts behind the board). */
+const CAM_DIST = 60;
 
 /**
- * The 3D street of a sector: photo-scanned CC0 props and textures (Poly Haven), a night HDRI for
- * reflections, street lamps and neon signs as real lights, wet asphalt, rain and fog, bloom on
- * everything that glows. The camera is an orthographic isometric view: board +x goes down-right
- * on screen and +y down-left, like the 2D board.
+ * The 3D street of a sector, in the anime-cyberpunk look: low-poly kit models recoloured for the
+ * night, custom facades covered in neon signs, holograms and lit windows, a painted wet ground
+ * that reflects the neon, steam, rain and cables, cel shading with ink lines and bloom. The camera
+ * is an orthographic isometric view: board +x goes down-right on screen and +y down-left, like
+ * the 2D board. Interiors reuse the same renderer (resetBoard, pbr, piece, propModel).
  */
 export class World3D {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly camera: THREE.OrthographicCamera;
   private composer: EffectComposer;
+  private style: StylePass;
   /** Glow on bright things: strong in the wet street, softer indoors. */
   bloom: UnrealBloomPass;
   private gltf = new GLTFLoader();
   private models = new Map<string, Promise<THREE.Group>>();
   private tex = new THREE.TextureLoader();
+  readonly kit = new KitLibrary(this.gltf);
+  private reflection = new GroundReflection(0.42);
   /** Everything of the current place (street or interior); replaced when a new one is built. */
   boardGroup = new THREE.Group();
   rain?: THREE.LineSegments;
+  private life?: StreetLife;
   private clock = new THREE.Clock();
   private board?: Board;
   /** Called every frame before rendering (units animate here). */
@@ -59,35 +63,58 @@ export class World3D {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.camera = new THREE.OrthographicCamera(-10, 10, 6, -6, 0.1, 200);
-    this.scene.background = new THREE.Color(0x07040f);
+    this.camera.layers.enable(0);
+    this.scene.background = new THREE.Color(0x0b0820);
     this.scene.fog = new THREE.FogExp2(0x120a24, 0.022);
     this.scene.add(this.boardGroup);
     this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new StylePass(this.scene, this.camera));
+    this.style = new StylePass(this.scene, this.camera);
+    this.style.beforeRender = r => this.reflection.update(r, this.scene, this.camera, this.lastDt);
+    this.composer.addPass(this.style);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.5, 0.82);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.composer.addPass(new SMAAPass());
     this.composer.setSize(w, h);
+    this.reflection.setSize(w, h);
+    this.reflection.enabled = false;
   }
 
   resize(w: number, h: number) {
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
+    this.reflection.setSize(w, h);
     this.frame();
   }
 
-  /** Night sky for reflections and soft ambient light. */
+  /**
+   * Soft ambient light for the materials: a generated night sky (indigo above, a magenta and cyan
+   * glow of the city at the horizon). No file to load.
+   */
   async loadEnvironment() {
-    const hdr = await new HDRLoader().loadAsync(`${PH}hdri/modern_buildings_night.hdr`);
-    hdr.mapping = THREE.EquirectangularReflectionMapping;
+    const env = new THREE.Scene();
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      vertexShader: 'varying vec3 vP; void main() { vP = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `varying vec3 vP; void main() {
+        float y = vP.y;
+        vec3 top = vec3(0.05, 0.03, 0.16), hor = vec3(0.45, 0.12, 0.42), low = vec3(0.06, 0.04, 0.12);
+        vec3 c = y > 0.0 ? mix(hor, top, smoothstep(0.0, 0.6, y)) : mix(hor, low, smoothstep(0.0, 0.3, -y));
+        c += vec3(0.0, 0.35, 0.45) * pow(max(0.0, dot(vP, normalize(vec3(-1.0, 0.15, 0.3)))), 6.0);
+        c += vec3(0.6, 0.1, 0.3) * pow(max(0.0, dot(vP, normalize(vec3(0.7, 0.2, -0.6)))), 5.0);
+        gl_FragColor = vec4(c, 1.0); }`,
+    }));
+    env.add(sky);
     const pm = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pm.fromEquirectangular(hdr).texture;
+    this.scene.environment = pm.fromScene(env, 0.04).texture;
     this.scene.environmentIntensity = 0.7;
-    hdr.dispose(); pm.dispose();
+    pm.dispose();
+    sky.geometry.dispose(); (sky.material as THREE.Material).dispose();
   }
 
+  /** A Poly Haven model (interiors) or a kit model ('kenney/…', 'kaykit/…'). */
   private model(id: string): Promise<THREE.Group> {
+    if (KitLibrary.isKitPath(id)) return this.kit.load(id);
     let p = this.models.get(id);
     if (!p) {
       p = this.gltf.loadAsync(`${PH}${id}/${id}.gltf`).then(g => {
@@ -109,6 +136,7 @@ export class World3D {
     return c;
   }
 
+  /** A photo-textured material (interiors; flattened to paint by the style). */
   pbr(id: string, repeat: number, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
     const load = (k: string, srgb = false) => {
       const t = this.tex.load(`${PH}tex/${id}/${k}.jpg`);
@@ -153,9 +181,17 @@ export class World3D {
   private focus = new THREE.Vector3();
   private home = new THREE.Vector3();
   private camDir = new THREE.Vector3(1, 1, 1).normalize();
+  private shakeAmp = 0;
+  private shakeT = 0;
   private placeCamera() {
-    this.camera.position.copy(this.focus).addScaledVector(this.camDir, 60);
+    this.camera.position.copy(this.focus).addScaledVector(this.camDir, CAM_DIST);
     this.camera.lookAt(this.focus);
+    if (this.shakeAmp > 0.001) {
+      // Shake in the screen plane (world units scaled by the zoom, so it feels the same zoomed in).
+      const right = new THREE.Vector3(1, 0, -1).normalize(), up = new THREE.Vector3().crossVectors(right, this.camDir).normalize();
+      const k = this.shakeAmp / this.camera.zoom, t = this.shakeT;
+      this.camera.position.addScaledVector(right, Math.sin(t * 91) * k).addScaledVector(up, Math.cos(t * 73) * k * 0.8);
+    }
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
   }
@@ -208,268 +244,270 @@ export class World3D {
     this.boardGroup = new THREE.Group();
     this.scene.add(this.boardGroup);
     this.rain = undefined;
+    this.splash = undefined;
+    this.life = undefined;
+    this.reflection.enabled = false;
+    this.style.setInk(0.85, 0.7);
     return this.boardGroup;
   }
 
-  /** Builds the street of a board: ground, curbs, facades, props, lights, puddles, rain. */
+  /** Builds the street of a board: ground, buildings, signs, props, lights, puddles, rain. */
   async buildBoard(b: Board, seed: number) {
     this.board = b;
-    this.resetBoard();
-    this.renderer.toneMappingExposure = 1.35;
-    this.bloom.strength = 0.55;
-    this.scene.environmentIntensity = 0.7;
-    this.scene.fog = new THREE.FogExp2(0x0c1430, 0.018);
-    this.scene.background = new THREE.Color(0x07040f);
+    const g = this.resetBoard();
+    const theme = themeOf(b.style);
+    this.theme = theme;
+    this.renderer.toneMappingExposure = 1.25;
+    this.bloom.strength = 0.6; this.bloom.radius = 0.55; this.bloom.threshold = 0.86;
+    this.scene.environmentIntensity = 0.55;
+    this.scene.fog = new THREE.Fog(theme.fog, CAM_DIST + 4, CAM_DIST + 62);
+    this.scene.background = new THREE.Color(0x0b0820);
     this.raised.clear();
     const rng = createRng(seed);
+    await fontsReady();
+    if (this.boardGroup !== g) return;
+    const life = new StreetLife(g);
+    this.life = life;
+    const ctx: StreetCtx = { group: g, theme, rng, kit: this.kit, life, CELL, glows: [], pools: [] };
+    const cellOn = (x: number, y: number) => x >= 0 && y >= 0 && x < b.w && y < b.h && b.cells[y * b.w + x] !== 'void';
+    for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) if (cellOn(x, y) && (!cellOn(x, y - 1) || !cellOn(x - 1, y)) && b.props[y * b.w + x] !== 'water') this.raised.add(`${x},${y}`);
+
+    this.buildGround(b, theme, rng);
+    const plan = planCity(b, rng, theme, CELL);
+    await buildCity(ctx, plan);
+    if (this.boardGroup !== g) return;
+    buildCables(ctx, plan, b);
+    await this.buildProps(b, ctx);
+    if (this.boardGroup !== g) return;
+    await dressStreet(ctx, plan, b);
+    if (this.boardGroup !== g) return;
+    buildPools(ctx);
+    this.buildLights(b, ctx);
+    if (theme.rain) this.buildRain(b);
+    this.reflection.enabled = true;
+    this.reflection.uniforms.uReflStrength.value = 0.9 + theme.wet * 0.5;
+  }
+
+  private theme?: Theme;
+
+  /** The painted ground: merged cell tiles on the board (kerb on the raised back row), the street around. */
+  private buildGround(b: Board, theme: Theme, rng: Rng) {
     const g = this.boardGroup;
     const cellOn = (x: number, y: number) => x >= 0 && y >= 0 && x < b.w && y < b.h && b.cells[y * b.w + x] !== 'void';
-
-    // Ground: one tile per cell, asphalt in the street, pavement at the back edges.
-    const road = this.pbr(b.style === 'market' || b.style === 'plaza' ? 'square_tiles_03' : b.style === 'alley' ? 'road_damaged' : 'asphalt_02', 0.5, { roughness: 0.42, metalness: 0.08, color: 0x8a9cc8 });
-    const walk = this.pbr('concrete_pavement_02', 0.5, { roughness: 0.55, color: 0xd8c4b4 });
-    road.envMapIntensity = 1.4; walk.envMapIntensity = 1.2;
-    const tileGeo = new THREE.BoxGeometry(CELL, 0.2, CELL);
-    const side = new THREE.MeshStandardMaterial({ color: 0x1c1826, roughness: 0.9 });
-    // World-space UVs so the texture runs across tiles without seams.
-    const uv = (geo: THREE.BufferGeometry, x: number, y: number) => {
-      const g2 = geo.clone(), pos = g2.attributes.position, uvA = g2.attributes.uv;
-      for (let i = 0; i < pos.count; i++) uvA.setXY(i, (pos.getX(i) + x * CELL) / 3, (pos.getZ(i) + y * CELL) / 3);
-      return g2;
-    };
+    const paint = paintGround(b, theme, rng, CELL, this.raised);
+    const mat = new THREE.MeshStandardMaterial({ map: paint.map, roughness: 1, emissiveMap: paint.glow, emissive: paint.glow ? 0xffffff : 0x000000, emissiveIntensity: 1.6 });
+    mat.userData.shaderHook = this.reflection.groundHook(paint.wet);
+    mat.userData.shaderKey = 'wet';
+    const tops: THREE.BufferGeometry[] = [], sides: THREE.BufferGeometry[] = [];
+    const bw = b.w * CELL, bh = b.h * CELL;
     for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
       if (!cellOn(x, y)) continue;
-      const back = !cellOn(x, y - 1) || !cellOn(x - 1, y);
-      const top = back ? walk : road;
-      if (back) this.raised.add(`${x},${y}`);
-      const m = new THREE.Mesh(uv(tileGeo, x, y), [side, side, top, side, side, side]);
-      m.position.set((x + 0.5) * CELL, back ? -0.04 : -0.1, (y + 0.5) * CELL);
-      m.receiveShadow = true;
-      g.add(m);
+      if (b.props[y * b.w + x] === 'water') continue;
+      const top = this.raised.has(`${x},${y}`) ? 0.06 : 0;
+      const p = new THREE.PlaneGeometry(CELL, CELL).rotateX(-Math.PI / 2).translate((x + 0.5) * CELL, top, (y + 0.5) * CELL);
+      const uv = p.attributes.uv, pos = p.attributes.position;
+      for (let i = 0; i < pos.count; i++) uv.setXY(i, pos.getX(i) / bw, 1 - pos.getZ(i) / bh);
+      tops.push(p);
+      if (top > 0) sides.push(new THREE.BoxGeometry(CELL, top + 0.02, CELL).translate((x + 0.5) * CELL, top / 2 - 0.02, (y + 0.5) * CELL));
+    }
+    const ground = new THREE.Mesh(mergeGeometries(tops), mat);
+    ground.receiveShadow = true;
+    g.add(ground);
+    if (sides.length) {
+      const s = new THREE.Mesh(mergeGeometries(sides), new THREE.MeshStandardMaterial({ color: 0x8a86aa, roughness: 1 }));
+      s.receiveShadow = true;
+      g.add(s);
     }
     // The tactical grid, very faint: lines between cells.
     const lines: number[] = [];
     for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
       if (!cellOn(x, y)) continue;
-      const x0 = x * CELL, z0 = y * CELL, h = 0.012;
+      const x0 = x * CELL, z0 = y * CELL, h = 0.015 + this.groundY({ x, y });
       lines.push(x0, h, z0, x0 + CELL, h, z0, x0, h, z0, x0, h, z0 + CELL);
       if (!cellOn(x + 1, y)) lines.push(x0 + CELL, h, z0, x0 + CELL, h, z0 + CELL);
       if (!cellOn(x, y + 1)) lines.push(x0, h, z0 + CELL, x0 + CELL, h, z0 + CELL);
     }
     const lg = new THREE.BufferGeometry();
     lg.setAttribute('position', new THREE.Float32BufferAttribute(lines, 3));
-    g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x8a86ff, transparent: true, opacity: 0.12 })));
-
-    // The street goes on past the board, into the fog.
-    const far = this.pbr('asphalt_02', 0.5, { roughness: 0.8, color: 0x8a8a9a });
-    const out = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), far);
-    out.geometry.attributes.uv.array.forEach((_, i, arr) => { (arr as Float32Array)[i] *= 40; });
+    g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x9a96ff, transparent: true, opacity: 0.16, depthWrite: false })));
+    // Board edge: a thin neon line where the play area ends (reads as the kerb at night).
+    // The street around the board, into the fog (it reflects too, a little).
+    const size = (Math.max(b.w, b.h) + RANGE * 2 + 8) * CELL;
+    const outMat = new THREE.MeshStandardMaterial({ map: paintOuter(theme, rng, size), roughness: 1 });
+    const { c: wc } = { c: document.createElement('canvas') };
+    wc.width = wc.height = 4;
+    const wctx = wc.getContext('2d')!; wctx.fillStyle = `rgb(${Math.round(60 * theme.wet)},0,0)`; wctx.fillRect(0, 0, 4, 4);
+    outMat.userData.shaderHook = this.reflection.groundHook(new THREE.CanvasTexture(wc));
+    outMat.userData.shaderKey = 'wet';
+    const out = new THREE.Mesh(new THREE.PlaneGeometry(size, size), outMat);
     out.rotation.x = -Math.PI / 2;
-    out.position.set(b.w * CELL / 2, -0.21, b.h * CELL / 2);
+    out.position.set(bw / 2, -0.005, bh / 2);
     out.receiveShadow = true;
     g.add(out);
-
-    await this.buildFacades(b, rng);
-    if (this.boardGroup !== g) return;
-    await this.buildProps(b, rng);
-    if (this.boardGroup !== g) return;
-    this.buildLights(b, rng);
-    this.buildRain(b);
-  }
-
-  /**
-   * Apartment facades along the back edges: a plinth, a ground floor with doors, three floors of
-   * windows, cornices and a crown. The modular pieces share one local frame per slot (wall from
-   * x = -3 to 0, face on z = 0 looking at +z), so a wall and its window drop in at the same place.
-   */
-  private async buildFacades(b: Board, rng: Rng) {
-    const group = this.boardGroup;
-    const id = 'modular_urban_apartments_facade';
-    const cellOn = (x: number, y: number) => x >= 0 && y >= 0 && x < b.w && y < b.h && b.cells[y * b.w + x] !== 'void';
-    const floors = 3;
-    const upper = ['window_centered_double', 'window_centered_large', 'window_offset_small', 'window_centered_small'];
-    const doors = ['door_centered_large', 'door_centered_small', 'door_offset_small'];
-    const put = async (seg: THREE.Group, node: string, y: number) => {
-      const o = await this.piece(id, node);
-      o.position.set(3, y, 0);
-      seg.add(o);
-      return o;
-    };
-    const runs: { along: 'x' | 'z'; len: number }[] = [{ along: 'x', len: b.w * CELL }, { along: 'z', len: b.h * CELL }];
-    for (const run of runs) {
-      const n = Math.ceil(run.len / 3);
-      for (let i = 0; i < n; i++) {
-        const cx = run.along === 'x' ? Math.min(b.w - 1, Math.floor((i * 3 + 1.5) / CELL)) : 0;
-        const cy = run.along === 'z' ? Math.min(b.h - 1, Math.floor((i * 3 + 1.5) / CELL)) : 0;
-        if (!cellOn(cx, cy)) continue;
-        const seg = new THREE.Group();
-        await put(seg, 'base_standard_01', 0);
-        // Ground floor: a door (and its frame) or a shop window; a lit doorway now and then.
-        if (rng() < 0.6) {
-          const d = pick(rng, doors);
-          await put(seg, `wall_${d}_01`, 0);
-          await put(seg, `${d}_01`, 0);
-          if (rng() < 0.5) {
-            const glow = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.1), new THREE.MeshBasicMaterial({ color: pick(rng, [0xffb466, 0xff5fa8, 0x66ddff]), toneMapped: false }));
-            glow.position.set(1.5, 1.05, -0.15);
-            seg.add(glow);
-          }
-        } else {
-          await put(seg, 'wall_window_centered_large_01', 0);
-          await put(seg, 'window_centered_large_01', 0);
-        }
-        await put(seg, 'dado_standard_standard_01', 2.9);
-        for (let f = 1; f <= floors; f++) {
-          const w = pick(rng, upper), v = f === floors ? '03' : '02';
-          const variant = w === 'window_offset_small' ? (f === floors ? '03' : '02') : v;
-          await put(seg, `wall_${w}_${variant}`, f * 3).catch(() => put(seg, 'wall_standard_standard_01', f * 3));
-          await put(seg, `${w}_${variant}`, f * 3).catch(() => undefined);
-          if (rng() < 0.38) {
-            const glow = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.5), new THREE.MeshBasicMaterial({ color: pick(rng, [0xffc46b, 0xffe2a0, 0x7ad8ff, 0xff6fb0]) }));
-            glow.position.set(1.5, f * 3 + 1.4, -0.06);
-            seg.add(glow);
-          }
-          await put(seg, 'cornice_standard_standard_01', f * 3 + 2.9);
-        }
-        await put(seg, 'crown_standard_standard_01', (floors + 1) * 3);
-        if (rng() < 0.5) seg.add(this.neonSign(pick(rng, SIGNS), pick(rng, NEON), 1.5, 3.55));
-        seg.traverse(o => {
-          const m = o as THREE.Mesh;
-          if (!m.isMesh || !(m.material as THREE.MeshStandardMaterial).isMeshStandardMaterial) return;
-          const mat = (m.material as THREE.MeshStandardMaterial);
-          if (!this.nightMats.has(mat)) { const c = mat.clone(); c.color.multiplyScalar(0.42); c.roughness = Math.min(c.roughness, 0.75); this.nightMats.set(mat, c); }
-          m.material = this.nightMats.get(mat)!;
-        });
-        if (run.along === 'x') seg.position.set(i * 3, 0, 0);
-        else { seg.rotation.y = Math.PI / 2; seg.position.set(0, 0, (i + 1) * 3); }
-        group.add(seg);
-      }
+    // Dock water: a dark, very reflective strip below the quay.
+    const water = b.props.some(p => p === 'water');
+    if (water) {
+      const wcv = document.createElement('canvas'); wcv.width = wcv.height = 4;
+      const w2 = wcv.getContext('2d')!; w2.fillStyle = '#fff'; w2.fillRect(0, 0, 4, 4);
+      const wm = new THREE.MeshStandardMaterial({ color: 0x101838, roughness: 1, map: new THREE.CanvasTexture(wcv) });
+      wm.userData.shaderHook = this.reflection.groundHook(new THREE.CanvasTexture(wcv));
+      wm.userData.shaderKey = 'wet';
+      const wmesh = new THREE.Mesh(new THREE.PlaneGeometry(size, CELL * (RANGE + 2)), wm);
+      wmesh.rotation.x = -Math.PI / 2;
+      wmesh.position.set(bw / 2, -0.35, bh - CELL + CELL * (RANGE + 2) / 2);
+      g.add(wmesh);
+      // Quay wall face.
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(size, 0.4, 0.1), new THREE.MeshStandardMaterial({ color: 0x3a3852, roughness: 1 }));
+      wall.position.set(bw / 2, -0.17, bh - CELL);
+      g.add(wall);
     }
   }
 
-  private neonSign(word: string, color: number, x: number, y: number) {
-    const c = document.createElement('canvas');
-    c.width = 256; c.height = 64;
-    const ctx = c.getContext('2d')!;
-    ctx.fillStyle = '#05030f'; ctx.fillRect(0, 0, 256, 64);
-    const hex = '#' + color.toString(16).padStart(6, '0');
-    ctx.strokeStyle = hex; ctx.lineWidth = 3; ctx.strokeRect(4, 4, 248, 56);
-    ctx.fillStyle = hex; ctx.font = 'bold 38px "Arial Black", Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.shadowColor = hex; ctx.shadowBlur = 12;
-    ctx.fillText(word, 128, 34);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), new THREE.MeshBasicMaterial({ map: t, toneMapped: false }));
-    m.position.set(x, y, 0.35);
-    (m.material as THREE.MeshBasicMaterial).color.setScalar(1.6);
-    const grp = new THREE.Group();
-    grp.add(m);
-    const light = new THREE.PointLight(color, 14, 9, 1.6);
-    light.position.set(x, y - 0.3, 1.2);
-    grp.add(light);
-    return grp;
-  }
-
-  /** The board's blocking props, at real scale, centred in their cell. */
-  private async buildProps(b: Board, rng: Rng) {
+  /** The board's blocking props, fitted to their cells; holes; cars along two cells. */
+  private async buildProps(b: Board, ctx: StreetCtx) {
     const group = this.boardGroup;
+    const { rng } = ctx;
+    const jobs: Promise<void>[] = [];
     for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
       const prop = b.props[y * b.w + x], cell = b.cells[y * b.w + x];
-      if (!prop) continue;
+      if (!prop || prop === 'car-tail') continue;
+      const at = this.cellPos({ x, y });
       if (cell === 'hole') {
-        if (prop === 'water') {
-          const w = new THREE.Mesh(new THREE.BoxGeometry(CELL, 0.05, CELL), new THREE.MeshPhysicalMaterial({ color: 0x020812, roughness: 0.05, clearcoat: 1, envMapIntensity: 2.5 }));
-          w.position.copy(this.cellPos({ x, y }, -0.2));
-          group.add(w);
-        } else {
-          const o = await this.piece('water_manhole_cover');
-          o.position.copy(this.cellPos({ x, y }, 0.01));
-          group.add(o);
-        }
+        const o = makeHole(ctx, prop, CELL);
+        if (o) { o.position.copy(at); group.add(o); }
+        if (prop === 'grate' || prop === 'manhole') ctx.life.vent(at.clone().setY(0.05), prop === 'grate' ? 1 : 0.6, 2.6);
         continue;
       }
-      if (prop === 'car-tail') continue;
-      const def = PROP_MODELS[prop];
-      if (!def) continue;
-      const car = prop.startsWith('car-');
-      const o = await this.piece(def.id, def.node);
-      // Cars under their covers, each in a colour of the city.
-      if (car) { const tint = new THREE.Color(pick(rng, CAR_COLORS)); o.traverse(m => { const mesh = m as THREE.Mesh; if (mesh.isMesh) { const mat = (mesh.material as THREE.MeshStandardMaterial).clone(); mat.color.multiply(tint); mesh.material = mat; } }); }
-      o.rotation.y = car ? Math.PI / 2 + (rng() < 0.5 ? Math.PI : 0) : def.yaw ?? (Math.floor(rng() * 4) * Math.PI) / 2;
-      o.updateMatrixWorld(true);
-      // Real size, but never wider than its cell (a car is shrunk to a compact one).
-      const bb = new THREE.Box3().setFromObject(o), size = bb.getSize(new THREE.Vector3());
-      const k = car ? Math.min(1, (CELL * 1.95) / size.x) : Math.min(1, (CELL * 0.95) / Math.max(size.x, size.z));
-      o.scale.multiplyScalar(k);
-      o.updateMatrixWorld(true);
-      const bb2 = new THREE.Box3().setFromObject(o), c = bb2.getCenter(new THREE.Vector3());
-      const at = car ? this.cellPos({ x: x + 0.5, y }) : this.cellPos({ x, y });
-      o.position.add(new THREE.Vector3(at.x - c.x, -bb2.min.y, at.z - c.z));
-      group.add(o);
+      if (prop.startsWith('car-')) {
+        const path = carModel(ctx);
+        const flip = rng() < 0.5;
+        jobs.push(this.kit.clone(path).then(o => {
+          o.rotation.y = Math.PI / 2 + (flip ? Math.PI : 0);
+          fitObject(o, CELL * 1.92, CELL * 1.0);
+          const holder = new THREE.Group();
+          holder.add(o);
+          holder.position.copy(this.cellPos({ x: x + 0.5, y }));
+          // Headlights and tail lights as glows (cars are part of the reflections).
+          const front = flip ? -1 : 1;
+          for (const [dx, col, k] of [[front * 1.3, 0xfff0c0, 0.55], [-front * 1.3, 0xff2a3a, 0.4]] as [number, number, number][]) {
+            const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: col, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: k }));
+            s.scale.setScalar(0.9); s.position.set(dx, 0.55, 0);
+            holder.add(s);
+          }
+          group.add(reflective(holder));
+        }));
+        continue;
+      }
+      jobs.push(makeProp(ctx, prop, CELL, at).then(o => {
+        if (!o) return;
+        if (prop !== 'dumpster' && prop !== 'barrier') o.rotation.y += (Math.floor(rng() * 4) * Math.PI) / 2;
+        o.position.add(at);
+        group.add(prop === 'lamp' || prop === 'vending' || prop === 'totem' ? reflective(o) : o);
+        if (prop === 'lamp') { ctx.glows.push({ p: at.clone().setY(4.2), color: 0xffc890, power: 3 }); ctx.pools.push({ x: at.x, z: at.z, r: 3.4, color: 0xffb070, a: 0.3 }); }
+        if (prop === 'totem') ctx.pools.push({ x: at.x, z: at.z, r: 4, color: ctx.theme.neon[0], a: 0.35 });
+      }));
     }
+    await Promise.all(jobs);
   }
 
-  /** Moonlight with shadows, warm street lamps, a cold fill. */
-  private buildLights(b: Board, rng: Rng) {
-    const g = this.boardGroup;
-    g.add(new THREE.HemisphereLight(0x3a8ac8, 0x5a1a5a, 0.8));
-    const moon = new THREE.DirectionalLight(0x9fdcff, 1.1);
+  /** Moonlight with violet shadows, the night sky, coloured neon point lights. */
+  private lights: THREE.PointLight[] = [];
+  private buildLights(b: Board, ctx: StreetCtx) {
+    const g = this.boardGroup, theme = ctx.theme;
+    const hemi = new THREE.HemisphereLight(theme.sky, theme.bounce, 1.5);
+    const moon = new THREE.DirectionalLight(0xa8c8ff, 1.5);
     const cx = b.w * CELL / 2, cz = b.h * CELL / 2;
-    moon.position.set(cx - 10, 22, cz + 14);
+    moon.position.set(cx + 8, 24, cz + 16);
     moon.target.position.set(cx, 0, cz);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
-    const r = Math.max(b.w, b.h) * CELL;
-    Object.assign(moon.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 80 });
+    const r = Math.max(b.w, b.h) * CELL * 0.9;
+    Object.assign(moon.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 90 });
     moon.shadow.bias = -0.0004;
-    moon.shadow.normalBias = 0.02;
-    g.add(moon, moon.target);
-    // Lamps: every lamp prop is a warm light; a couple more over the street.
-    let n = 0;
-    for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
-      if (b.props[y * b.w + x] !== 'lamp' || n > 4) continue;
-      const l = new THREE.PointLight(0xffb066, 22, 11, 1.8);
-      l.position.copy(this.cellPos({ x, y }, 3.6));
-      g.add(l); n++;
+    moon.shadow.normalBias = 0.03;
+    // A cool rim from behind the buildings, so silhouettes catch a line of light.
+    const rim = new THREE.DirectionalLight(0xff5ab8, 0.7);
+    rim.position.set(cx - 20, 14, cz - 18);
+    rim.target.position.set(cx, 0, cz);
+    g.add(hemi, moon, moon.target, rim, rim.target);
+    // The strongest glows become real lights, spread out over the street.
+    const picked: { p: THREE.Vector3; color: number; power: number }[] = [];
+    const sorted = [...ctx.glows].sort((a, c) => c.power - a.power);
+    const near = (p: THREE.Vector3) => p.x > -6 && p.z > -6 && p.x < b.w * CELL + 6 && p.z < b.h * CELL + 6;
+    for (const gl of sorted) {
+      if (picked.length >= POINT_LIGHTS) break;
+      if (!near(gl.p) || picked.some(o => o.p.distanceTo(gl.p) < 5.5)) continue;
+      picked.push(gl);
     }
-    for (let i = n; i < 3; i++) {
-      const l = new THREE.PointLight(pick(rng, [0xffb066, 0x66ccff, 0xff5fa8]), 14, 10, 1.8);
-      l.position.copy(this.cellPos({ x: Math.floor(rng() * b.w), y: Math.floor(rng() * b.h) }, 3.2));
+    this.lights = [];
+    for (let i = 0; i < POINT_LIGHTS; i++) {
+      const gl = picked[i];
+      const l = new THREE.PointLight(gl?.color ?? 0, gl ? 5 + gl.power * 2 : 0, 9, 1.8);
+      if (gl) l.position.copy(gl.p);
       g.add(l);
+      this.lights.push(l);
     }
+    g.traverse(o => { if ((o as THREE.Light).isLight) o.layers.enable(REFLECT_LAYER); });
   }
 
-  private nightMats = new Map<THREE.Material, THREE.MeshStandardMaterial>();
   private rainVel: Float32Array = new Float32Array(0);
+  private splash?: THREE.InstancedMesh;
+  private splashT: Float32Array = new Float32Array(0);
   private buildRain(b: Board) {
-    const N = 900, pos = new Float32Array(N * 6), W = b.w * CELL + 8, D = b.h * CELL + 8;
+    const N = 1300, pos = new Float32Array(N * 6), W = b.w * CELL + 14, D = b.h * CELL + 14;
     this.rainVel = new Float32Array(N);
     for (let i = 0; i < N; i++) {
-      const x = Math.random() * W - 4, y = Math.random() * 14, z = Math.random() * D - 4;
-      pos.set([x, y, z, x + 0.03, y - 0.45, z + 0.03], i * 6);
-      this.rainVel[i] = 14 + Math.random() * 6;
+      const x = Math.random() * W - 7, y = Math.random() * 16, z = Math.random() * D - 7;
+      pos.set([x, y, z, x + 0.04, y - 0.55, z + 0.02], i * 6);
+      this.rainVel[i] = 15 + Math.random() * 6;
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.rain = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x9fb6ff, transparent: true, opacity: 0.35, depthWrite: false }));
+    this.rain = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xb8c8ff, transparent: true, opacity: 0.32, depthWrite: false }));
     this.rain.frustumCulled = false;
     this.boardGroup.add(this.rain);
+    // Splashes: little rings that open on the ground.
+    const ring = new THREE.RingGeometry(0.05, 0.065, 12).rotateX(-Math.PI / 2);
+    const M = 90;
+    this.splash = new THREE.InstancedMesh(ring, new THREE.MeshBasicMaterial({ color: 0xc8d8ff, transparent: true, opacity: 0.22, depthWrite: false, toneMapped: false }), M);
+    this.splash.frustumCulled = false;
+    this.splashT = new Float32Array(M).map(() => Math.random());
+    this.boardGroup.add(this.splash);
   }
 
   private tickRain(dt: number) {
-    if (!this.rain) return;
-    const a = this.rain.geometry.attributes.position as THREE.BufferAttribute, arr = a.array as Float32Array;
-    for (let i = 0; i < this.rainVel.length; i++) {
-      const o = i * 6, d = this.rainVel[i] * dt;
-      arr[o + 1] -= d; arr[o + 4] -= d;
-      if (arr[o + 4] < 0) { arr[o + 1] += 14; arr[o + 4] += 14; }
+    if (this.rain) {
+      const a = this.rain.geometry.attributes.position as THREE.BufferAttribute, arr = a.array as Float32Array;
+      for (let i = 0; i < this.rainVel.length; i++) {
+        const o = i * 6, d = this.rainVel[i] * dt;
+        arr[o + 1] -= d; arr[o + 4] -= d;
+        if (arr[o + 4] < 0) { arr[o + 1] += 16; arr[o + 4] += 16; }
+      }
+      a.needsUpdate = true;
     }
-    a.needsUpdate = true;
+    const s = this.splash, b = this.board;
+    if (s && b) {
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), sc = new THREE.Vector3();
+      for (let i = 0; i < this.splashT.length; i++) {
+        this.splashT[i] += dt * 2.2;
+        if (this.splashT[i] >= 1) {
+          this.splashT[i] = 0;
+          const x = Math.floor(Math.random() * b.w), y = Math.floor(Math.random() * b.h);
+          s.userData[i] = [(x + Math.random()) * CELL, 0.03 + this.groundY({ x, y }), (y + Math.random()) * CELL];
+        }
+        const at = s.userData[i] as number[] | undefined;
+        if (!at) continue;
+        const k = this.splashT[i];
+        m.compose(p.set(at[0], at[1], at[2]), q, sc.setScalar(0.3 + k * 1.6));
+        s.setMatrixAt(i, m);
+      }
+      s.instanceMatrix.needsUpdate = true;
+    }
   }
 
   private layers = new Map<string, THREE.InstancedMesh>();
   private layerGeo = new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92).rotateX(-Math.PI / 2);
-  private layerMat = new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  private layerMat = new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: true });
 
   /** Coloured cells on the ground, one named layer each (range, hover, markers, flashes). */
   setOverlay(layer: string, cells: { p: Pt; color: number; alpha: number }[], order = 0) {
@@ -479,9 +517,9 @@ export class World3D {
     const m = new THREE.InstancedMesh(this.layerGeo, this.layerMat, cells.length);
     const mx = new THREE.Matrix4(), col = new THREE.Color();
     cells.forEach((c, i) => {
-      mx.makeTranslation(this.cellPos(c.p, 0.02 + order * 0.004));
+      mx.makeTranslation(this.cellPos(c.p, 0.025 + order * 0.004));
       m.setMatrixAt(i, mx);
-      m.setColorAt(i, col.setHex(c.color).multiplyScalar(c.alpha * 1.6));
+      m.setColorAt(i, col.setHex(c.color).multiplyScalar(c.alpha * 0.55));
     });
     m.renderOrder = 2 + order;
     this.scene.add(m);
@@ -505,9 +543,17 @@ export class World3D {
     tick();
   }
 
-  /** A real-scale prop model (breakables), centred on the origin with its base on y = 0. */
+  /**
+   * A prop model centred on the origin with its base on y = 0, at most `maxSize` wide: a kit path
+   * ('kenney/…'), a street build ('street:crate', 'street:trash'…) or a Poly Haven id (interiors).
+   */
   async propModel(id: string, maxSize = CELL * 0.8): Promise<THREE.Object3D> {
-    const o = await this.piece(id);
+    let o: THREE.Object3D;
+    if (id.startsWith('street:')) {
+      const kind = id.slice(7);
+      const ctx: StreetCtx = { group: this.boardGroup, theme: this.theme ?? themeOf('avenue'), rng: createRng(Math.floor(Math.random() * 1e9)), kit: this.kit, life: this.life ?? new StreetLife(this.boardGroup), CELL, glows: [], pools: [] };
+      o = kind === 'trash' ? trashBin(CELL) : (await makeProp(ctx, kind, CELL)) ?? trashBin(CELL);
+    } else o = await this.piece(id);
     o.updateMatrixWorld(true);
     const bb = new THREE.Box3().setFromObject(o), size = bb.getSize(new THREE.Vector3());
     o.scale.multiplyScalar(Math.min(1, maxSize / Math.max(size.x, size.z)));
@@ -536,11 +582,51 @@ export class World3D {
     return { x: (p.x + 1) / 2 * w, y: (1 - p.y) / 2 * h };
   }
 
+  /** Screen effects of hits (flash, negative frame, colour split), decayed every frame. */
+  get screenFx(): ScreenFx { return this.style.fx; }
+
+  /**
+   * An anime hit on the 3D picture: `strength` 0..1; at (u, v) in 0..1 screen space (top-left
+   * origin). Big hits get a one-frame negative and a white flash, all get a colour split and shake.
+   */
+  impact(strength: number, u = 0.5, v = 0.5, color = 0xffffff) {
+    const fx = this.style.fx;
+    fx.centre.set(u, 1 - v);
+    fx.aberration = Math.max(fx.aberration, 4 + strength * 10);
+    if (strength >= 0.7) { fx.invert = 1; this.invertHold = 0.05; }
+    fx.flash = Math.max(fx.flash, 0.12 + strength * 0.3);
+    fx.flashColor.setHex(color);
+    this.shake(0.05 + strength * 0.22);
+  }
+
+  /** Camera shake (metres at zoom 1), decays quickly. */
+  shake(amp: number) { this.shakeAmp = Math.max(this.shakeAmp, amp); }
+
+  private invertHold = 0;
+  private lastDt = 0;
+  private decayFx(dt: number) {
+    const fx = this.style.fx;
+    if (this.invertHold > 0) this.invertHold -= dt;
+    else fx.invert = Math.max(0, fx.invert - dt * 14);
+    fx.flash = Math.max(0, fx.flash - dt * 4.5);
+    fx.aberration = Math.max(0, fx.aberration - dt * 40);
+    if (this.shakeAmp > 0) {
+      this.shakeT += dt;
+      this.shakeAmp = Math.max(0, this.shakeAmp - dt * (0.6 + this.shakeAmp * 4));
+      this.placeCamera();
+    }
+  }
+
   frame() {
     const dt = Math.min(0.05, this.clock.getDelta());
+    this.lastDt = dt;
     this.tickRain(dt);
+    this.life?.tick(dt);
+    this.decayFx(dt);
     this.onFrame?.(dt);
     stylizeScene(this.scene);
     this.composer.render(dt);
   }
 }
+
+

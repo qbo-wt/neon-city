@@ -9,6 +9,7 @@ import { DeathScene } from './scenes/DeathScene';
 import { BuildingScene } from './scenes/BuildingScene';
 import { RipperdocScene } from './scenes/RipperdocScene';
 import { NetrunnerScene } from './scenes/NetrunnerScene';
+import { OverlayScene } from './ui/transition';
 import { nextAction } from './tactics/ai';
 import { cast, moveTo } from './tactics/fight';
 import '@fontsource/chakra-petch/latin-500.css';
@@ -31,7 +32,7 @@ const game = new Phaser.Game({
   disableContextMenu: true,
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
   physics: { default: 'arcade', arcade: { debug: false } },
-  scene: [BootScene, MenuScene, HideoutScene, BuildingScene, RipperdocScene, NetrunnerScene, RunScene, HudScene, DeathScene],
+  scene: [BootScene, MenuScene, HideoutScene, BuildingScene, RipperdocScene, NetrunnerScene, RunScene, HudScene, DeathScene, OverlayScene],
 });
 
 // Test hook: `?debug` exposes the game instance (and the fight AI, to let tests play the hero) for automated smoke tests.

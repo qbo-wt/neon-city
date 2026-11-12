@@ -3,6 +3,7 @@ import { floatText } from '../fx/effects';
 import { txt } from '../ui/text';
 import { audio } from '../audio/audio';
 import { facingOf, type Facing } from '../gfx/rig';
+import { HEAD_PX } from '../three/Interior3D';
 
 export type NpcActivity = 'wander' | 'smoke' | 'talk' | 'sit' | 'phone' | 'idle' | 'eat' | 'play' | 'cook' | 'lean' | 'dance';
 
@@ -21,6 +22,8 @@ export interface NpcOpts {
   bounds?: Phaser.Geom.Rectangle;
   name?: string;
   lines?: string[];
+  /** Sits (3D seated pose) on a seat this high (m): bench, stool, chair. */
+  seat?: number;
   /** Dialogue provider (story lines, reactions to your last run); falls back to `lines`. */
   talk?: () => string;
 }
@@ -38,6 +41,7 @@ const ANIM: Record<NpcActivity, string> = {
  */
 export class Npc extends Phaser.Physics.Arcade.Sprite {
   readonly name: string;
+  readonly seat: number;
   private lines: string[];
   private talk?: () => string;
   private lineIndex = 0;
@@ -63,6 +67,7 @@ export class Npc extends Phaser.Physics.Arcade.Sprite {
     (this.body as Phaser.Physics.Arcade.Body).setCircle(5, 7, 13).setImmovable(true);
     this.setDepth(8).setFlipX(!!opts.flip);
     this.name = opts.name ?? 'Passant';
+    this.seat = opts.seat ?? 0;
     this.lines = opts.lines ?? ['...'];
     this.talk = opts.talk;
     this.facing = opts.faceUp ? 'u' : 'd';
@@ -98,10 +103,9 @@ export class Npc extends Phaser.Physics.Arcade.Sprite {
     const t = txt(this.scene, 0, 0, line, 6, '#e8e8ff').setOrigin(0.5).setWordWrapWidth(150).setAlign('center');
     const bg = this.scene.add.rectangle(0, 0, t.width + 8, t.height + 6, 0x05030f, 0.92).setStrokeStyle(1, 0x8a86b0);
     const name = txt(this.scene, -bg.width / 2 + 2, -bg.height / 2 - 7, this.name, 5, '#f5e663');
-    this.bubble = this.scene.add.container(this.x, this.y - 22 - t.height / 2, [bg, t, name]).setDepth(60);
+    this.bubble = this.scene.add.container(this.x, this.y + 2 - HEAD_PX - t.height / 2, [bg, t, name]).setDepth(60);
     this.scene.time.delayedCall(2800 + line.length * 40, () => { this.bubble?.destroy(); this.bubble = undefined; });
-    // Turn toward whoever talks to them.
-    if (this.activity !== 'cook' && this.activity !== 'play' && this.activity !== 'eat' && !(this.activity === 'sit' && this.facing === 'u')) this.facing = 'd';
+    // (The 3D view turns them toward the player while the bubble is up.)
     if (this.activity !== 'wander') this.idleFrame();
   }
 
@@ -138,18 +142,11 @@ export class Npc extends Phaser.Physics.Arcade.Sprite {
       }
       if (this.activity === 'play') { this.prop.setPosition(this.x, this.y - 8); (this.prop as Phaser.GameObjects.Image).setAlpha(0.3 + Math.random() * 0.4); }
     }
-    if (this.activity === 'smoke' && Math.random() < 0.02) {
-      const s = this.scene.add.image(this.x + side * 2, this.y - 10, 'steam').setDepth(30).setScale(0.5).setAlpha(0.6);
-      this.scene.tweens.add({ targets: s, y: s.y - 16, scale: 1.4, alpha: 0, duration: 1400, onComplete: () => s.destroy() });
-    }
-    if (this.activity === 'cook' && Math.random() < 0.04) {
-      const s = this.scene.add.image(this.x + (Math.random() - 0.5) * 30, this.y + 14, 'steam').setDepth(30).setScale(0.6).setAlpha(0.5);
-      this.scene.tweens.add({ targets: s, y: s.y - 22, scale: 1.6, alpha: 0, duration: 1500, onComplete: () => s.destroy() });
-    }
+    // Smoke and steam are drawn by the 3D room (Interior3D).
     const emotes = EMOTES[this.activity];
     if (!this.bubble && emotes.length && now >= this.nextEmoteAt) {
       this.nextEmoteAt = now + 4000 + Math.random() * 6000;
-      floatText(this.scene, this.x, this.y - 16, Phaser.Utils.Array.GetRandom(emotes), this.activity === 'dance' ? '#ff2a6d' : '#8a86b0', 6);
+      floatText(this.scene, this.x, this.y + 4 - HEAD_PX, Phaser.Utils.Array.GetRandom(emotes), this.activity === 'dance' ? '#ff2a6d' : '#8a86b0', 6);
     }
     this.shadow.setPosition(this.x, this.y + 7).setVisible(this.visible);
     this.prop?.setVisible(this.visible);

@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
-import { CONFIG, COLORS } from '../config';
+import { CONFIG } from '../config';
 import type { SaveData } from '../core/save';
 import { CODEX, CODEX_TIERS } from '../data/codex';
 import { ENEMIES, type EnemyId } from '../data/enemies';
-import { txt } from './text';
+import { title, txt } from './text';
+import { C, T, bold, chip, cutPoly, hints, pinToCamera, pips, screenFrame, stripes } from './kit';
 
 const ORDER: EnemyId[] = ['runner', 'gunner', 'brute', 'drone', 'bomber', 'hacker', 'warden', 'boss'];
 
@@ -21,30 +22,41 @@ export class CodexPanel {
     const s = this.scene, W = CONFIG.WIDTH, H = CONFIG.HEIGHT, save = this.getSave();
     const root = s.add.container(0, 0).setDepth(200);
     this.root = root;
-    root.add(s.add.rectangle(W / 2, H / 2, W, H, 0x05030f, 0.96).setStrokeStyle(1, COLORS.cyan));
     const known = ORDER.filter(id => (save.codex[id] ?? 0) > 0).length;
-    root.add(txt(s, W / 2, 10, `BASE DE DONNÉES — BESTIAIRE (${known}/${ORDER.length})`, 9, '#00f0ff').setOrigin(0.5));
+    root.add(screenFrame(s, 'BASE DE DONNÉES — BESTIAIRE', C.cyan, `DOSSIERS OUVERTS ${known}/${ORDER.length}`));
     ORDER.forEach((id, i) => {
-      const kills = save.codex[id] ?? 0, deaths = save.deaths[id] ?? 0, y = 24 + i * 29;
-      if (i % 2 === 0) root.add(s.add.rectangle(W / 2, y + 13, W - 12, 28, 0x140f2b, 0.7));
+      const kills = save.codex[id] ?? 0, deaths = save.deaths[id] ?? 0, y = 21 + i * 29.5;
+      const g = s.add.graphics();
+      if (i % 2 === 0) g.fillStyle(C.white, 0.03).fillRect(12, y, W - 24, 28);
+      // Portrait frame.
+      g.fillStyle(C.deep, 0.9).fillPoints(cutPoly(14, y + 1, 26, 26, [4, 0, 4, 0]), true);
+      g.lineStyle(0.5, kills ? C.cyan : C.line, kills ? 0.9 : 0.7).strokePoints(cutPoly(14, y + 1, 26, 26, [4, 0, 4, 0]), true);
+      if (!kills) stripes(g, 15, y + 2, 24, 24, C.white, 0.05, 3, 1);
+      root.add(g);
       const big = id === 'warden' || id === 'boss' || id === 'brute';
-      const img = s.add.image(22, y + 13, `en-${id}`, 'd-idle0').setScale(big ? 0.75 : 1);
+      const img = s.add.image(27, y + 14, `en-${id}`, 'd-idle0').setScale(big ? 0.75 : 1);
       if (!kills) img.setTint(0x000000).setAlpha(0.7);
       root.add(img);
       const [desc, tip, lore] = CODEX[id];
       if (!kills) {
-        root.add(txt(s, 42, y + 3, '???', 8, '#5a5578'));
-        root.add(txt(s, 42, y + 15, deaths ? `T'a déjà eu ${deaths} fois. Élimine-en un pour ouvrir son dossier.` : 'Pas encore rencontré.', 6, '#5a5578'));
+        root.add(title(s, 46, y + 7.5, '??? — DOSSIER VERROUILLÉ', 10, T.off).setFontStyle('600').setOrigin(0, 0.5));
+        root.add(txt(s, 46, y + 15, deaths ? `T'a déjà eu ${deaths} fois. Élimine-en un pour ouvrir son dossier.` : 'Pas encore rencontré.', 6, T.off));
         return;
       }
-      root.add(txt(s, 42, y + 1, `${ENEMIES[id].name}`, 8, '#e8e8ff'));
-      root.add(txt(s, W - 12, y + 2, `${kills} éliminé${kills > 1 ? 's' : ''}${deaths ? ` · t'a eu ${deaths} fois` : ''}`, 6, '#f5e663').setOrigin(1, 0));
+      root.add(title(s, 46, y + 6.5, ENEMIES[id].name.toUpperCase(), 11, T.text).setFontStyle('600').setOrigin(0, 0.5));
+      // Three tiers of the file, as pips: description, tactic, lore.
+      const tier = kills >= CODEX_TIERS[2] ? 3 : kills >= CODEX_TIERS[1] ? 2 : 1;
+      const pg = s.add.graphics();
+      pips(pg, W - 46, y + 3, tier, 3, C.cyan, 8, 4);
+      root.add(pg);
+      root.add(chip(s, W - 52, y + 5, `${kills} ÉLIMINÉ${kills > 1 ? 'S' : ''}${deaths ? ` · T'A EU ${deaths}×` : ''}`, C.yellow, { size: 4.5, originX: 1 }));
       const text = kills >= CODEX_TIERS[1] ? tip : desc;
-      root.add(txt(s, 42, y + 11, text, 6, kills >= CODEX_TIERS[1] ? '#39ff88' : '#a8a6d8').setWordWrapWidth(W - 60));
+      root.add(txt(s, 46, y + 12, text, 6, kills >= CODEX_TIERS[1] ? T.green : T.dim).setWordWrapWidth(W - 64));
       const next = kills >= CODEX_TIERS[2] ? lore : `Dossier suivant à ${kills >= CODEX_TIERS[1] ? CODEX_TIERS[2] : CODEX_TIERS[1]} éliminations.`;
-      root.add(txt(s, 42, y + 19, next, 5, kills >= CODEX_TIERS[2] ? '#ff2a6d' : '#5a5578').setWordWrapWidth(W - 60));
+      root.add(txt(s, 46, y + 20.5, next, 5, kills >= CODEX_TIERS[2] ? T.magenta : T.off).setWordWrapWidth(W - 64));
     });
-    root.add(txt(s, W / 2, H - 7, '[ÉCHAP] Fermer', 6, '#8a86b0').setOrigin(0.5));
-    root.setScrollFactor(0, 0, true);
+    root.add(hints(s, W / 2, H - 8, [['ÉCHAP', 'Fermer']], C.cyan));
+    root.add(bold(s, W - 16, H - 8, 'NEON//OS — accès niveau 2', 4.5, T.off).setOrigin(1, 0.5));
+    pinToCamera(root);
   }
 }

@@ -20,9 +20,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // 24×24 frames with the feet on row 21.
     this.setOrigin(0.5, PLAYER_ORIGIN_Y);
     (this.body as Phaser.Physics.Arcade.Body).setCircle(5, 7, 13);
-    this.on(Phaser.Animations.Events.ANIMATION_UPDATE, (_a: unknown, frame: Phaser.Animations.AnimationFrame) => {
-      if (/walk[03]$/.test(frame.textureKey)) this.footstep();
-    });
     this.setDepth(10);
   }
 
@@ -45,13 +42,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // Turning while walking keeps the step in progress instead of restarting the cycle.
     const keepStep = moving && this.anims.currentAnim?.key.startsWith('pl-walk') ? this.anims.currentFrame?.index ?? 0 : 0;
     this.anims.play({ key, startFrame: Math.max(0, keepStep - 1) });
-  }
-
-  /** A small puff of dust under the foot that just landed. */
-  private footstep() {
-    const side = this.anims.currentFrame?.textureKey.endsWith('0') ? -3 : 3;
-    const puff = this.scene.add.circle(this.x + side, this.y + 7, 1.5, 0x8a86b0, 0.45).setDepth(4.5);
-    this.scene.tweens.add({ targets: puff, scale: 2.4, alpha: 0, y: puff.y - 2, duration: 320, onComplete: () => puff.destroy() });
   }
 
   get face() { return this.facing; }

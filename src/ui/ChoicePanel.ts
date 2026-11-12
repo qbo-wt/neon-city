@@ -3,6 +3,7 @@ import { CONFIG, COLORS } from '../config';
 import type { Controls } from '../input/controls';
 import { audio } from '../audio/audio';
 import { txt } from './text';
+import { C, Card, T, backdrop, bold, chip, hints, keycap, panel, pinToCamera } from './kit';
 
 export interface ChoiceOption {
   label: string;
@@ -23,30 +24,28 @@ export class ChoicePanel {
 
   constructor(private scene: Phaser.Scene, private controls: Controls, speaker: string, line: string,
     readonly options: ChoiceOption[], private onClose: () => void, accent: number = COLORS.cyan) {
-    const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, h = 64 + options.length * 34;
-    const top = (H - h) / 2;
-    const hex = '#' + accent.toString(16).padStart(6, '0');
+    const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, pw = 364;
+    const lineT = txt(scene, 0, 0, line, 7, T.text).setWordWrapWidth(pw - 28).setLineSpacing(2);
+    const rowH = 28, gap = 4;
+    const ph = 22 + lineT.height + 8 + options.length * (rowH + gap) + 16;
+    const left = (W - pw) / 2, top = Math.max(14, (H - ph) / 2);
     this.root = scene.add.container(0, 0).setDepth(5000);
-    this.root.add(scene.add.rectangle(W / 2, H / 2, W, H, 0x05030f, 0.7));
-    this.root.add(scene.add.rectangle(W / 2, H / 2, 360, h, 0x0b0820, 0.97).setStrokeStyle(1, accent));
-    this.root.add(txt(scene, W / 2 - 170, top + 8, speaker.toUpperCase(), 8, hex));
-    this.root.add(txt(scene, W / 2 - 170, top + 22, line, 7, '#e8e8ff').setWordWrapWidth(340));
+    this.root.add(backdrop(scene, 0.72, accent));
+    this.root.add(panel(scene, left, top, pw, ph, { accent, title: speaker.toUpperCase(), titleSize: 11, code: 'RENCONTRE // RUE', dots: 'br' }));
+    lineT.setPosition(left + 14, top + 13);
+    this.root.add(lineT);
+    const y0 = top + 13 + lineT.height + 9;
     options.forEach((o, i) => {
-      const y = top + 52 + i * 34, on = o.enabled !== false;
-      const row = scene.add.rectangle(W / 2, y + 12, 344, 30, 0x140f2b).setStrokeStyle(1, on ? 0x3a3550 : 0x221d35);
-      if (on) {
-        row.setInteractive({ useHandCursor: true });
-        row.on('pointerover', () => { row.setStrokeStyle(1, accent); audio.sfx('ui'); });
-        row.on('pointerout', () => row.setStrokeStyle(1, 0x3a3550));
-        row.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.button === 0) this.choose(i); });
-      }
-      this.root.add(row);
-      this.root.add(txt(scene, W / 2 - 166, y + 2, `[${i + 1}] ${o.label}`, 7, on ? '#f5e663' : '#5a5578'));
-      this.root.add(txt(scene, W / 2 - 166, y + 13, o.desc, 6, on ? '#a8a6d8' : '#5a5578').setWordWrapWidth(280));
-      if (o.cost) this.root.add(txt(scene, W / 2 + 166, y + 2, o.cost, 7, on ? '#ff2a6d' : '#5a5578').setOrigin(1, 0));
+      const y = y0 + i * (rowH + gap), on = o.enabled !== false;
+      const card = new Card(scene, left + 10, y, pw - 20, rowH, { accent, state: on ? 'idle' : 'off', hoverSfx: true, onClick: on ? () => this.choose(i) : undefined });
+      card.add(keycap(scene, 7, 9, `${i + 1}`, on ? C.yellow : C.line, 5));
+      card.add(bold(scene, 22, 9, o.label, 7, on ? T.yellow : T.off).setOrigin(0, 0.5));
+      card.add(txt(scene, 22, 16, o.desc, 6, on ? T.dim : T.off).setWordWrapWidth(pw - 120));
+      if (o.cost) card.add(chip(scene, pw - 32, 9, o.cost, on ? C.magenta : C.line, { size: 5, originX: 1, text: on ? T.magenta : T.off }));
+      this.root.add(card);
     });
-    this.root.add(txt(scene, W / 2, top + h - 9, '[ÉCHAP] Partir', 6, '#8a86b0').setOrigin(0.5));
-    this.root.setScrollFactor(0, 0, true);
+    this.root.add(hints(scene, W / 2, top + ph - 8, [['ÉCHAP', 'Partir'], ['1-4', 'Choisir']], C.yellow));
+    pinToCamera(this.root);
     audio.sfx('uiOpen');
   }
 

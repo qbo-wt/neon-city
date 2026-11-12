@@ -2,13 +2,14 @@ import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 
 /**
- * The stylised look, applied on top of the real models: cel-shaded light (bands one stop apart
- * instead of smooth gradients), no glossy reflections or photo micro-detail, textures reduced to a
- * few painted, saturated colour patches, and an ink outline around shapes (see StylePass).
+ * The anime look, applied on top of the models: cel-shaded light (bands one stop apart instead of
+ * smooth gradients, violet shadows, a halftone screen in the darkest band), no glossy reflections,
+ * and an ink outline around shapes and along creases (see StylePass).
  *
  * Every lit material of the scene goes through `stylizeScene` once before it is first drawn, so
  * models, rooms and characters need no special code. Emissive and unlit materials (neon, screens,
- * halos) are left as they are: they are the colour accents of the night.
+ * halos) are left as they are: they are the colour accents of the night. Low-poly kit palettes and
+ * canvas-drawn textures are kept; only photo textures are painted down to a few flat colours.
  */
 const doneMats = new WeakSet<THREE.Material>();
 const doneTex = new WeakMap<THREE.Texture, THREE.Texture>();
@@ -19,9 +20,14 @@ const CEL = /* glsl */ `
   vec3 celIrr = max(outgoingLight - totalEmissiveRadiance, vec3(0.0)) / celBase;
   float celE = max(max(celIrr.r, celIrr.g), celIrr.b);
   if (celE > 1e-4) {
-    float celX = log2(celE), celI = floor(celX);
-    float celQ = max(exp2(celI + smoothstep(0.38, 0.62, celX - celI)), 0.22);
-    outgoingLight = celBase * (celIrr / celE) * celQ + totalEmissiveRadiance;
+    float celX = log2(celE / CEL_KEY), celI = floor(celX);
+    float celQ = max(exp2(celI + smoothstep(0.4, 0.6, celX - celI)), 0.3);
+    float celShadow = clamp(-celX * 0.5, 0.0, 1.0);
+    vec3 celTint = mix(vec3(1.0), vec3(0.64, 0.52, 1.0), celShadow);
+    vec2 celQd = mat2(0.7071, -0.7071, 0.7071, 0.7071) * gl_FragCoord.xy / 4.5;
+    float celDot = 1.0 - smoothstep(0.2, 0.28, length(fract(celQd) - 0.5));
+    celQ *= 1.0 - 0.2 * celDot * smoothstep(0.55, 0.95, celShadow);
+    outgoingLight = celBase * (celIrr / celE) * celQ * CEL_KEY * celTint + totalEmissiveRadiance;
   }
   #ifdef CEL_RIM
   float celRim = smoothstep(0.45, 0.8, 1.0 - abs(dot(normal, normalize(vViewPosition))));
@@ -43,7 +49,7 @@ const PAINT = /* glsl */ `#include <color_fragment>
 {
   vec2 celP = vCelW.xz + vCelW.y * 0.37;
   float celN = celNoise(celP * 0.6) * 0.6 + celNoise(celP * 2.3 + 7.3) * 0.4;
-  diffuseColor.rgb *= 0.86 + 0.28 * celN;
+  diffuseColor.rgb *= 0.9 + 0.2 * celN;
 }`;
 
 function celShader(shader: { vertexShader: string; fragmentShader: string }) {
@@ -57,7 +63,7 @@ function celShader(shader: { vertexShader: string; fragmentShader: string }) {
   #endif
   vCelW = (modelMatrix * celW).xyz;
 }`);
-  shader.fragmentShader = shader.fragmentShader
+  shader.fragmentShader = '#define CEL_KEY 0.3\n' + shader.fragmentShader
     .replace('#include <common>', PAINT_HEAD)
     .replace('#include <color_fragment>', PAINT)
     .replace('#include <opaque_fragment>', CEL);
@@ -108,12 +114,19 @@ function paintTexture(t: THREE.Texture, size: number, sat: number, contrast = 1)
   return out;
 }
 
+/** A Kenney / KayKit palette texture (flat colour swatches mapped by UV): never flattened. */
+function isPalette(t: THREE.Texture) {
+  if (t.userData?.palette) return true;
+  const img = t.image as { src?: string; currentSrc?: string } | undefined;
+  const src = img?.currentSrc || img?.src || '';
+  return /colormap|furniturebits|\/kenney\/|\/kaykit\//i.test(src) || /colormap|furniturebits/i.test(t.name ?? '');
+}
+
 function stylizeMaterial(m: THREE.Material, skinned: boolean) {
   if (doneMats.has(m)) return;
   const s = m as THREE.MeshStandardMaterial;
-  if (!s.isMeshStandardMaterial) { doneMats.add(m); return; }
-  // Drawn textures (rugs, posters, screens made from the 2D art) are already stylised: kept.
-  if (s.map && !(s.map as THREE.CanvasTexture).isCanvasTexture) {
+  if (!s.isMeshStandardMaterial || s.userData.noStyle) { doneMats.add(m); return; }
+  if (s.map && !(s.map as THREE.CanvasTexture).isCanvasTexture && !isPalette(s.map)) {
     // Characters keep a small painted texture (face, clothes); everything else becomes one flat colour.
     const painted = skinned ? paintTexture(s.map, 128, 1.15) : paintTexture(s.map, 1, 1.2);
     if (!painted) return; // retried next frame, once the image is there
@@ -127,11 +140,14 @@ function stylizeMaterial(m: THREE.Material, skinned: boolean) {
   s.metalness = 0;
   if ((s as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial) (s as THREE.MeshPhysicalMaterial).clearcoat = 0;
   // Plain colours get the same saturation as the painted textures.
-  if (!s.map) { const hsl = { h: 0, s: 0, l: 0 }; s.color.getHSL(hsl); s.color.setHSL(hsl.h, Math.min(1, hsl.s * 1.25 + 0.04), hsl.l); }
-  s.onBeforeCompile = celShader;
+  if (!s.map && !s.userData.keepColor) { const hsl = { h: 0, s: 0, l: 0 }; s.color.getHSL(hsl); s.color.setHSL(hsl.h, Math.min(1, hsl.s * 1.25 + 0.04), hsl.l); }
+  // Extra shader code of a material (wet ground reflections...) runs after the cel shading.
+  const hook = s.userData.shaderHook as ((sh: THREE.WebGLProgramParametersWithUniforms, r: THREE.WebGLRenderer) => void) | undefined;
+  s.onBeforeCompile = hook ? (sh, r) => { celShader(sh); hook(sh, r); } : celShader;
   // Characters get a light rim so they read against the night.
   if (skinned) { const d = s as unknown as { defines?: Record<string, string> }; d.defines = { ...d.defines, CEL_RIM: '' }; }
-  s.customProgramCacheKey = () => (skinned ? 'cel-rim' : 'cel');
+  const key = (skinned ? 'cel-rim' : 'cel') + (hook ? `-${s.userData.shaderKey ?? 'hook'}` : '');
+  s.customProgramCacheKey = () => key;
   s.needsUpdate = true;
   doneMats.add(m);
 }
@@ -148,15 +164,25 @@ export function stylizeScene(root: THREE.Object3D) {
 }
 
 /**
- * Replaces the plain render pass: renders the scene with its depth, then draws it with ink
- * outlines where the depth breaks (silhouettes, steps, overlaps) and a light colour grade
- * (more saturation, violet shadows). The camera is orthographic, so depth is linear on screen and
- * flat surfaces never get false lines.
+ * Short-lived screen effects of a hit, driven by the game: `flash` (0..1, toward `flashColor`),
+ * `invert` (0..1, a negative frame), `aberration` (pixels of colour split, from `centre`).
+ */
+export interface ScreenFx { flash: number; flashColor: THREE.Color; invert: number; aberration: number; centre: THREE.Vector2 }
+
+/**
+ * Replaces the plain render pass: renders the scene with its depth, then draws it with ink lines
+ * where the depth breaks (silhouettes, overlaps) and where its slope breaks (creases: box edges,
+ * the foot of a wall), a colour grade (saturation, violet lift in the shadows, vignette) and the
+ * hit effects. The camera is orthographic, so depth is linear on screen and flat surfaces never
+ * get false lines.
  */
 export class StylePass extends Pass {
   private rt: THREE.WebGLRenderTarget;
   private quad: FullScreenQuad;
   private mat: THREE.ShaderMaterial;
+  readonly fx: ScreenFx = { flash: 0, flashColor: new THREE.Color(1, 1, 1), invert: 0, aberration: 0, centre: new THREE.Vector2(0.5, 0.5) };
+  /** Called between the scene render and the composite (the wet ground reflection runs before). */
+  beforeRender?: (renderer: THREE.WebGLRenderer) => void;
 
   constructor(private scene: THREE.Scene, private camera: THREE.OrthographicCamera) {
     super();
@@ -164,50 +190,83 @@ export class StylePass extends Pass {
     this.mat = new THREE.ShaderMaterial({
       uniforms: {
         tColor: { value: null }, tDepth: { value: null }, texel: { value: new THREE.Vector2() },
-        near: { value: 0.1 }, far: { value: 200 }, fogDensity: { value: 0 }, ink: { value: new THREE.Color(0x0a0614) },
-        thickness: { value: 1 }, strength: { value: 0.75 },
+        near: { value: 0.1 }, far: { value: 200 }, fogNear: { value: 1e4 }, fogFar: { value: 2e4 }, ink: { value: new THREE.Color(0x0a0614) },
+        thickness: { value: 1 }, strength: { value: 0.85 }, crease: { value: 0.7 }, outline: { value: 1 },
+        flash: { value: 0 }, flashColor: { value: new THREE.Color() }, invert: { value: 0 }, aberration: { value: 0 }, centre: { value: new THREE.Vector2(0.5, 0.5) },
+        vignette: { value: 0.35 },
       },
       vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
       fragmentShader: /* glsl */ `
         uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 texel;
-        uniform float near; uniform float far; uniform float fogDensity; uniform vec3 ink;
-        uniform float thickness; uniform float strength;
+        uniform float near; uniform float far; uniform float fogNear; uniform float fogFar; uniform vec3 ink;
+        uniform float thickness; uniform float strength; uniform float crease; uniform float outline;
+        uniform float flash; uniform vec3 flashColor; uniform float invert; uniform float aberration; uniform vec2 centre;
+        uniform float vignette;
         varying vec2 vUv;
         float z(vec2 uv) { return near + texture2D(tDepth, uv).x * (far - near); }
         void main() {
-          vec4 c = texture2D(tColor, vUv);
           vec2 o = texel * thickness;
           float d = z(vUv);
-          float lap = abs(z(vUv + vec2(o.x, 0.0)) + z(vUv - vec2(o.x, 0.0)) + z(vUv + vec2(0.0, o.y)) + z(vUv - vec2(0.0, o.y)) - 4.0 * d);
-          float edge = smoothstep(0.15, 0.45, lap);
-          float fog = exp(-fogDensity * fogDensity * d * d);
-          vec3 col = c.rgb;
+          float l = z(vUv - vec2(o.x, 0.0)), r = z(vUv + vec2(o.x, 0.0)), u = z(vUv + vec2(0.0, o.y)), dn = z(vUv - vec2(0.0, o.y));
+          // Silhouettes: depth jumps (1 px and 2 px rings, so lines are 2-3 px wide).
+          float lap = abs(l + r + u + dn - 4.0 * d);
+          float l2 = z(vUv - vec2(o.x, 0.0) * 2.0), r2 = z(vUv + vec2(o.x, 0.0) * 2.0), u2 = z(vUv + vec2(0.0, o.y) * 2.0), d2 = z(vUv - vec2(0.0, o.y) * 2.0);
+          float lap2 = abs(l2 + r2 + u2 + d2 - 4.0 * d);
+          float sil = max(smoothstep(0.12, 0.32, lap), smoothstep(0.2, 0.5, lap2) * 0.8);
+          // Creases: the slope of the depth changes (normal edges, without a normal buffer).
+          float gx1 = d - l, gx2 = r - d, gy1 = d - dn, gy2 = u - d;
+          float cx = abs(gx2 - gx1) / (abs(gx1) + abs(gx2) + 0.006);
+          float cy = abs(gy2 - gy1) / (abs(gy1) + abs(gy2) + 0.006);
+          float cr = smoothstep(0.45, 0.8, max(cx, cy)) * (1.0 - step(0.6, lap)) * crease;
+          float edge = max(sil, cr) * outline;
+          float fog = 1.0 - smoothstep(fogNear, fogFar, d);
+          // Hit: colour split from the impact point.
+          vec2 dir = (vUv - centre);
+          vec2 ca = dir * aberration * texel.x * 2.0 / max(0.15, length(dir));
+          vec3 col = vec3(texture2D(tColor, vUv + ca).r, texture2D(tColor, vUv).g, texture2D(tColor, vUv - ca).b);
           float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-          col = max(mix(vec3(lum), col, 1.15), vec3(0.0));
-          col *= 1.2;
-          col += vec3(0.006, 0.0, 0.016) * (1.0 - smoothstep(0.0, 0.12, lum));
+          col = max(mix(vec3(lum), col, 1.18), vec3(0.0));
+          col *= 1.12;
+          col += vec3(0.014, 0.004, 0.034) * (1.0 - smoothstep(0.0, 0.16, lum));
           col = mix(col, ink, edge * strength * fog);
-          gl_FragColor = vec4(col, c.a);
+          // Vignette toward the night colour.
+          vec2 vd = (vUv - 0.5) * vec2(1.0, 0.8);
+          col = mix(col, vec3(0.02, 0.012, 0.05), smoothstep(0.35, 0.85, length(vd)) * vignette);
+          // Negative frame: inverted, pushed to the neon duotone.
+          vec3 neg = vec3(1.0) - clamp(col, 0.0, 1.0);
+          float nl = dot(neg, vec3(0.333));
+          neg = mix(vec3(0.05, 0.0, 0.12), vec3(1.0, 0.95, 1.0), smoothstep(0.35, 0.85, nl)) + vec3(0.0, 0.35, 0.4) * smoothstep(0.75, 1.0, nl);
+          col = mix(col, neg, invert);
+          col = mix(col, flashColor, flash);
+          gl_FragColor = vec4(col, 1.0);
         }`,
       depthTest: false, depthWrite: false,
     });
     this.quad = new FullScreenQuad(this.mat);
   }
 
+  /** Line weight and strength (interiors use softer lines). */
+  setInk(strength: number, crease: number) { this.mat.uniforms.strength.value = strength; this.mat.uniforms.crease.value = crease; }
+
   setSize(w: number, h: number) {
     this.rt.setSize(w, h);
     this.mat.uniforms.texel.value.set(1 / w, 1 / h);
-    this.mat.uniforms.thickness.value = Math.max(1, Math.round(w / 1400));
+    this.mat.uniforms.thickness.value = Math.max(1, Math.round(w / 1700));
   }
 
   render(renderer: THREE.WebGLRenderer, writeBuffer: THREE.WebGLRenderTarget) {
+    this.beforeRender?.(renderer);
     renderer.setRenderTarget(this.rt);
     renderer.clear();
     renderer.render(this.scene, this.camera);
-    const u = this.mat.uniforms, fog = this.scene.fog as THREE.FogExp2 | null;
+    const u = this.mat.uniforms, fog = this.scene.fog;
     u.tColor.value = this.rt.texture; u.tDepth.value = this.rt.depthTexture;
     u.near.value = this.camera.near; u.far.value = this.camera.far;
-    u.fogDensity.value = fog && (fog as THREE.FogExp2).isFogExp2 ? fog.density : 0;
+    if (fog && (fog as THREE.Fog).isFog) { u.fogNear.value = (fog as THREE.Fog).near; u.fogFar.value = (fog as THREE.Fog).far; }
+    else if (fog && (fog as THREE.FogExp2).isFogExp2) { const k = (fog as THREE.FogExp2).density; u.fogNear.value = 0; u.fogFar.value = 1.6 / Math.max(1e-4, k); }
+    else { u.fogNear.value = 1e4; u.fogFar.value = 2e4; }
+    u.flash.value = this.fx.flash; u.flashColor.value.copy(this.fx.flashColor); u.invert.value = this.fx.invert;
+    u.aberration.value = this.fx.aberration; u.centre.value.copy(this.fx.centre);
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.quad.render(renderer);
   }

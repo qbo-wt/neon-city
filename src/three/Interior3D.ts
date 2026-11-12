@@ -2,114 +2,164 @@ import * as THREE from 'three';
 import type { World3D } from './World3D';
 import { CAST, CharacterRig } from './characters';
 import { MannequinRig, type AnimName, type Rig } from './rigs';
+import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm';
+import { kitModel, type ModelOpts } from './interior/kit';
+import { Animator, dust, flicker, liveCanvas, steam, sway } from './interior/fx';
+import { beam, canvasTex, concreteFloor, linoFloor, neonText, plateText, radial, tileFloor, wallTex, woodFloor } from './interior/paint';
 
 /**
  * Interiors in 3D (apartment, corridor, clinic, den) drawn under the Phaser scene that still runs
- * them (physics, NPCs, interactions, panels). The camera looks north, 35° down, orthographic, and
- * the mapping keeps Phaser's pixels exact: a ground point (px, py) is world (px·K, 0, py·K / sin 35°),
- * and a height h rises h·K⁻¹·cos 35° pixels on screen. So 2D positions, prompts and speech bubbles
- * stay where they were; a 1.8 m character is about 26 px tall, close to the old sprites.
+ * them (physics, NPCs, interactions, panels). The camera looks north, 45° down, orthographic, and
+ * the mapping keeps Phaser's pixels exact: a ground point (px, py) is world (px·K, 0, py·K / sin 45°),
+ * and a height h rises h·cos 45° / K pixels on screen. So 2D positions, prompts and speech bubbles
+ * stay where they are. At K = 3 cm per pixel a 1.7 m character is 40 px tall (a sixth of the
+ * screen): rooms read as cosy dioramas, not as halls.
+ *
+ * The shell (floor, back wall, cut side walls, lights) comes from the room grid; everything else is
+ * dressed by the room's set builder (src/three/interior/*) with the helpers below.
  */
-export const K = 0.056;
-const PITCH = THREE.MathUtils.degToRad(35);
+export const K = 0.03;
+const PITCH = THREE.MathUtils.degToRad(45);
 const SIN = Math.sin(PITCH), COS = Math.cos(PITCH);
-const TILE = 32;
+export const TILE = 32;
+export const WALL_H = 4.0;
+/**
+ * Screen y of the back wall's foot in every room: half a tile below the first floor row, so the
+ * wall shows 3.4 m under the HUD (doors and big signs above them). Scenes block the strip.
+ */
+export const BACK_Y = 80;
+/** Pixels on screen per metre of height. */
+export const PX_PER_M = COS / K;
+/** Screen px per metre across (x) and per metre of depth (ground y). */
+export const MX = 1 / K, MY = SIN / K;
 export const at = (px: number, py: number, h = 0) => new THREE.Vector3(px * K, h, (py * K) / SIN);
-/** Height (metres) at which something seen at screen y stands, given its ground y. */
-const heightFor = (screenY: number, groundY: number) => ((groundY - screenY) * K) / COS;
+/** Metres of depth (z) for a number of screen pixels of ground. */
+export const depthOf = (py: number) => (py * K) / SIN;
+/** Character height on screen (px): where bubbles and prompts go above the feet. */
+export const HEAD_PX = Math.round(1.75 * PX_PER_M);
+/** Global scale of the room lights (point lights are in candela: a little goes a long way). */
+const LIGHT_K = 0.75;
 
 export type InteriorStyle = 'home' | 'corridor' | 'clinic' | 'den';
-const STYLES: Record<InteriorStyle, { floor: string; floorTint: number; wall: string; tint: number; ambient: number; sky: number }> = {
-  home: { floor: 'laminate_floor_02', floorTint: 0xb8a0c0, wall: 'grey_plaster_02', tint: 0x5a5672, ambient: 0.45, sky: 0x6a5a9a },
-  corridor: { floor: 'worn_tile_floor', floorTint: 0x8a8ab0, wall: 'worn_plaster_wall', tint: 0x4a4258, ambient: 0.5, sky: 0x5a4a9a },
-  clinic: { floor: 'interior_tiles', floorTint: 0xb0e0e0, wall: 'worn_plaster_wall', tint: 0x7a7a88, ambient: 0.5, sky: 0x6a9aa8 },
-  den: { floor: 'concrete_floor_worn_001', floorTint: 0x80a8a0, wall: 'concrete_block_wall', tint: 0x6a7a70, ambient: 0.35, sky: 0x1a4a2a },
-};
-const WALL_H = 2.7, LOW_H = 0.25;
 
-/** Door colours per letter in the room grids. */
-const DOOR: Record<string, number> = { A: 0x00f0ff, a: 0x8a86b0, L: 0xf5e663, C: 0xff3b3b, N: 0x39ff88, X: 0xe8e8ff };
+interface Look {
+  floor: () => THREE.Texture; floorTint: number;
+  wall: () => THREE.Texture; wallTint: number;
+  skirt: number;
+  sides: 'cut' | 'open';
+  hemi: [number, number, number];
+  key: [number, number];
+  bloom: number; exposure: number;
+}
+
+const LOOKS: Record<InteriorStyle, Look> = {
+  home: { floor: woodFloor, floorTint: 0xffffff, wall: () => wallTex('plaster', '#4a3a66', '#ff2a6d'), wallTint: 0xffffff, skirt: 0xff2a6d, sides: 'cut', hemi: [0x6a5ad8, 0x1a0a24, 0.35], key: [0x9888ff, 0.5], bloom: 0.6, exposure: 1.15 },
+  corridor: { floor: linoFloor, floorTint: 0xffffff, wall: () => wallTex('panel', '#3a3456', '#f5e663', 4), wallTint: 0xffffff, skirt: 0x00f0ff, sides: 'open', hemi: [0x7a8ad8, 0x2a1438, 0.85], key: [0xc8c0ff, 0.6], bloom: 0.6, exposure: 1.15 },
+  clinic: { floor: () => tileFloor('#c8dce0', '#a8c4cc', '#6a8088', 0.45), floorTint: 0xffffff, wall: () => wallTex('tile', '#9ab8c0', '#ff3b3b', 8), wallTint: 0xffffff, skirt: 0xff3b3b, sides: 'cut', hemi: [0x9ad8e8, 0x302838, 0.8], key: [0xd8f4ff, 0.75], bloom: 0.5, exposure: 1.05 },
+  den: { floor: () => concreteFloor('#2a3432'), floorTint: 0xffffff, wall: () => wallTex('concrete', '#232a2c', '#39ff88', 12), wallTint: 0xffffff, skirt: 0x39ff88, sides: 'cut', hemi: [0x2a8a6a, 0x101a20, 0.7], key: [0x88ffd0, 0.35], bloom: 0.75, exposure: 1.1 },
+};
 
 type Follow = { x: number; y: number; body?: unknown };
-interface Char { rig: Rig; holder: THREE.Group; src: Follow; face: () => { x: number; y: number } | null; anim: () => AnimName; offsetY: number }
+interface Char { rig: Rig; holder: THREE.Group; src: Follow; face: () => { x: number; y: number } | null; anim: () => AnimName; offsetY: number; blob: THREE.Mesh; seat: number }
 
-const canvasTex = (w: number, h: number, draw: (c: CanvasRenderingContext2D) => void) => {
-  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-  draw(cv.getContext('2d')!);
-  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
-  return t;
-};
-const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
+export interface Placement extends ModelOpts {
+  /** Base height (m). */
+  h?: number;
+  yaw?: number;
+  /** Fit: width along x (m) after the turn, or height (m), or plain scale. */
+  w?: number; height?: number; s?: number;
+  /** Extra depth offset (m, + = towards the camera). */
+  dz?: number;
+  /** Non-uniform stretch after the fit (x, y, z). */
+  stretch?: [number, number, number];
+}
 
 export class Interior3D {
   private chars: Char[] = [];
-  private blink: { m: THREE.MeshBasicMaterial; base: number; t: number }[] = [];
-  private grid: string[] = [];
+  readonly anim = new Animator();
+  /** Screen y of the back wall's foot. */
+  backY = 64;
+  /** z of the back wall's face. */
+  wallZ = 0;
+  readonly look: Look;
 
-  constructor(private world: World3D, private style: InteriorStyle) {}
+  constructor(private world: World3D, readonly style: InteriorStyle) { this.look = LOOKS[style]; }
 
   /** This room's own group: what loads after the player left goes nowhere. */
-  private group = new THREE.Group();
-  private add(o: THREE.Object3D) { this.group.add(o); return o; }
+  group = new THREE.Group();
+  add<T extends THREE.Object3D>(o: T) { this.group.add(o); return o; }
 
-  /** Floor, walls (full height at the back and sides, low at the front so the room stays visible), doors. */
-  async build(grid: string[]) {
-    const w = this.world, st = STYLES[this.style];
-    this.grid = grid;
+  /** Shell (floor, back wall, side cuts, lights), then the room's set. */
+  async build(grid: string[], set?: (v: Interior3D) => Promise<void>) {
+    const w = this.world, L = this.look;
     this.group = w.resetBoard();
     w.scene.fog = null;
-    w.scene.background = new THREE.Color(0x030208);
-    w.renderer.toneMappingExposure = 1.2;
-    w.bloom.strength = 0.22;
-    w.scene.environmentIntensity = 0.12;
-    const floorMat = w.pbr(st.floor, 1, { roughness: 0.55, color: st.floorTint });
-    const wallMat = w.pbr(st.wall, 1, { roughness: 0.9, color: st.tint });
-    const dark = new THREE.MeshStandardMaterial({ color: 0x15121e, roughness: 0.8 });
+    w.scene.background = new THREE.Color(0x05030c);
+    w.scene.environmentIntensity = 0;
+    w.renderer.toneMappingExposure = L.exposure;
+    w.bloom.strength = L.bloom;
     const floorAt = (tx: number, ty: number) => '.oP'.includes(grid[ty]?.[tx] ?? '#');
-    const uvBox = (sx: number, sy: number, sz: number, ox: number, oz: number) => {
-      const g = new THREE.BoxGeometry(sx, sy, sz), pos = g.attributes.position, uv = g.attributes.uv;
-      for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i) + ox, y = pos.getY(i), z = pos.getZ(i) + oz;
-        // Faces pointing up use x/z, the others the plane they stand in.
-        const n = g.attributes.normal;
-        uv.setXY(i, Math.abs(n.getY(i)) > 0.5 ? x / 2 : (Math.abs(n.getX(i)) > 0.5 ? z : x) / 2, Math.abs(n.getY(i)) > 0.5 ? z / 2 : y / 2);
+    const firstFloor = grid.findIndex((row, ty) => [...row].some((_, tx) => floorAt(tx, ty)));
+    this.backY = Math.max(BACK_Y, firstFloor * TILE);
+    this.wallZ = depthOf(this.backY);
+    const cols = grid[0].length;
+
+    // Floor: one painted plane from the back wall to below the screen, world-space UVs (2 m per repeat).
+    const fw = cols * TILE * K, fd = depthOf(300 - this.backY);
+    const floorTex = L.floor().clone(); floorTex.needsUpdate = true;
+    floorTex.repeat.set(fw / 2, fd / 2);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(fw, fd), new THREE.MeshStandardMaterial({ map: floorTex, color: L.floorTint, roughness: 0.9 }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.set(fw / 2, 0, this.wallZ + fd / 2);
+    floor.receiveShadow = true;
+    this.add(floor);
+
+    // Back wall: a thick slab whose face is the room's backdrop.
+    const wallTexture = L.wall().clone(); wallTexture.needsUpdate = true;
+    wallTexture.repeat.set(fw / 2, 1);
+    wallTexture.offset.set(0, 0);
+    const wallMat = new THREE.MeshStandardMaterial({ map: wallTexture, color: L.wallTint, roughness: 0.95 });
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(fw, WALL_H), wallMat);
+    back.position.set(fw / 2, WALL_H / 2, this.wallZ);
+    back.receiveShadow = true;
+    this.add(back);
+    const behind = new THREE.Mesh(new THREE.BoxGeometry(fw, WALL_H, 0.4), new THREE.MeshBasicMaterial({ color: 0x05030c }));
+    behind.position.set(fw / 2, WALL_H / 2, this.wallZ - 0.21);
+    this.add(behind);
+    // Skirting board with a thin neon line.
+    this.add(this.box(new THREE.Vector3(fw / 2, 0, this.wallZ + 0.03), fw, 0.12, 0.06, this.mat(0x1a1428)));
+    const line = this.add(new THREE.Mesh(new THREE.BoxGeometry(fw, 0.02, 0.01), this.glow(L.skirt, 1.4)));
+    line.position.set(fw / 2, 0.125, this.wallZ + 0.055);
+
+    // Side walls of a closed room: thick cuts, dark tops edged with a neon line (a diorama frame).
+    if (L.sides === 'cut') {
+      for (const side of [0, cols - 1]) {
+        if (grid.every(r => r[side] !== '#')) continue;
+        const x0 = side === 0 ? 0 : (cols - 1) * TILE, cx = (x0 + TILE / 2) * K;
+        const d = depthOf(420);
+        const cut = new THREE.Mesh(new THREE.BoxGeometry(TILE * K, WALL_H, d), [this.mat(0x120c20), this.mat(0x120c20), new THREE.MeshBasicMaterial({ color: 0x0a0716 }), this.mat(0x120c20), this.mat(0x120c20), this.mat(0x120c20)]);
+        cut.position.set(cx, WALL_H / 2, this.wallZ + d / 2 - 0.2);
+        cut.castShadow = true;
+        this.add(cut);
+        const edgeX = side === 0 ? (x0 + TILE) * K - 0.03 : x0 * K + 0.03;
+        const edge = this.add(new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.02, d), this.glow(L.skirt, 1.2)));
+        edge.position.set(edgeX, WALL_H + 0.01, this.wallZ + d / 2 - 0.2);
       }
-      return g;
-    };
-    const cw = TILE * K, cd = (TILE * K) / SIN;
-    grid.forEach((row, ty) => [...row].forEach((ch, tx) => {
-      const c = at(tx * TILE + 16, ty * TILE + 16);
-      if (floorAt(tx, ty)) {
-        const m = new THREE.Mesh(uvBox(cw, 0.1, cd, c.x, c.z), floorMat);
-        m.position.set(c.x, -0.05, c.z); m.receiveShadow = true;
-        this.add(m);
-        return;
-      }
-      if (ch === ' ') return;
-      // A wall with floor in front of it (south) is a full wall; one with floor behind it is a low front edge.
-      const low = !floorAt(tx, ty + 1) && floorAt(tx, ty - 1);
-      const h = low ? LOW_H : WALL_H;
-      const m = new THREE.Mesh(uvBox(cw, h, cd, c.x, c.z), [wallMat, wallMat, dark, dark, wallMat, wallMat]);
-      m.position.set(c.x, h / 2, c.z); m.castShadow = !low; m.receiveShadow = true;
-      this.add(m);
-      if (DOOR[ch] !== undefined) this.door(tx, ty, ch);
-    }));
-    // A skirting line of light along the back wall foot.
-    const skirt = new THREE.Mesh(new THREE.BoxGeometry(grid[0].length * cw, 0.03, 0.02), new THREE.MeshBasicMaterial({ color: 0xff2a6d, toneMapped: false }));
-    skirt.position.copy(at(grid[0].length * 16, TILE, 0.06)).add(new THREE.Vector3(0, 0, 0.02));
-    this.add(skirt);
-    // Ambient: a dim bluish fill and a cool key light from the front-left for soft shadows.
-    this.add(new THREE.HemisphereLight(st.sky, 0x1a1028, st.ambient * 2));
-    const key = new THREE.DirectionalLight(0xb8c4ff, 0.55);
-    const mid = at(240, 128);
-    key.position.copy(mid).add(new THREE.Vector3(-6, 12, 10));
+    }
+
+    // Ambient fill and a soft key light from the front-top, for shadows that ground everything.
+    this.add(new THREE.HemisphereLight(L.hemi[0], L.hemi[1], L.hemi[2]));
+    const key = new THREE.DirectionalLight(L.key[0], L.key[1]);
+    const mid = at(240, 150);
+    key.position.copy(mid).add(new THREE.Vector3(-3, 12, 8));
     key.target.position.copy(mid);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
-    Object.assign(key.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14, near: 1, far: 50 });
-    key.shadow.bias = -0.0005; key.shadow.normalBias = 0.02;
+    Object.assign(key.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, near: 1, far: 40 });
+    key.shadow.bias = -0.0006; key.shadow.normalBias = 0.03;
     this.add(key); this.add(key.target);
     this.framePhaser();
+    if (set) await set(this);
   }
 
   /** Orthographic camera covering exactly what the Phaser camera shows (x 0-480, y -14-256). */
@@ -128,227 +178,299 @@ export class Interior3D {
     cam.updateMatrixWorld();
   }
 
-  private door(tx: number, ty: number, ch: string) {
-    const color = DOOR[ch];
-    const g = new THREE.Group();
-    const side = tx === 0 ? 'w' : tx === this.grid[0].length - 1 ? 'e' : 'n';
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.95, 2.1, 0.06), new THREE.MeshStandardMaterial({ color: ch === 'L' ? 0x6a6a78 : 0x1c1828, roughness: 0.35, metalness: ch === 'L' ? 0.9 : 0.4 }));
-    panel.position.y = 1.05;
-    const frameMat = new THREE.MeshBasicMaterial({ color, toneMapped: false });
-    for (const [w, h, x, y] of [[1.05, 0.04, 0, 2.12], [0.04, 2.12, -0.5, 1.06], [0.04, 2.12, 0.5, 1.06]] as const) {
-      const f = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.04), frameMat); f.position.set(x, y, 0.04); g.add(f);
-    }
-    if (ch === 'L') { const split = new THREE.Mesh(new THREE.BoxGeometry(0.02, 2.05, 0.08), new THREE.MeshBasicMaterial({ color: 0x111111 })); split.position.y = 1.05; g.add(split); panel.scale.x = 1.9; }
-    g.add(panel);
-    const light = new THREE.PointLight(color, 1.2, 3, 1.8);
-    light.position.set(0, 1.9, 0.6);
-    g.add(light);
-    const c = at(tx * TILE + 16, ty * TILE + 16);
-    if (side === 'n') g.position.set(c.x + (ch === 'L' && this.grid[ty][tx + 1] === 'L' ? TILE * K / 2 : 0), 0, ((ty + 1) * TILE * K) / SIN + 0.01);
-    else if (side === 'w') { g.position.set((tx + 1) * TILE * K + 0.01, 0, c.z); g.rotation.y = Math.PI / 2; }
-    else { g.position.set(tx * TILE * K - 0.01, 0, c.z); g.rotation.y = -Math.PI / 2; }
-    if (ch === 'L' && this.grid[ty][tx - 1] === 'L') return; // the elevator's second tile
-    this.add(g);
-  }
+  // ------------------------------------------------------------------ dressing helpers
 
-  /** A real model standing where a 2D prop was, fitted to that prop's width. */
-  private async model(id: string, x: number, y: number, width: number, o: { yaw?: number; h?: number; maxScale?: number; minScale?: number; depth?: number } = {}) {
-    const m = await this.world.propModel(id, 99);
-    m.rotation.y = o.yaw ?? 0;
-    m.updateMatrixWorld(true);
-    const size = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3());
-    const k = THREE.MathUtils.clamp(width / Math.max(0.01, size.x), o.minScale ?? 0.4, o.maxScale ?? 1.6);
-    m.scale.multiplyScalar(k);
-    m.position.copy(at(x, y, o.h ?? 0));
-    if (o.depth) m.position.z += o.depth;
-    this.add(m);
+  at(px: number, py: number, h = 0) { return at(px, py, h); }
+  /** A point on the back wall face at screen x `px`, height `h` (m), `d` metres out from it. */
+  onWall(px: number, h: number, d = 0) { return new THREE.Vector3(px * K, h, this.wallZ + d); }
+  /** Screen y (px) of a point on the back wall at height h. */
+  wallScreenY(h: number) { return this.backY - h * PX_PER_M; }
+
+  private mats = new Map<string, THREE.MeshStandardMaterial>();
+  /** A lit, flat-coloured material (cached). */
+  mat(color: number, o: { rough?: number; metal?: number; emissive?: number; ei?: number } = {}) {
+    const k = `${color}:${o.rough}:${o.metal}:${o.emissive}:${o.ei}`;
+    let m = this.mats.get(k);
+    if (!m) {
+      m = new THREE.MeshStandardMaterial({ color, roughness: o.rough ?? 0.8, metalness: o.metal ?? 0 });
+      if (o.emissive !== undefined) { m.emissive.setHex(o.emissive); m.emissiveIntensity = o.ei ?? 1; }
+      this.mats.set(k, m);
+    }
+    return m;
+  }
+  /** Unlit glowing colour (neon tubes, LEDs), `k` > 1 makes it bloom. */
+  glow(color: number, k = 1.5) {
+    const m = new THREE.MeshBasicMaterial({ color, toneMapped: false });
+    m.color.multiplyScalar(k);
     return m;
   }
 
-  /** Emissive box (vending machines, arcade cabinets, servers…). */
-  private glowBox(x: number, y: number, w: number, h: number, d: number, body: number, screen: THREE.Texture | number, screenH = 0.6, screenY = 0.6) {
+  /** A box with its base centred on `base`. */
+  box(base: THREE.Vector3, w: number, h: number, d: number, mat: THREE.Material | THREE.Material[], o: { yaw?: number; shadow?: boolean } = {}) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.copy(base); m.position.y += h / 2;
+    m.rotation.y = o.yaw ?? 0;
+    m.castShadow = o.shadow !== false; m.receiveShadow = true;
+    return this.add(m);
+  }
+
+  cyl(base: THREE.Vector3, rTop: number, rBottom: number, h: number, mat: THREE.Material, seg = 12) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBottom, h, seg), mat);
+    m.position.copy(base); m.position.y += h / 2;
+    m.castShadow = true; m.receiveShadow = true;
+    return this.add(m);
+  }
+
+  /** A vertical plane facing the camera (+z), centred on `centre`. */
+  plane(centre: THREE.Vector3, w: number, h: number, mat: THREE.Material, yaw = 0) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    m.position.copy(centre); m.rotation.y = yaw;
+    m.receiveShadow = true;
+    return this.add(m);
+  }
+
+  /** A flat decal on the floor (rug, puddle, markings). `w`, `d` in metres. */
+  decal(px: number, py: number, w: number, d: number, mat: THREE.Material, lift = 0.004, yaw = 0) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat);
+    m.rotation.set(-Math.PI / 2, 0, yaw);
+    m.position.copy(at(px, py, lift));
+    m.receiveShadow = true;
+    return this.add(m);
+  }
+
+  /** A pool of coloured light on the floor (additive). */
+  pool(px: number, py: number, r: number, color: number, strength = 0.5, sz = 1) {
+    const m = new THREE.MeshBasicMaterial({ map: radial(0.35), color, transparent: true, opacity: strength, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    const d = this.decal(px, py, r * 2, r * 2 * sz, m, 0.012);
+    d.renderOrder = 2;
+    return m;
+  }
+
+  /** A wash of light on the back wall (sconces, screens, signs). */
+  wash(px: number, h: number, w: number, hh: number, color: number, strength = 0.4, d = 0.02) {
+    const m = new THREE.MeshBasicMaterial({ map: radial(0.3), color, transparent: true, opacity: strength, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+    const p = this.plane(this.onWall(px, h, d), w, hh, m);
+    p.renderOrder = 2;
+    return m;
+  }
+
+  /** A volumetric cone of light pointing down from `top` (operating lamp, ceiling spot). */
+  cone(top: THREE.Vector3, rTop: number, rBottom: number, h: number, color: number, strength = 0.25) {
+    const m = new THREE.MeshBasicMaterial({ map: beam(), color, transparent: true, opacity: strength, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBottom, h, 24, 1, true), m);
+    c.position.copy(top); c.position.y -= h / 2;
+    c.renderOrder = 3;
+    this.add(c);
+    return m;
+  }
+
+  light(px: number, py: number, h: number, color: number, intensity = 4, distance = 6, decay = 1.6) {
+    const l = new THREE.PointLight(color, intensity * LIGHT_K, distance, decay);
+    l.position.copy(at(px, py, h));
+    return this.add(l);
+  }
+
+  /** A kit model placed on the ground at (px, py). */
+  async model(id: string, px: number, py: number, o: Placement = {}) {
+    const m = await kitModel(id, o);
+    m.rotation.y = o.yaw ?? 0;
+    const size = m.userData.size as THREE.Vector3;
+    const turned = Math.abs(Math.sin(o.yaw ?? 0)) > 0.7 ? size.z : size.x;
+    const s = o.s ?? (o.w ? o.w / Math.max(0.01, turned) : o.height ? o.height / Math.max(0.01, size.y) : 1);
+    m.scale.setScalar(s);
+    if (o.stretch) m.scale.multiply(new THREE.Vector3(...o.stretch));
+    m.position.copy(at(px, py, o.h ?? 0));
+    if (o.dz) m.position.z += o.dz;
+    return this.add(m);
+  }
+
+  /** The same model against the back wall (its back touching the wall face). */
+  async wallModel(id: string, px: number, o: Placement & { out?: number } = {}) {
+    const m = await this.model(id, px, this.backY, o);
+    const bb = new THREE.Box3().setFromObject(m);
+    m.position.z += this.wallZ - bb.min.z + (o.out ?? 0.01);
+    return m;
+  }
+
+  /**
+   * Neon lettering: a dark backing plate and the glowing text, standing out of the back wall at
+   * screen x `px`, centred at height `h`, `hh` metres tall. Flickers now and then.
+   */
+  neon(text: string, px: number, h: number, hh: number, color: number, o: { font?: string; sub?: string; frame?: boolean; backing?: boolean; d?: number; broken?: boolean; washK?: number; light?: number; centre?: THREE.Vector3 } = {}) {
+    const { tex, aspect } = neonText(text, color, { font: o.font, sub: o.sub, frame: o.frame });
+    const w = hh * aspect;
     const g = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: body, roughness: 0.35, metalness: 0.6 });
-    const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); box.position.y = h / 2; box.castShadow = true; box.receiveShadow = true;
-    const sm = typeof screen === 'number' ? new THREE.MeshBasicMaterial({ color: screen, toneMapped: false }) : new THREE.MeshBasicMaterial({ map: screen, toneMapped: false });
-    const s = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.8, screenH), sm); s.position.set(0, screenY + screenH / 2, d / 2 + 0.005);
-    g.add(box, s);
-    g.position.copy(at(x, y));
+    g.position.copy(o.centre ?? this.onWall(px, h, o.d ?? 0.16));
+    if (o.backing !== false) {
+      const back = new THREE.Mesh(new THREE.BoxGeometry(w * 0.94, hh * 0.86, 0.05), this.mat(0x0c0818, { rough: 0.6 }));
+      back.position.z = -0.03; back.castShadow = true;
+      g.add(back);
+    }
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false });
+    mat.color.setScalar(1.6);
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, hh), mat);
+    p.position.z = 0.005; p.renderOrder = 4;
+    g.add(p);
     this.add(g);
-    return { group: g, screen: sm };
+    const washM = this.wash(px, h, w * 1.8, hh * 3, color, (o.washK ?? 1) * 0.35, (o.d ?? 0.06) - 0.04);
+    let l: THREE.PointLight | undefined;
+    if (o.light) { l = new THREE.PointLight(color, o.light * LIGHT_K, 4.5, 1.6); l.position.copy(g.position).add(new THREE.Vector3(0, -0.2, 0.6)); this.add(l); }
+    flicker(this.anim, mat, 1.6, l, { broken: o.broken });
+    return { group: g, mat, w, washM };
   }
 
-  private serverRack(x: number, y: number) {
-    const leds = canvasTex(64, 128, c => {
-      c.fillStyle = '#05080a'; c.fillRect(0, 0, 64, 128);
-      for (let r = 0; r < 14; r++) { c.fillStyle = '#10161a'; c.fillRect(4, 4 + r * 9, 56, 7); for (let i = 0; i < 5; i++) { c.fillStyle = Math.random() < 0.5 ? '#39ff88' : Math.random() < 0.5 ? '#00f0ff' : '#0a2a1a'; c.fillRect(8 + i * 5, 6 + r * 9, 2, 2); } }
-    });
-    const r = this.glowBox(x, y, 0.62, 1.95, 0.7, 0x16181e, leds, 1.75, 0.1);
-    this.blink.push({ m: r.screen, base: 1, t: Math.random() * 10 });
+  /** A printed plate (door numbers, names), `hh` metres tall, on the wall. */
+  plate(text: string, px: number, h: number, hh: number, fg = '#e8e8ff', bg = '#141020', d = 0.07) {
+    const { tex, aspect } = plateText(text, fg, bg);
+    const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.25 });
+    return this.plane(this.onWall(px, h, d), hh * aspect, hh, m);
   }
 
-  /** A 2D prop or decor image → its 3D version (unknown keys are skipped). */
-  async decor(key: string, x: number, y: number, w: number, h: number, flip = false) {
-    const yaw0 = 0, wall = (screenY: number) => heightFor(screenY, TILE) ; // mounted on the back wall face
-    const backZ = (TILE * K) / SIN + 0.02;
-    const onWall = (o: THREE.Object3D, screenY: number) => { o.position.z = backZ; o.position.y = Math.max(0.3, wall(screenY)); };
-    switch (key) {
-      // ----- apartment -----
-      case 'desk': { await this.model('metal_office_desk', x, y, w * K * 1.1); const l = await this.model('classic_laptop', x, y, 0.36, { h: 0.76 }); l.rotation.y = 0; break; }
-      case 'rack': this.serverRack(x, y); break;
-      case 'bed': {
-        const frame = await this.model('old_bed_frame', x, y, w * K * 1.15, { yaw: Math.PI / 2 });
-        const bb = new THREE.Box3().setFromObject(frame), size = bb.getSize(new THREE.Vector3());
-        const mattress = new THREE.Mesh(new THREE.BoxGeometry(size.x * 0.92, 0.22, size.z * 0.9), new THREE.MeshStandardMaterial({ color: 0x3a3048, roughness: 0.95 }));
-        mattress.position.set((bb.min.x + bb.max.x) / 2, bb.min.y + size.y * 0.55, (bb.min.z + bb.max.z) / 2);
-        mattress.castShadow = mattress.receiveShadow = true;
-        this.add(mattress);
-        await this.model('throw_pillows_01', x, y - h * 0.3, size.x * 0.5, { h: mattress.position.y + 0.1 });
-        break;
-      }
-      case 'couch': await this.model('sofa_02', x, y, w * K, { yaw: Math.PI }); break;
-      case 'table': await this.model('modern_coffee_table_01', x, y, w * K); break;
-      case 'kitchen': {
-        const cab = await this.model('drawer_cabinet', x - w / 3, y, w * K * 0.33);
-        const top = new THREE.Box3().setFromObject(cab).max.y;
-        await this.model('drawer_cabinet', x, y, w * K * 0.33);
-        await this.model('electric_stove', x + w / 3, y, w * K * 0.32);
-        await this.model('vintage_microwave', x - w / 3, y, 0.45, { h: top });
-        break;
-      }
-      case 'plant': await this.model(flip ? 'potted_plant_02' : 'potted_plant_01', x, y, 0.55, { maxScale: 1.4 }); break;
-      case 'gun-rack': { const m = await this.model('katana_stand_01', x, y, w * K * 0.8); onWall(m, y + 4); break; }
-      case 'window-city': this.window(x, y, w, h); break;
-      case 'rug': { const r = new THREE.Mesh(new THREE.PlaneGeometry(w * K, (h * K) / SIN), new THREE.MeshStandardMaterial({ map: canvasTex(128, 96, c => { c.fillStyle = '#2a1640'; c.fillRect(0, 0, 128, 96); c.strokeStyle = '#ff2a6d'; c.lineWidth = 3; c.strokeRect(6, 6, 116, 84); for (let i = 0; i < 6; i++) { c.fillStyle = '#3a2258'; c.fillRect(18 + i * 16, 18, 8, 60); } }), roughness: 1 })); r.rotation.x = -Math.PI / 2; r.position.copy(at(x, y, 0.005)); r.receiveShadow = true; this.add(r); break; }
-      // ----- corridor -----
-      case 'vending': { const t = canvasTex(64, 96, c => { c.fillStyle = '#0a0a14'; c.fillRect(0, 0, 64, 96); for (let r = 0; r < 4; r++) for (let i = 0; i < 4; i++) { c.fillStyle = ['#ff2a6d', '#00f0ff', '#f5e663', '#39ff88'][(r + i) % 4]; c.fillRect(6 + i * 13, 8 + r * 18, 9, 12); } c.fillStyle = '#ff8c2a'; c.fillRect(0, 84, 64, 12); }); this.glowBox(x, y, 0.75, 1.85, 0.7, 0xc85a18, t, 1.2, 0.5); break; }
-      case 'arcade-cab': { const t = canvasTex(64, 48, c => { const g = c.createLinearGradient(0, 0, 0, 48); g.addColorStop(0, '#6a2cff'); g.addColorStop(1, '#00f0ff'); c.fillStyle = g; c.fillRect(0, 0, 64, 48); c.fillStyle = '#f5e663'; c.fillRect(28, 30, 8, 8); c.fillStyle = '#ff2a6d'; c.fillRect(10, 10, 6, 6); }); const r = this.glowBox(x, y, 0.62, 1.75, 0.75, 0x1a1030, t, 0.5, 1.05); this.blink.push({ m: r.screen, base: 1, t: Math.random() * 10 }); break; }
-      case 'boxes': { await this.model('cardboard_box_01', x, y, 0.55); await this.model('cardboard_box_01', x + 4, y - 2, 0.45, { h: 0.42 }); break; }
-      case 'mop-bucket': await this.model('WetFloorSign_01', x, y, 0.35, { maxScale: 1.3 }); break;
-      case 'noodle-cart': await this.model('CoffeeCart_01', x, y, w * K, { maxScale: 1.4 }); break;
-      case 'bench': await this.model('painted_wooden_bench', x, y, w * K); break;
-      case 'laundry': { await this.model('plastic_crate_01', x, y, 0.55); await this.model('plastic_crate_01', x, y, 0.55, { h: 0.33 }); break; }
-      case 'couch-old': await this.model('sofa_03', x, y, w * K); break;
-      case 'trashcan': await this.model('metal_trash_can', x, y, 0.5, { maxScale: 1.2 }); break;
-      case 'bike': await this.model('tool_cart', x, y, w * K * 0.8); break;
-      case 'poster-0': case 'poster-1': case 'poster-2': case 'poster-3': case 'noticeboard': this.poster(key, x, y, w, h); break;
-      case 'elevator': break; // drawn as the L door
-      case 'doormat': { const r = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.5), new THREE.MeshStandardMaterial({ color: 0x1a1410, roughness: 1 })); r.rotation.x = -Math.PI / 2; r.position.copy(at(x, y, 0.005)); this.add(r); break; }
-      case 'ad-screen': this.adScreen(x, y, w, h); break;
-      // ----- clinic -----
-      case 'surgery-chair': await this.model('BarberShopChair_01', x, y, w * K * 0.9, { maxScale: 1.3 }); break;
-      case 'surgical-arm': { const m = await this.model('desk_lamp_arm_01', x - 10, y + 30, 0.9, { maxScale: 3 }); m.rotation.y = Math.PI / 4; break; }
-      case 'med-monitor': { await this.model('metal_stool_01', x, y, 0.4); await this.model('television_02', x, y, 0.5, { h: 0.62 }); break; }
-      case 'limb-rack': await this.model('steel_frame_shelves_02', x, y, w * K); break;
-      case 'med-cabinet': {
-        const cab = await this.model('drawer_cabinet', x, y, w * K * 0.8);
-        await this.model('medical_box', x, y, 0.4, { h: new THREE.Box3().setFromObject(cab).max.y }).catch(() => undefined);
-        break;
-      }
-      // ----- den -----
-      case 'server': this.serverRack(x, y); break;
-      case 'net-desk': {
-        await this.model('metal_office_desk', x, y, w * K);
-        for (const dx of [-14, 0, 14]) { const m = await this.model('television_02', x + dx, y, 0.42, { h: 0.76 }); m.rotation.y = dx * -0.02; }
-        break;
-      }
-      case 'net-chair': break; // Nyx works standing at her desk
-      case 'cables': this.cables(x, y, w, flip); break;
+  /** A screen that redraws itself (`fps`), glowing; optional bezel. */
+  screen(centre: THREE.Vector3, w: number, h: number, draw: Parameters<typeof liveCanvas>[4], o: { fps?: number; res?: number; yaw?: number; bezel?: number; k?: number; tilt?: number } = {}) {
+    const res = o.res ?? 160;
+    const tex = liveCanvas(this.anim, res, Math.max(8, Math.round((res * h) / w)), o.fps ?? 8, draw);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
+    mat.color.setScalar(o.k ?? 1.25);
+    const g = new THREE.Group();
+    g.position.copy(centre); g.rotation.y = o.yaw ?? 0; g.rotation.x = o.tilt ?? 0;
+    if (o.bezel !== undefined) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w + 0.05, h + 0.05, 0.04), this.mat(o.bezel, { rough: 0.5 }));
+      b.position.z = -0.022; b.castShadow = true;
+      g.add(b);
     }
-    void yaw0;
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    g.add(p);
+    this.add(g);
+    return { group: g, mat, tex };
   }
 
-  private window(x: number, y: number, w: number, h: number) {
-    const t = canvasTex(256, 96, c => {
-      const g = c.createLinearGradient(0, 0, 0, 96); g.addColorStop(0, '#05030f'); g.addColorStop(1, '#3a0f3a'); c.fillStyle = g; c.fillRect(0, 0, 256, 96);
-      let bx = 0;
-      while (bx < 256) {
-        const bw = 10 + Math.random() * 22, bh = 30 + Math.random() * 60;
-        c.fillStyle = '#0a0618'; c.fillRect(bx, 96 - bh, bw, bh);
-        for (let wy = 96 - bh + 4; wy < 92; wy += 6) for (let wx = bx + 2; wx < bx + bw - 2; wx += 4) if (Math.random() < 0.15) { c.fillStyle = ['#f5e663', '#ff2a6d', '#00f0ff'][Math.floor(Math.random() * 3)]; c.fillRect(wx, wy, 2, 2); }
-        bx += bw + 2;
-      }
+  /** A cable or pipe through points (m). `sag`: hangs between them. */
+  cable(points: THREE.Vector3[], r = 0.025, color = 0x0c0a12, o: { glow?: number } = {}) {
+    const curve = new THREE.CatmullRomCurve3(points);
+    const mat = o.glow !== undefined ? this.glow(o.glow, 1.3) : this.mat(color, { rough: 0.5 });
+    const m = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(12, points.length * 8), r, 6), mat);
+    m.castShadow = true;
+    return this.add(m);
+  }
+
+  /** A cable hanging between two points with some slack, swaying. */
+  hang(a: THREE.Vector3, b: THREE.Vector3, slack = 0.4, r = 0.02, color = 0x0c0a12, swayAmp = 0.04) {
+    const pts = Array.from({ length: 9 }, (_, i) => {
+      const k = i / 8;
+      return new THREE.Vector3().lerpVectors(a, b, k).add(new THREE.Vector3(0, -Math.sin(k * Math.PI) * slack, 0));
     });
-    const pane = new THREE.Mesh(new THREE.PlaneGeometry(w * K * 0.95, h * K / COS * 0.9), new THREE.MeshBasicMaterial({ map: t, toneMapped: false }));
-    pane.position.set(x * K, heightFor(y, TILE), (TILE * K) / SIN + 0.012);
-    this.add(pane);
-    const light = new THREE.PointLight(0xff2a6d, 1.5, 6, 1.6);
-    light.position.set(x * K, 1.6, (TILE * K) / SIN + 1.2);
-    this.add(light);
+    const pivot = new THREE.Group();
+    pivot.position.copy(a).lerp(b, 0.5);
+    const local = pts.map(p => p.clone().sub(pivot.position));
+    const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(local), 32, r, 5), this.mat(color, { rough: 0.5 }));
+    m.castShadow = true;
+    pivot.add(m);
+    this.add(pivot);
+    // Swing about the line between the anchors.
+    const axis = new THREE.Vector3().subVectors(b, a).normalize();
+    const ph = Math.random() * 6;
+    this.anim.add(t => { pivot.quaternion.setFromAxisAngle(axis, Math.sin(t * 0.9 + ph) * swayAmp); });
+    return pivot;
   }
 
-  private poster(key: string, x: number, y: number, w: number, h: number) {
-    const col = ['#ff2a6d', '#00f0ff', '#f5e663', '#39ff88'][Number(key.slice(-1)) || 0];
-    const t = canvasTex(64, 90, c => {
-      c.fillStyle = key === 'noticeboard' ? '#3a2a1a' : '#120a20'; c.fillRect(0, 0, 64, 90);
-      if (key === 'noticeboard') { for (let i = 0; i < 7; i++) { c.fillStyle = ['#e8e8d0', '#f5e663', '#a8c8ff'][i % 3]; c.fillRect(6 + (i % 3) * 18, 8 + Math.floor(i / 3) * 26, 14, 18); } }
-      else { c.fillStyle = col; c.fillRect(8, 10, 48, 40); c.fillStyle = '#e8e8ff'; c.font = 'bold 10px Arial'; c.fillText('NEON', 14, 66); c.fillRect(8, 74, 48, 3); }
-    });
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(w * K, h * K / COS), new THREE.MeshStandardMaterial({ map: t, roughness: 0.6, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.15 }));
-    p.position.set(x * K, Math.max(0.6, heightFor(y, TILE)), (TILE * K) / SIN + 0.012);
-    this.add(p);
-  }
+  steam(px: number, py: number, h: number, o: Parameters<typeof steam>[3] = {}) { steam(this.anim, this.group, at(px, py, h), o); }
+  dust(centre: THREE.Vector3, size: THREE.Vector3, color = 0xffffff, n = 40) { dust(this.anim, this.group, centre, size, color, n); }
+  sway(o: THREE.Object3D, amp = 0.05, speed = 1, axis: 'x' | 'z' = 'z') { sway(this.anim, o, amp, speed, axis); }
 
-  private adScreen(x: number, y: number, w: number, h: number) {
-    const t = canvasTex(256, 48, c => { c.fillStyle = '#05030f'; c.fillRect(0, 0, 256, 48); c.fillStyle = '#f5e663'; c.font = 'bold 22px Arial'; c.fillText('BIÈRE NEON — GOÛTE LA NUIT', 8, 32); });
-    t.wrapS = THREE.RepeatWrapping;
-    const m = new THREE.MeshBasicMaterial({ map: t, toneMapped: false });
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(w * K, h * K / COS), m);
-    p.position.set(x * K, heightFor(y, TILE), (TILE * K) / SIN + 0.012);
-    this.add(p);
-    this.scroll = t;
-  }
-  private scroll?: THREE.Texture;
-
-  private cables(x: number, y: number, w: number, flip: boolean) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.4 });
-    for (let i = 0; i < 4; i++) {
-      const pts = Array.from({ length: 6 }, (_, j) => at(x + (flip ? -1 : 1) * (j - 2.5) * (w / 6), y + Math.sin(j + i) * 6 + i * 3, 0.03));
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 40, 0.045, 8), mat);
-      tube.castShadow = true;
-      this.add(tube);
+  /**
+   * A door in the back wall at screen x: frame, sliding panel, light strip, keypad, a light pool on
+   * the floor in front. `wide` for the elevator.
+   */
+  door(px: number, color: number, o: { wide?: boolean; panel?: number; open?: boolean; strip?: boolean } = {}) {
+    const g = new THREE.Group();
+    const W = o.wide ? 1.9 : 1.0, H = 2.15, frameM = this.mat(0x221a34, { rough: 0.5, metal: 0.3 });
+    g.position.copy(this.onWall(px, 0, 0));
+    const add = (w: number, h: number, d: number, x: number, y: number, z: number, m: THREE.Material) => {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); b.castShadow = true; b.receiveShadow = true; g.add(b); return b;
+    };
+    add(0.12, H + 0.12, 0.14, -W / 2 - 0.06, (H + 0.12) / 2, 0.07, frameM);
+    add(0.12, H + 0.12, 0.14, W / 2 + 0.06, (H + 0.12) / 2, 0.07, frameM);
+    add(W + 0.24, 0.14, 0.16, 0, H + 0.07, 0.08, frameM);
+    const panelM = this.mat(o.panel ?? 0x2c2440, { rough: 0.45, metal: 0.4 });
+    if (o.wide) {
+      add(W / 2 - 0.01, H, 0.05, -W / 4, H / 2, 0.03, panelM);
+      add(W / 2 - 0.01, H, 0.05, W / 4, H / 2, 0.03, panelM);
+    } else if (o.open) {
+      add(W, H, 0.02, 0, H / 2, 0.01, new THREE.MeshBasicMaterial({ color: 0x020104 }));
+    } else {
+      add(W, H, 0.05, 0, H / 2, 0.03, panelM);
+      // A small window and a horizontal groove.
+      add(W * 0.5, 0.03, 0.01, 0, H * 0.45, 0.06, this.mat(0x120e1c));
+      add(W * 0.36, 0.22, 0.01, 0, H * 0.72, 0.06, this.glow(color, 0.5));
     }
+    // Light strips on the frame (the colour of the place behind).
+    if (o.strip !== false) {
+      const sm = this.glow(color, 1.8);
+      add(0.03, H, 0.02, -W / 2 - 0.005, H / 2, 0.15, sm);
+      add(0.03, H, 0.02, W / 2 + 0.005, H / 2, 0.15, sm);
+      add(W + 0.02, 0.03, 0.02, 0, H + 0.005, 0.17, sm);
+    }
+    // Keypad with a blinking LED.
+    add(0.14, 0.22, 0.04, W / 2 + 0.26, 1.15, 0.02, this.mat(0x15101e));
+    const led = new THREE.MeshBasicMaterial({ color, toneMapped: false });
+    add(0.04, 0.04, 0.01, W / 2 + 0.26, 1.21, 0.045, led);
+    const ph = Math.random() * 5;
+    this.anim.add(t => led.color.setHex(color).multiplyScalar(Math.sin(t * 2 + ph) > 0.6 ? 2 : 0.4));
+    this.add(g);
+    this.pool(px, this.backY + 14, o.wide ? 1.4 : 0.9, color, 0.35, 0.8);
+    this.wash(px, H * 0.5, W * 2.2, H * 1.6, color, 0.18);
+    return g;
   }
 
-  /** A neon sign at the place a 2D sign was seen, standing 2.3 m up (on the wall it belonged to). */
-  sign(x: number, y: number, label: string, color: number) {
-    const H = 2.3, groundY = y + (H * COS) / K;
-    const t = canvasTex(512, 96, c => {
-      c.fillStyle = '#05030f'; c.fillRect(0, 0, 512, 96);
-      c.strokeStyle = hex(color); c.lineWidth = 4; c.strokeRect(6, 6, 500, 84);
-      c.fillStyle = hex(color); c.shadowColor = hex(color); c.shadowBlur = 16;
-      c.font = 'bold 46px "Arial Black", Arial'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(label, 256, 50);
-    });
-    const width = Math.min(3.2, 0.32 + label.length * 0.16);
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(width, width * 0.19), new THREE.MeshBasicMaterial({ map: t, toneMapped: false, transparent: true }));
-    (p.material as THREE.MeshBasicMaterial).color.setScalar(1.5);
-    p.position.copy(at(x, Math.min(groundY, 24 * 8), H));
-    this.add(p);
-    this.blink.push({ m: p.material as THREE.MeshBasicMaterial, base: 1.5, t: Math.random() * 20 });
+  /** A soft dark blob on the floor (under characters and furniture that floats on cel shadows). */
+  blob(px: number, py: number, w: number, d: number, k = 0.45) {
+    const m = new THREE.MeshBasicMaterial({ map: radial(0.55), color: 0x000000, transparent: true, opacity: k, depthWrite: false });
+    const b = this.decal(px, py, w, d, m, 0.008);
+    b.renderOrder = 1;
+    return b;
   }
 
-  /** A light where the 2D scene had a glow pool. */
-  light(x: number, y: number, color: number, alpha: number, sx: number) {
-    const l = new THREE.PointLight(color, 1.2 + alpha * 7, 2.5 + sx * 2.5, 1.8);
-    l.position.copy(at(x, y, 2.1));
-    this.add(l);
-  }
+  canvas = canvasTex;
+
+  // ------------------------------------------------------------------ characters
 
   /** A character following a Phaser sprite (player, NPC): position, facing and animation. */
-  character(src: Follow, kind: string, model: string | undefined, face: () => { x: number; y: number } | null, anim: () => AnimName, offsetY = 0) {
+  character(src: Follow, kind: string, model: string | undefined, face: () => { x: number; y: number } | null, anim: () => AnimName, offsetY = 0, seat = 0) {
     const holder = new THREE.Group();
     let rig: Rig = new MannequinRig(kind === 'player' ? 'player' : 'npc');
     holder.add(rig.root);
     this.add(holder);
-    const c: Char = { rig, holder, src, face, anim, offsetY };
+    const blobM = new THREE.MeshBasicMaterial({ map: radial(0.5), color: 0x000000, transparent: true, opacity: 0.5, depthWrite: false });
+    const blob = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.55), blobM);
+    blob.rotation.x = -Math.PI / 2; blob.renderOrder = 1;
+    this.add(blob);
+    const c: Char = { rig, holder, src, face, anim, offsetY, blob, seat };
     this.chars.push(c);
     const real = new CharacterRig(model ?? CAST[kind] ?? 'res0');
     void real.ready.then(loaded => { if (!loaded) return; holder.remove(rig.root); holder.add(real.root); rig = real; c.rig = real; });
   }
 
+  /**
+   * Seated pose on top of the clip (there is no sitting animation): thighs forward, shins down,
+   * hips lowered onto the seat. Works on the VRM normalized bones, then re-syncs the skeleton.
+   */
+  private sit(c: Char) {
+    const vrm = (c.rig as unknown as { vrm?: VRM }).vrm;
+    c.holder.position.y = c.seat + 0.06 - 0.86;
+    if (!vrm) return;
+    const flip = vrm.meta?.metaVersion === '0' ? -1 : 1, h = vrm.humanoid;
+    const set = (name: VRMHumanBoneName, x: number, z = 0) => h.getNormalizedBoneNode(name)?.quaternion.setFromEuler(new THREE.Euler(x * flip, 0, z * flip));
+    set('leftUpperLeg', -1.45, 0.1); set('rightUpperLeg', -1.45, -0.1);
+    set('leftLowerLeg', 1.5); set('rightLowerLeg', 1.5);
+    set('leftFoot', -0.05); set('rightFoot', -0.05);
+    h.update();
+  }
+
   update(dt: number) {
     for (const c of this.chars) {
       c.holder.position.copy(at(c.src.x, c.src.y + 7 + c.offsetY));
+      c.blob.position.copy(c.holder.position).setY(0.01);
       const f = c.face();
       if (f && (f.x || f.y)) {
         const target = Math.atan2(f.x, f.y / SIN);
@@ -358,8 +480,8 @@ export class Interior3D {
       }
       c.rig.play(c.anim());
       c.rig.update(dt);
+      if (c.seat) this.sit(c);
     }
-    for (const b of this.blink) { b.t += dt; b.m.color.setScalar(b.base * (Math.sin(b.t * 7) > 0.96 ? 0.3 : 1)); }
-    if (this.scroll) this.scroll.offset.x = (this.scroll.offset.x + dt * 0.08) % 1;
+    this.anim.update(dt);
   }
 }

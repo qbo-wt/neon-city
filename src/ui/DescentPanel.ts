@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
-import { CONFIG, COLORS } from '../config';
+import { CONFIG } from '../config';
 import { dateKey } from '../core/daily';
 import type { SaveData } from '../core/save';
 import { formatTime } from '../core/history';
 import { HEAT_PACTS, heatCreditMult, heatPoints } from '../data/heat';
 import { WEAPONS } from '../data/weapons';
 import { audio } from '../audio/audio';
-import { txt } from './text';
+import { title, txt } from './text';
+import { C, Card, T, bold, chip, halftone, hints, keycap, pinToCamera, pips, screenFrame, stripes } from './kit';
 
 /**
  * Building elevator: start a normal run, today's daily run, or set the notoriety (after a first
@@ -50,38 +51,49 @@ export class DescentPanel {
     const s = this.scene, W = CONFIG.WIDTH, H = CONFIG.HEIGHT, save = this.getSave();
     const root = s.add.container(0, 0).setDepth(200);
     this.root = root;
-    root.add(s.add.rectangle(W / 2, H / 2, W, H, 0x05030f, 0.95).setStrokeStyle(1, COLORS.magenta));
     const pts = heatPoints(save.heat);
     if (this.view === 'menu') {
-      root.add(txt(s, W / 2, 14, 'ASCENSEUR — DESCENTE VERS LA RUE', 9, '#ff2a6d').setOrigin(0.5));
+      root.add(screenFrame(s, 'ASCENSEUR — DESCENTE VERS LA RUE', C.magenta, 'NIVEAU -1 // LA RUE'));
       const today = dateKey(), best = save.daily.find(d => d.date === today);
-      const rows: [string, string, string, boolean][] = [
-        ['Descendre', `Run normale avec ${WEAPONS[save.weapon].name}${pts ? ` — notoriété ${pts} (+${pts * 10} % de crédits)` : ''}.`, '#e8e8ff', true],
-        [`Run du jour — ${today}`, `Même ville pour tout le monde aujourd'hui : Lame-mono, sans notoriété. ${best ? `Ton record du jour : ${best.victory ? 'victoire' : `secteur ${best.sector}`} en ${formatTime(best.timeMs)}.` : 'Pas encore tentée.'}`, '#00f0ff', true],
-        ['Avis de recherche', this.unlocked ? `Règle ta notoriété : des handicaps contre plus de crédits. Record : ${save.bestHeat}.` : 'Termine une run pour débloquer la notoriété.', '#ff2a6d', this.unlocked],
+      const rows: [string, string, string, number, boolean, string][] = [
+        ['DESCENDRE', `Run normale avec ${WEAPONS[save.weapon].name}${pts ? ` — notoriété ${pts} (+${pts * 10} % de crédits)` : ''}.`, 'RUN', C.white, true, T.text],
+        [`RUN DU JOUR — ${today}`, `Même ville pour tout le monde aujourd'hui : Lame-mono, sans notoriété. ${best ? `Ton record du jour : ${best.victory ? 'victoire' : `secteur ${best.sector}`} en ${formatTime(best.timeMs)}.` : 'Pas encore tentée.'}`, 'QUOTIDIEN', C.cyan, true, T.cyan],
+        ['AVIS DE RECHERCHE', this.unlocked ? `Règle ta notoriété : des handicaps contre plus de crédits. Record : ${save.bestHeat}.` : 'Termine une run pour débloquer la notoriété.', this.unlocked ? `NOTORIÉTÉ ${pts}` : 'VERROUILLÉ', C.magenta, this.unlocked, T.magenta],
       ];
-      rows.forEach(([label, desc, col, on], i) => {
-        const y = 44 + i * 60;
-        const r = s.add.rectangle(W / 2, y + 20, W - 40, 52, 0x140f2b).setStrokeStyle(1, on ? Phaser.Display.Color.HexStringToColor(col).color : 0x3a3550);
-        if (on) { r.setInteractive({ useHandCursor: true }); r.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.button === 0) this.select(i + 1); }); }
-        root.add(r);
-        root.add(txt(s, 30, y + 2, `[${i + 1}] ${label}`, 9, on ? col : '#5a5578'));
-        root.add(txt(s, 30, y + 20, desc, 7, on ? '#a8a6d8' : '#5a5578').setWordWrapWidth(W - 70));
+      rows.forEach(([label, desc, tag, col, on, tcol], i) => {
+        const y = 28 + i * 70;
+        const card = new Card(s, 18, y, W - 36, 62, { accent: col === C.white ? C.yellow : col, state: on ? 'idle' : 'off', hoverSfx: true, cut: 8, onClick: on ? () => this.select(i + 1) : undefined });
+        const g = s.add.graphics();
+        if (on) halftone(g, W - 36 - 110, 4, 104, 54, col === C.white ? C.yellow : col, 0.16, 'br', 3, 1.2);
+        else stripes(g, 2, 2, W - 40, 58, C.white, 0.03, 4, 1.5);
+        // A big level number on the left, like an elevator panel.
+        g.fillStyle(C.deep, 0.9).fillRect(8, 8, 34, 46);
+        g.lineStyle(0.5, on ? (col === C.white ? C.yellow : col) : C.line, 0.8).strokeRect(8, 8, 34, 46);
+        card.add(g);
+        card.add(title(s, 25, 33, `${i + 1}`, 34, on ? (col === C.white ? T.yellow : tcol) : T.off).setFontStyle('600').setOrigin(0.5));
+        card.add(keycap(s, 52, 13, `${i + 1}`, on ? C.yellow : C.line, 5));
+        card.add(title(s, 66, 13.5, label, 15, on ? (i === 0 ? T.text : tcol) : T.off).setFontStyle('600').setOrigin(0, 0.5));
+        card.add(chip(s, W - 36 - 12, 12, tag, on ? (col === C.white ? C.yellow : col) : C.line, { size: 5, originX: 1, filled: on && i === 0, text: on ? undefined : T.off }));
+        card.add(txt(s, 52, 25, desc, 7, on ? T.dim : T.off).setWordWrapWidth(W - 110).setLineSpacing(2));
+        root.add(card);
       });
     } else {
-      root.add(txt(s, W / 2, 14, 'AVIS DE RECHERCHE — NOTORIÉTÉ', 9, '#ff2a6d').setOrigin(0.5));
-      root.add(txt(s, W / 2, 28, `Notoriété ${pts} — crédits x${heatCreditMult(pts).toFixed(1)} — record ${save.bestHeat} (gagner au-dessus de ton record rapporte une prime)`, 6, '#f5e663').setOrigin(0.5));
+      root.add(screenFrame(s, 'AVIS DE RECHERCHE — NOTORIÉTÉ', C.magenta, 'PRIMES // HANDICAPS'));
+      root.add(bold(s, 16, 24, `NOTORIÉTÉ ${pts}`, 6, T.magenta).setOrigin(0, 0.5));
+      root.add(txt(s, 70, 24, `crédits x${heatCreditMult(pts).toFixed(1)} — record ${save.bestHeat} (gagner au-dessus de ton record rapporte une prime)`, 6, T.yellow).setOrigin(0, 0.5));
       HEAT_PACTS.forEach((p, i) => {
-        const y = 42 + i * 27, rank = save.heat[p.id] ?? 0;
-        const r = s.add.rectangle(W / 2, y + 10, W - 30, 24, rank ? 0x2a0c18 : 0x140f2b).setStrokeStyle(1, rank ? COLORS.magenta : 0x3a3550).setInteractive({ useHandCursor: true });
-        r.on('pointerdown', (ptr: Phaser.Input.Pointer) => { if (ptr.button === 0) this.select(i + 1); });
-        root.add(r);
-        root.add(txt(s, 24, y + 1, `[${i + 1}] ${p.name}`, 7, rank ? '#ff2a6d' : '#e8e8ff'));
-        root.add(txt(s, 24, y + 11, `${p.description} — ${p.points} pt${p.points > 1 ? 's' : ''} par rang`, 6, '#a8a6d8'));
-        root.add(txt(s, W - 24, y + 4, '■'.repeat(rank) + '□'.repeat(p.max - rank), 9, '#ff2a6d').setOrigin(1, 0));
+        const y = 32 + i * 28, rank = save.heat[p.id] ?? 0;
+        const card = new Card(s, 16, y, W - 32, 25, { accent: C.magenta, state: rank ? 'sel' : 'idle', onClick: () => this.select(i + 1) });
+        card.add(keycap(s, 8, 8, `${i + 1}`, rank ? C.magenta : C.line, 5));
+        card.add(title(s, 22, 8.5, p.name.toUpperCase(), 11, rank ? T.magenta : T.text).setFontStyle('600').setOrigin(0, 0.5));
+        card.add(txt(s, 22, 15, `${p.description} — ${p.points} pt${p.points > 1 ? 's' : ''} par rang`, 6, T.dim));
+        const g = s.add.graphics();
+        pips(g, W - 32 - 12 - p.max * 9.5 + 1.5, 6, rank, p.max, C.magenta, 8, 4.5);
+        card.add(g);
+        root.add(card);
       });
     }
-    root.add(txt(s, W / 2, H - 10, '[ÉCHAP] Fermer', 7, '#8a86b0').setOrigin(0.5));
-    root.setScrollFactor(0, 0, true);
+    root.add(hints(s, W / 2, H - 12, this.view === 'menu' ? [['1-3', 'Choisir'], ['ÉCHAP', 'Fermer']] : [['1-7', 'Changer un rang'], ['ÉCHAP', 'Fermer']], C.magenta));
+    pinToCamera(root);
   }
 }

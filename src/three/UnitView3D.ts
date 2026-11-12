@@ -5,13 +5,14 @@ import type { Pt, Unit } from '../tactics/types';
 import { CELL, type World3D } from './World3D';
 import { DroneRig, MannequinRig, PropRig, type AnimName, type Rig } from './rigs';
 import { CAST, CharacterRig } from './characters';
+import { REFLECT_LAYER } from './street/reflect';
 
 export type PoseKind = 'windup' | 'strike' | 'hurt' | 'charge';
 
 /** Which body animation a spell plays, from its look. */
 const FX_ANIM: Record<string, AnimName> = { slash: 'slash', blast: 'punch', shot: 'shoot', wire: 'slash', hack: 'cast', buff: 'cast', heal: 'cast', jump: 'jump' };
 /** Breakables: the CC0 prop that stands for each kind. */
-const BREAKABLE_MODEL: Record<string, string> = { crate: 'utility_box_02', barrel: 'barrel_stove', trash: 'metal_trash_can', vending: 'utility_box_01' };
+const BREAKABLE_MODEL: Record<string, string> = { crate: 'street:crate', barrel: 'street:barrel', trash: 'street:trash', vending: 'street:vending' };
 
 /** A soft additive halo (auras, primed bombs): a sprite, not a light, so no shader recompiles. */
 let glowTex: THREE.Texture | undefined;
@@ -27,6 +28,27 @@ function halo(color: number, size: number) {
   sp.scale.setScalar(size);
   return sp;
 }
+
+/**
+ * Street look for an anime character: a cool violet-cyan rim so it reads against the night,
+ * shadows pulled toward violet, and it shows up in the wet ground.
+ */
+function inkCharacter(root: THREE.Object3D) {
+  root.traverse(o => {
+    o.layers.enable(REFLECT_LAYER);
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as MToonLike[]) {
+      if (!m.isMToonMaterial) continue;
+      m.parametricRimColorFactor?.setHex(0x8a7aff);
+      if (m.parametricRimFresnelPowerFactor !== undefined) m.parametricRimFresnelPowerFactor = 2.6;
+      if (m.parametricRimLiftFactor !== undefined) m.parametricRimLiftFactor = 0.05;
+      if (m.rimLightingMixFactor !== undefined) m.rimLightingMixFactor = 0.6;
+      m.shadeColorFactor?.lerp(new THREE.Color(0x3a2a7a), 0.3);
+    }
+  });
+}
+type MToonLike = THREE.Material & { isMToonMaterial?: boolean; parametricRimColorFactor?: THREE.Color; parametricRimFresnelPowerFactor?: number; parametricRimLiftFactor?: number; rimLightingMixFactor?: number; shadeColorFactor?: THREE.Color };
 
 /** Turns a step on the board into a yaw: board +x is world +x, board +y is world +z. */
 const yawOf = (d: Pt) => Math.atan2(d.x, d.y);
@@ -54,7 +76,7 @@ export class UnitView3D {
       // Placeholder until the prop model is loaded.
       const g = new THREE.Group();
       this.rig = new PropRig(g);
-      void world.propModel(BREAKABLE_MODEL[k] ?? 'utility_box_02').then(o => {
+      void world.propModel(BREAKABLE_MODEL[k] ?? 'street:crate', CELL * 0.85).then(o => {
         o.traverse(m => { const mesh = m as THREE.Mesh; if (mesh.isMesh) mesh.material = (mesh.material as THREE.Material).clone(); });
         g.add(o);
         this.rig.height = new THREE.Box3().setFromObject(g).max.y || 1;
@@ -77,6 +99,7 @@ export class UnitView3D {
         this.holder.remove(this.rig.root);
         this.holder.add(real.root);
         this.rig = real;
+        inkCharacter(real.root);
         real.play('idle');
       });
     }

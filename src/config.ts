@@ -61,4 +61,6 @@ export const SCENES = {
   Building: 'Building',
   Ripperdoc: 'Ripperdoc',
   Netrunner: 'Netrunner',
+  /** always-on-top layer: scene wipes and the loading cover (src/ui/transition.ts) */
+  Overlay: 'Overlay',
 } as const;

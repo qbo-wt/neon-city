@@ -3,79 +3,122 @@ import { CONFIG, COLORS, SCENES } from '../config';
 import { psyTier } from '../core/psychosis';
 import { audio } from '../audio/audio';
 import type { HudData } from '../systems/runState';
-import { txt } from '../ui/text';
+import { title, txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
+import { C, GlitchText, T, bold, drawBar, scanlines, skewPoly, stripes } from '../ui/kit';
+
+const STRIP = 14;
 
 /** Top bar + psychosis screen effects, drawn over the RunScene. */
 export class HudScene extends Phaser.Scene {
   private g!: Phaser.GameObjects.Graphics;
+  private base!: Phaser.GameObjects.Graphics;
+  private labels: Phaser.GameObjects.Text[] = [];
   private fx!: Phaser.GameObjects.Graphics;
   private hpText!: Phaser.GameObjects.Text;
   private psyText!: Phaser.GameObjects.Text;
-  private rightText!: Phaser.GameObjects.Text;
+  private psyLabel!: Phaser.GameObjects.Text;
+  private sectorText!: Phaser.GameObjects.Text;
+  private creditsText!: Phaser.GameObjects.Text;
+  private neuroText!: Phaser.GameObjects.Text;
   private implantsText!: Phaser.GameObjects.Text;
   private bossText!: Phaser.GameObjects.Text;
-  private crisisText!: Phaser.GameObjects.Text;
+  private crisisText!: GlitchText;
   private psyBonusText!: Phaser.GameObjects.Text;
   private synergyText!: Phaser.GameObjects.Text;
   private noticeText!: Phaser.GameObjects.Text;
   private tagText!: Phaser.GameObjects.Text;
   private glitchUntil = 0;
   private nextGlitchAt = 0;
+  /** lagging HP fraction: the white damage trail behind the bar */
+  private hpGhost = 1;
+  private bossGhost = 1;
 
   constructor() { super(SCENES.Hud); }
 
   create() {
     setupCamera(this);
+    const W = CONFIG.WIDTH;
+    this.hpGhost = this.bossGhost = 1;
     this.fx = this.add.graphics();
+    // The static part of the strip: background plates, rules, stripes.
+    const base = this.add.graphics();
+    this.base = base;
+    base.fillStyle(C.deep, 0.92).fillRect(0, 0, W, STRIP);
+    base.fillStyle(C.night, 0.95).fillPoints(skewPoly(-6, 0, 300, STRIP + 2, 3), true);
+    base.fillStyle(C.night, 0.95).fillPoints(skewPoly(W - 170, 0, 176, STRIP + 2, -3), true);
+    scanlines(base, 0, 0, W, STRIP, 0, C.white, 0.03);
+    base.lineStyle(0.5, COLORS.cyan, 0.55).lineBetween(0, STRIP, W, STRIP);
+    base.fillStyle(C.cyan, 1).fillRect(0, STRIP - 0.5, 40, 1.25);
+    base.fillStyle(C.magenta, 1).fillRect(W - 40, STRIP - 0.5, 40, 1.25);
+    stripes(base, 296, 4, 26, 6, C.white, 0.08, 3, 1);
     this.g = this.add.graphics();
-    this.hpText = txt(this, 6, 3, '', 6);
-    this.psyText = txt(this, 126, 3, '', 6);
-    this.rightText = txt(this, CONFIG.WIDTH - 4, 3, '', 6).setOrigin(1, 0);
+    this.labels = [title(this, 5, STRIP / 2 + 0.9, 'PV', 9, T.magenta).setFontStyle('600').setOrigin(0, 0.5)];
+    this.hpText = bold(this, 124, STRIP / 2, '', 5, T.text).setOrigin(0, 0.5);
+    this.psyLabel = title(this, 158, STRIP / 2 + 0.9, 'PSY', 9, T.cyan).setFontStyle('600').setOrigin(0, 0.5);
+    this.psyText = bold(this, 262, STRIP / 2, '', 5, T.text).setOrigin(0, 0.5);
+    this.sectorText = title(this, W - 5, STRIP / 2 + 0.9, '', 9, T.cyan).setFontStyle('600').setOrigin(1, 0.5);
+    this.creditsText = bold(this, 0, STRIP / 2, '', 6, T.yellow).setOrigin(1, 0.5);
+    this.neuroText = bold(this, 0, STRIP / 2, '', 5, T.text).setOrigin(1, 0.5);
     // Above the tactical bar of the RunScene (38 px).
-    this.implantsText = txt(this, 4, CONFIG.HEIGHT - 47, '', 5, '#8a86b0').setStroke('#05030f', 2);
-    this.bossText = txt(this, CONFIG.WIDTH / 2, 21, '', 7, '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 3);
-    this.crisisText = txt(this, CONFIG.WIDTH / 2, 48, 'CYBERPSYCHOSE', 14, '#ff2a6d').setOrigin(0.5).setVisible(false);
-    this.psyBonusText = txt(this, 178, 15, '', 5, '#f5e663');
-    this.synergyText = txt(this, 4, CONFIG.HEIGHT - 54, '', 5, '#39ff88').setStroke('#05030f', 2);
-    this.noticeText = txt(this, CONFIG.WIDTH - 4, 46, '', 6, '#f5e663').setOrigin(1, 0).setStroke('#05030f', 3);
-    this.tagText = txt(this, CONFIG.WIDTH / 2, 24, '', 6, '#ff2a6d').setOrigin(0.5, 0).setStroke('#05030f', 3);
+    this.implantsText = txt(this, 4, CONFIG.HEIGHT - 47, '', 5, T.dim).setStroke('#05030f', 2);
+    this.bossText = title(this, W / 2, 21, '', 9, T.magenta).setFontStyle('600').setOrigin(0.5).setStroke('#05030f', 3);
+    this.crisisText = new GlitchText(this, W / 2, 50, 'CYBERPSYCHOSE', 26, T.magenta, { every: 500, stroke: 4 }).setVisible(false);
+    this.psyBonusText = bold(this, 284, STRIP / 2, '', 5, T.yellow).setOrigin(0, 0.5);
+    this.synergyText = txt(this, 4, CONFIG.HEIGHT - 54, '', 5, T.green).setStroke('#05030f', 2);
+    this.noticeText = bold(this, W - 4, 46, '', 6, T.yellow).setOrigin(1, 0).setStroke('#05030f', 3);
+    this.tagText = bold(this, W / 2, 18, '', 5, T.magenta).setOrigin(0.5, 0).setStroke('#05030f', 3);
   }
 
-  update(time: number) {
+  update(time: number, dtMs = 16) {
     const d = this.registry.get('hud') as HudData | undefined;
     const g = this.g;
     g.clear();
+    const show = !!d;
+    for (const t of [this.base, ...this.labels, this.hpText, this.psyText, this.psyLabel, this.sectorText, this.creditsText, this.neuroText]) t.setVisible(show);
     if (!d) return;
-    const W = CONFIG.WIDTH, tier = psyTier(d.psy);
+    const W = CONFIG.WIDTH, tier = psyTier(d.psy), dt = Math.min(dtMs, 50) / 1000;
 
-    g.fillStyle(0x05030f, 0.9).fillRect(0, 0, W, 14);
-    g.lineStyle(1, COLORS.cyan, 0.5).lineBetween(0, 14, W, 14);
+    // HP, with a white trail that catches up after a hit.
+    const hp = d.maxHp ? d.hp / d.maxHp : 0;
+    this.hpGhost = hp >= this.hpGhost ? hp : Math.max(hp, this.hpGhost - dt * 0.6);
+    drawBar(g, 18, 4.5, 102, 5, hp, hp < 0.3 ? C.red : C.magenta, { ghost: this.hpGhost, seg: 12, skew: 2.5 });
+    this.hpText.setText(`${d.hp}/${d.maxHp}`);
 
-    // HP
-    this.hpText.setText('PV');
-    bar(g, 20, 4, 96, 6, d.hp / d.maxHp, COLORS.magenta);
-    // Psychosis
-    this.psyText.setText(`PSY ${Math.floor(d.psy)}%`);
-    this.psyBonusText.setText(d.psyBonus).setColor(tier === 'crisis' ? '#ff2a6d' : tier === 'drain' ? '#ff3b3b' : '#f5e663');
-    const psyCol = tier === 'stable' ? COLORS.cyan : tier === 'glitch' ? COLORS.yellow : COLORS.magenta;
-    bar(g, 178, 4, 80, 6, d.psy / 100, psyCol);
-    g.lineStyle(1, 0xffffff, 0.4);
-    [0.5, 0.75].forEach(f => g.lineBetween(178 + 80 * f, 3, 178 + 80 * f, 11));
-    this.rightText.setText(`NEURO[F] ${d.blockers}   ${d.credits}¢   SECTEUR ${d.room}/${d.rooms}`);
+    // Psychosis: colour by tier, markers at 50 % and 75 %.
+    const psyCol = tier === 'stable' ? C.cyan : tier === 'glitch' ? C.yellow : C.magenta;
+    drawBar(g, 178, 4.5, 80, 5, d.psy / 100, psyCol, { marks: [0.5, 0.75], skew: 2.5 });
+    this.psyLabel.setColor(Phaser.Display.Color.IntegerToColor(psyCol).rgba);
+    this.psyText.setText(`${Math.floor(d.psy)} %`);
+    this.psyBonusText.setText(d.psyBonus).setColor(tier === 'crisis' ? T.magenta : tier === 'drain' ? T.red : T.yellow);
+    this.psyBonusText.setX(this.psyText.x + this.psyText.width + 5);
+
+    // Right side: sector, credits, neuro-blockers.
+    this.sectorText.setText(`SECTEUR ${d.room}/${d.rooms}`);
+    this.creditsText.setText(`${d.credits}¢`).setX(this.sectorText.x - this.sectorText.width - 9);
+    this.neuroText.setText(`NEURO [F] ×${d.blockers}`).setX(this.creditsText.x - this.creditsText.width - 9);
+    const sep = (x: number) => g.fillStyle(C.line, 1).fillPoints(skewPoly(x - 1, 3.5, 2, 7, 1.5), true);
+    sep(this.sectorText.x - this.sectorText.width - 4.5);
+    sep(this.creditsText.x - this.creditsText.width - 4.5);
+
     const parts = [d.weapon.toUpperCase(), d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
     this.implantsText.setText(parts.filter(Boolean).join('   |   ')).setVisible(!this.registry.get('modal'));
     this.synergyText.setVisible(!this.registry.get('modal'));
     this.synergyText.setText(d.synergies.length ? 'SYNERGIES : ' + d.synergies.join(' · ') : '');
-    this.tagText.setText(d.tag);
-    this.noticeText.setText(d.notice ?? '').setColor(d.notice?.includes('ÉCHOUÉ') ? '#ff2a6d' : d.notice?.startsWith('ÉLITE') ? '#ff2a6d' : '#f5e663');
+    this.tagText.setText(d.tag).setY(d.boss ? 37 : 18);
+    this.noticeText.setText(d.notice ?? '').setColor(d.notice?.includes('ÉCHOUÉ') ? T.magenta : d.notice?.startsWith('ÉLITE') ? T.magenta : T.yellow);
 
     if (d.boss) {
       this.bossText.setText(d.boss.name.toUpperCase());
       // Boss bar across the top of the screen, under the HUD strip.
-      g.fillStyle(0x05030f, 0.75).fillRect(W / 2 - 124, 15, 248, 20);
-      bar(g, W / 2 - 120, 27, 240, 5, d.boss.hp / d.boss.max, COLORS.magenta);
-    } else this.bossText.setText('');
+      const f = d.boss.max ? d.boss.hp / d.boss.max : 0;
+      this.bossGhost = f >= this.bossGhost ? f : Math.max(f, this.bossGhost - dt * 0.4);
+      g.fillStyle(C.deep, 0.85).fillPoints(skewPoly(W / 2 - 130, 15, 260, 20, 6), true);
+      g.lineStyle(0.25, C.magenta, 0.8).strokePoints(skewPoly(W / 2 - 130, 15, 260, 20, 6), true);
+      stripes(g, W / 2 - 120, 16, 30, 3, C.magenta, 0.5, 4, 1.2);
+      stripes(g, W / 2 + 90, 16, 30, 3, C.magenta, 0.5, 4, 1.2);
+      drawBar(g, W / 2 - 120, 27, 240, 5, f, C.magenta, { ghost: this.bossGhost, seg: 24, skew: 2.5 });
+    } else { this.bossText.setText(''); this.bossGhost = 1; }
 
     this.drawPsychosisFx(time, tier);
     this.drawImpactFx();
@@ -126,10 +169,4 @@ export class HudScene extends Phaser.Scene {
       if (tier === 'crisis') fx.fillStyle(COLORS.magenta, 0.06 + 0.04 * pulse).fillRect(0, 0, W, H);
     }
   }
-}
-
-function bar(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, f: number, col: number) {
-  g.fillStyle(0x221d35).fillRect(x, y, w, h);
-  g.fillStyle(col).fillRect(x, y, Math.max(0, Math.min(1, f)) * w, h);
-  g.lineStyle(1, 0x05030f).strokeRect(x, y, w, h);
 }

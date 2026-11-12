@@ -10,20 +10,19 @@ import { buildRoom, type BuiltRoom, type RoomOptions } from '../systems/roomBuil
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
 import { txt } from '../ui/text';
+import { wipeTo } from '../ui/transition';
 import { audio } from '../audio/audio';
 import { nextLine } from '../core/story';
 import type { StoryNpc } from '../data/story';
 import { ENEMIES, type EnemyId } from '../data/enemies';
 import { floatText } from '../fx/effects';
-import { Interior3D, type InteriorStyle } from '../three/Interior3D';
-import { environment, showStage, stage, stageOpacity, fadeVisibility } from '../three/stage';
+import { BACK_Y, HEAD_PX, Interior3D, type InteriorStyle } from '../three/Interior3D';
+import { showStage, stage, stageOpacity, fadeVisibility } from '../three/stage';
 import type { AnimName } from '../three/rigs';
 
 /** Which anime avatar plays which 2D look. Residents cycle through ten faces. */
 const modelFor = (look: string) => look === 'npc-lo' ? 'lo' : look === 'npc-doc' ? 'doc' : look === 'npc-nyx' ? 'nyx'
   : look.startsWith('res-') ? `res${Number(look.slice(4)) % 10}` : 'res0';
-/** 2D textures the 3D room builds itself (floor, walls, doors) or that only mark light. */
-const SKIP_3D = /^(floor-|wall-|cap-|door|shadow$|glow$|tile-)/;
 
 export const HUD_H = 14;
 
@@ -61,8 +60,8 @@ export abstract class InteriorScene extends Phaser.Scene {
   /** Materials and lighting of the 3D version of the room. */
   protected readonly style3d: InteriorStyle = 'home';
   private view3d?: Interior3D;
-  private signs3d: { x: number; y: number; label: string; color: number }[] = [];
-  private glows3d: { x: number; y: number; color: number; alpha: number; sx: number }[] = [];
+  /** Dresses the 3D room (models, lights, screens, signs): see src/three/interior. */
+  protected abstract set3d(v: Interior3D): Promise<void>;
   /** Build props, NPCs and interactions. Called before the player exists. */
   protected abstract layout(data: Record<string, unknown>): void;
   /** Where the player appears, depending on where they came from. */
@@ -75,14 +74,15 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.interactions = [];
     this.modals = [];
     this.npcs = [];
-    this.signs3d = [];
-    this.glows3d = [];
     this.save = loadSave(getStorage());
     setupCamera(this, -HUD_H).fadeIn(250, 11, 8, 32);
     audio.setMusic('hub');
 
     this.built = buildRoom(this, this.grid, 0, this.roomOptions);
     this.npcGroup = this.physics.add.group({ immovable: true });
+    // The 3D back wall stands half a tile into the first floor row.
+    const top = this.grid.grid.findIndex(r => /[.oP]/.test(r)) * 32;
+    if (BACK_Y > top) this.block(0, top, this.built.width, BACK_Y - top);
     this.layout(data);
 
     this.controls = new Controls(this);
@@ -119,43 +119,28 @@ export abstract class InteriorScene extends Phaser.Scene {
       const r = nextLine(npc, this.save, ambient, Math.random, id => ENEMIES[id as EnemyId]?.name);
       if (r.save !== this.save) this.persistSave(r.save);
       if (r.gift) {
-        floatText(this, this.player.x, this.player.y - 20, `+${r.gift}¢`, '#f5e663', 9);
+        floatText(this, this.player.x, this.player.y - HEAD_PX, `+${r.gift}¢`, '#f5e663', 9);
         audio.sfx('buy');
       }
       return r.line;
     };
   }
 
-  /** Static, solid prop centred at (x, y). */
-  protected solid(key: string, x: number, y: number, depth = 2) {
-    const f = this.built.walls.create(x, y, key) as Phaser.Physics.Arcade.Image;
-    f.setDepth(depth);
-    (f.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
-    return f;
-  }
-
   /**
-   * The room in 3D under the Phaser scene: everything drawn so far (floor, walls, props, decor,
-   * characters) is hidden in 2D and rebuilt from real models; Phaser keeps the logic, the prompts,
-   * the speech bubbles and the panels, which stay aligned (same pixel mapping).
+   * The room in 3D under the Phaser scene: anything drawn in 2D is hidden; the shell comes from the
+   * grid and the set builder dresses it; the player and NPCs are anime characters following their
+   * Phaser bodies. Phaser keeps the logic, the prompts, the speech bubbles and the panels, which
+   * stay aligned (same pixel mapping).
    */
   private setup3d() {
     const world = stage(this.game.canvas);
     showStage(true, this.game.canvas);
     const view = new Interior3D(world, this.style3d);
     this.view3d = view;
-    const decor: { key: string; x: number; y: number; w: number; h: number; flip: boolean }[] = [];
-    for (const o of this.children.list) {
-      const img = o as Phaser.GameObjects.Image;
-      if (o === this.player || this.npcs.includes(o as Npc)) { img.setVisible(false); continue; }
-      if (img.texture && !SKIP_3D.test(img.texture.key)) decor.push({ key: img.texture.key, x: img.x, y: img.y, w: img.displayWidth, h: img.displayHeight, flip: img.flipX });
-      (o as unknown as { setVisible?: (v: boolean) => void }).setVisible?.(false);
-    }
+    for (const o of this.children.list) (o as unknown as { setVisible?: (v: boolean) => void }).setVisible?.(false);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { showStage(false); stageOpacity(1); this.view3d = undefined; });
-    void environment(world).then(() => view.build(this.grid.grid)).then(async () => {
+    void view.build(this.grid.grid, v => this.set3d(v)).then(() => {
       if (this.view3d !== view) return;
-      for (const g of this.glows3d) view.light(g.x, g.y, g.color, g.alpha, g.sx);
-      for (const s of this.signs3d) view.sign(s.x, s.y, s.label, s.color);
       const p = this.player;
       view.character(p, 'player', undefined, () => p.lookDir, () => (Math.hypot((p.body as Phaser.Physics.Arcade.Body).velocity.x, (p.body as Phaser.Physics.Arcade.Body).velocity.y) > 5 ? 'walk' : 'idle'));
       for (const n of this.npcs) {
@@ -163,37 +148,29 @@ export abstract class InteriorScene extends Phaser.Scene {
         const moving = () => Math.hypot(body.velocity.x, body.velocity.y) > 3;
         view.character(n, 'npc', modelFor(n.look), () => {
           if (moving()) return { x: body.velocity.x, y: body.velocity.y };
+          // Whoever talks turns to the player.
+          if (n.speaking && n.activity !== 'cook' && n.activity !== 'play' && n.activity !== 'eat') return { x: this.player.x - n.x, y: this.player.y - n.y };
           const f = n.faceDir;
-          if (n.activity === 'sit' && n.look !== 'npc-nyx') return { x: 0, y: 1 };
-          return f.facing === 'u' ? { x: 0, y: -1 } : f.facing === 's' ? { x: f.flip ? -1 : 1, y: 0 } : { x: 0, y: 1 };
-        }, (): AnimName => (moving() ? 'walk' : n.speaking || n.activity === 'talk' || n.activity === 'phone' || n.activity === 'cook' ? 'talk' : 'idle'),
-        n.activity === 'sit' && n.look !== 'npc-nyx' ? 16 : 0);
+          return f.facing === 'u' ? { x: 0, y: -1 } : f.facing === 's' ? { x: f.flip ? -1 : 1, y: 0 } : { x: f.flip ? -0.35 : 0.35, y: 1 };
+        }, (): AnimName => (moving() ? 'walk' : n.speaking || n.activity === 'talk' || n.activity === 'phone' || n.activity === 'cook' || n.activity === 'dance' ? 'talk' : 'idle'), 0, n.seat);
       }
-      for (const d of decor) await view.decor(d.key, d.x, d.y, d.w, d.h, d.flip).catch(() => undefined);
-    });
+    }).catch(e => console.error('interior 3D', e));
   }
 
-  protected glow(x: number, y: number, color: number, alpha = 0.3, sx = 1, sy = 1) {
-    this.glows3d.push({ x, y, color, alpha, sx });
-    return this.add.image(x, y, 'glow').setTint(color).setAlpha(alpha).setScale(sx, sy).setBlendMode(Phaser.BlendModes.ADD).setDepth(1);
+  /** Invisible solid rectangle (left, top, width, height in world px): furniture footprints. */
+  protected block(x: number, y: number, w: number, h: number) {
+    const b = this.built.walls.create(x + w / 2, y + h / 2, 'tile-wall') as Phaser.Physics.Arcade.Image;
+    b.setDisplaySize(w, h).setVisible(false);
+    b.refreshBody();
+    return b;
   }
 
   protected npc(look: string, x: number, y: number, activity: NpcActivity, opts: NpcOpts = {}) {
-    const n = new Npc(this, x, y, look, activity, opts.bounds ?? new Phaser.Geom.Rectangle(48, 48, 384, 160), opts);
+    const n = new Npc(this, x, y, look, activity, opts.bounds ?? new Phaser.Geom.Rectangle(48, 96, 384, 100), opts);
     this.npcGroup.add(n);
     this.npcs.push(n);
-    if (opts.name) this.interactions.push({ x, y, r: 24, follow: n, label: `Parler à ${opts.name}`, action: () => n.speak() });
+    if (opts.name) this.interactions.push({ x, y, r: 26, follow: n, label: `Parler à ${opts.name}`, action: () => n.speak() });
     return n;
-  }
-
-  /** Neon sign on a wall: boxed label plus a light pool. */
-  protected sign(x: number, y: number, label: string, color: number, size = 7) {
-    this.signs3d.push({ x, y, label, color });
-    const hexc = '#' + color.toString(16).padStart(6, '0');
-    const t = txt(this, x, y, label, size, hexc).setOrigin(0.5).setDepth(4);
-    this.add.rectangle(x, y, t.width + 8, t.height + 2, 0x05030f, 0.85).setStrokeStyle(1, color).setDepth(3.9);
-    this.tweens.add({ targets: t, alpha: 0.45, yoyo: true, repeat: -1, duration: 70, repeatDelay: 2500 + Math.random() * 3000 });
-    return t;
   }
 
   protected go(key: string, data: Record<string, unknown> = {}, banner?: string) {
@@ -201,8 +178,8 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.leaving = true;
     audio.sfx('door');
     if (banner) txt(this, CONFIG.WIDTH / 2, 120, banner, 10, '#f5e663').setOrigin(0.5).setDepth(300).setStroke('#05030f', 4);
-    this.cameras.main.fadeOut(banner ? 600 : 250, 11, 8, 32);
-    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start(key, data));
+    // With a banner, leave it on screen a moment before the wipe.
+    this.time.delayedCall(banner ? 350 : 0, () => wipeTo(this, key, data));
   }
 
   update(time: number, delta = 16) {
@@ -231,7 +208,7 @@ export abstract class InteriorScene extends Phaser.Scene {
       .filter(o => o.d < o.i.r)
       .sort((a, b) => a.d - b.d)[0]?.i;
     if (near) {
-      this.prompt.setText(`[E] ${near.label}`).setPosition(Phaser.Math.Clamp(this.player.x, 60, CONFIG.WIDTH - 60), this.player.y - 18);
+      this.prompt.setText(`[E] ${near.label}`).setPosition(Phaser.Math.Clamp(this.player.x, 60, CONFIG.WIDTH - 60), this.player.y + 1 - HEAD_PX);
       if (this.controls.interact() && !this.leaving) { audio.sfx('ui'); near.action(); }
     } else {
       this.prompt.setText('');

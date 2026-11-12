@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { CONFIG, COLORS } from '../config';
-import { txt } from './text';
+import { CONFIG } from '../config';
+import { C, T, cutPoly, hints, keycap, panel, pinToCamera } from './kit';
+import { title, txt } from './text';
 
 const HUB_KEYS: [string, string][] = [
   ['ZQSD / WASD / flèches', 'Se déplacer'],
@@ -29,10 +30,19 @@ export class HelpOverlay {
 
   constructor(private scene: Phaser.Scene, x = CONFIG.WIDTH - 12, y = CONFIG.HEIGHT - 12, mode: 'hub' | 'run' = 'hub') {
     this.keys = mode === 'run' ? RUN_KEYS : HUB_KEYS;
-    const btn = scene.add.container(x, y, [
-      scene.add.circle(0, 0, 7, 0x140f2b).setStrokeStyle(1, COLORS.cyan),
-      txt(scene, 0, 0, 'i', 9, '#00f0ff').setOrigin(0.5),
-    ]).setDepth(2001).setSize(16, 16).setInteractive({ useHandCursor: true });
+    const g = scene.add.graphics();
+    const draw = (hot: boolean) => {
+      g.clear();
+      g.fillStyle(C.deep, 0.6).fillPoints(cutPoly(-6, -6, 14, 14, 3), true);
+      g.fillStyle(hot ? C.cyan : C.panel, hot ? 1 : 0.92).fillPoints(cutPoly(-7, -7, 14, 14, 3), true);
+      g.lineStyle(0.5, C.cyan, 1).strokePoints(cutPoly(-7, -7, 14, 14, 3), true);
+      label.setColor(hot ? T.dark : T.cyan);
+    };
+    const label = title(scene, 0, 0.8, 'i', 12, T.cyan).setFontStyle('600').setOrigin(0.5);
+    const btn = scene.add.container(x, y, [g, label]).setDepth(2001).setSize(16, 16).setInteractive({ useHandCursor: true });
+    draw(false);
+    btn.on('pointerover', () => draw(true));
+    btn.on('pointerout', () => draw(false));
     btn.setScrollFactor(0, 0, true);
     btn.on('pointerdown', (p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
       if (p.button !== 0) return;
@@ -48,17 +58,21 @@ export class HelpOverlay {
 
   toggle() {
     if (this.panel) { this.panel.destroy(); this.panel = undefined; return; }
-    const s = this.scene, W = CONFIG.WIDTH, h = 30 + this.keys.length * 14;
-    const top = (CONFIG.HEIGHT - h) / 2;
+    const s = this.scene, W = CONFIG.WIDTH, H = CONFIG.HEIGHT, rowH = 13;
+    const pw = 300, ph = 34 + this.keys.length * rowH;
+    const left = (W - pw) / 2, top = (H - ph) / 2;
     const items: Phaser.GameObjects.GameObject[] = [
-      s.add.rectangle(W / 2, CONFIG.HEIGHT / 2, 330, h, 0x05030f, 0.95).setStrokeStyle(1, COLORS.cyan),
-      txt(s, W / 2, top + 12, 'COMMANDES', 9, '#00f0ff').setOrigin(0.5),
+      s.add.rectangle(W / 2, H / 2, W, H, C.deep, 0.45),
+      panel(s, left, top, pw, ph, { accent: C.cyan, title: 'COMMANDES', code: 'AIDE // I', dots: 'br' }),
     ];
     this.keys.forEach(([k, v], i) => {
-      items.push(txt(s, W / 2 - 156, top + 28 + i * 14, k, 7, '#f5e663'));
-      items.push(txt(s, W / 2 - 30, top + 28 + i * 14, v, 7, '#e8e8ff'));
+      const y = top + 16 + i * rowH;
+      if (i % 2 === 0) items.push(s.add.rectangle(W / 2, y, pw - 12, rowH - 1, C.white, 0.035));
+      items.push(keycap(s, left + 12, y, k, C.yellow, 5));
+      items.push(txt(s, left + 124, y, v, 6, T.text).setOrigin(0, 0.5));
     });
+    items.push(hints(s, W / 2, top + ph - 8, [['I', 'Fermer']], C.cyan));
     this.panel = s.add.container(0, 0, items).setDepth(2000);
-    this.panel.setScrollFactor(0, 0, true);
+    pinToCamera(this.panel);
   }
 }

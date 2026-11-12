@@ -1,31 +1,41 @@
 import Phaser from 'phaser';
-import { CONFIG, COLORS, SCENES } from '../config';
+import { CONFIG, SCENES } from '../config';
 import { txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
+import { Button, C, GlitchText, T, bold, chip, hints, scanlines, skewPoly, stripes } from '../ui/kit';
+import { wipeTo } from '../ui/transition';
+import { FineRain, Skyline } from '../ui/cityArt';
 import { audio } from '../audio/audio';
-import { environment, fadeVisibility, showStage, stage, stageOpacity } from '../three/stage';
+import { environment, showStage, stage, stageOpacity } from '../three/stage';
 import { generateArena } from '../tactics/arena';
 import { createRng } from '../core/rng';
 import { CharacterRig } from '../three/characters';
 import type * as THREE from 'three';
 
 export class MenuScene extends Phaser.Scene {
-  private title!: Phaser.GameObjects.Text;
-  private ghost!: Phaser.GameObjects.Text;
-
   constructor() { super(SCENES.Menu); }
 
   private rigs: CharacterRig[] = [];
   private t = 0;
+  /** 3D street opacity: fades in once the board is built */
+  private stageA = 0;
+  private built = false;
+  private play?: Button;
+  private sky?: Skyline;
+  private rain?: FineRain;
 
   create() {
     setupCamera(this);
     const { WIDTH: W, HEIGHT: H } = CONFIG;
+    this.started = false;
+    this.stageA = 0;
+    this.built = false;
     // Behind the title: the 3D street at night, the camera drifting along it, a few people in the rain.
     this.rigs = [];
     const world = stage(this.game.canvas);
     showStage(true, this.game.canvas);
+    stageOpacity(0);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { showStage(false); stageOpacity(1); this.rigs.forEach(r => world.scene.remove(r.root)); this.rigs = []; });
     const { board } = generateArena('avenue', createRng(12), 0);
     void environment(world).then(() => (this.scene.isActive() ? world.buildBoard(board, 12) : undefined)).then(() => {
@@ -44,26 +54,47 @@ export class MenuScene extends Phaser.Scene {
         this.rigs.push(r);
         void r.ready.then(() => r.play(kind === 'runner' || kind === 'hacker' ? 'talk' : 'idle'));
       }
+      this.built = true;
     });
-    this.add.rectangle(W / 2, 90, W, 90, 0x05030f, 0.45);
-    this.add.image(W / 2, 80, 'glow').setScale(5, 2).setTint(0xff2a6d).setAlpha(0.25);
 
-    this.ghost = txt(this, W / 2, 70, 'NEON CITY', 40, '#00f0ff').setOrigin(0.5).setAlpha(0.6);
-    this.title = txt(this, W / 2, 70, 'NEON CITY', 40, '#ff2a6d').setOrigin(0.5).setStroke('#05030f', 4);
-    txt(this, W / 2, 104, 'Plus de chrome. Moins d\'humain.', 10, '#f5e663').setOrigin(0.5);
+    // Until the 3D street is built, the painted skyline stands in for it; then they cross-fade.
+    this.sky = new Skyline(this, -10);
+    this.rain = new FineRain(this, 120, -5);
 
-    const play = this.add.container(W / 2, 170, [
-      this.add.rectangle(0, 0, 120, 22, 0x140f2b, 0.9).setStrokeStyle(1, COLORS.cyan),
-      txt(this, 0, 0, 'JOUER', 11, '#e8e8ff').setOrigin(0.5),
-    ]).setSize(120, 22).setInteractive({ useHandCursor: true });
-    this.tweens.add({ targets: play, alpha: 0.6, yoyo: true, repeat: -1, duration: 700 });
-    play.on('pointerdown', (p: Phaser.Input.Pointer) => { if (p.button === 0) this.start(); });
+    // Shade the left third and the bottom so the title and the buttons read over the street.
+    const shade = this.add.graphics();
+    shade.fillGradientStyle(C.deep, C.deep, C.deep, C.deep, 0.92, 0, 0.92, 0).fillRect(0, 0, 290, H);
+    shade.fillGradientStyle(C.deep, C.deep, C.deep, C.deep, 0, 0, 0.85, 0.85).fillRect(0, H - 70, W, 70);
+    shade.fillGradientStyle(C.deep, C.deep, C.deep, C.deep, 0.6, 0.6, 0, 0).fillRect(0, 0, W, 30);
+    scanlines(shade, 0, 0, W, H, 0, 0x000000, 0.12, 1);
+    // Frame: corner brackets, a top rule with stripes.
+    const deco = this.add.graphics();
+    deco.lineStyle(0.5, C.cyan, 0.5).lineBetween(28, 22, W - 28, 22);
+    deco.fillStyle(C.cyan, 1).fillRect(28, 21, 30, 2);
+    stripes(deco, W - 88, 18, 60, 3, C.magenta, 0.6, 4, 1.5);
+    for (const [x, y, sx, sy] of [[8, 8, 1, 1], [W - 8, 8, -1, 1], [8, H - 8, 1, -1], [W - 8, H - 8, -1, -1]]) {
+      deco.lineStyle(0.5, C.white, 0.5).beginPath();
+      deco.moveTo(x, y + sy * 10); deco.lineTo(x, y); deco.lineTo(x + sx * 10, y); deco.strokePath();
+    }
+    bold(this, 28, 13, 'NEON//OS 4.2', 5, T.cyan).setOrigin(0, 0.5);
+    txt(this, 80, 13, 'DISTRICT 0 // NUIT PERMANENTE', 5, T.mute).setOrigin(0, 0.5);
+
+    chip(this, 30, 50, 'ROGUELITE TACTIQUE', C.magenta, { filled: true, size: 5 });
+    const logo = new GlitchText(this, 0, 84, 'NEON CITY', 64, '#f4f1ff', { every: 3200 });
+    logo.setX(28 + logo.main.width / 2);
+    deco.fillStyle(C.yellow, 1).fillPoints(skewPoly(30, 110, 104, 3, 2), true);
+    deco.fillStyle(C.yellow, 0.5).fillPoints(skewPoly(138, 110, 10, 3, 2), true);
+    deco.fillStyle(C.yellow, 0.25).fillPoints(skewPoly(152, 110, 5, 3, 2), true);
+    txt(this, 30, 121, 'Plus de chrome. Moins d\'humain.', 9, T.yellow).setOrigin(0, 0.5);
+
+    this.play = new Button(this, 30, 148, 150, 22, 'JOUER', { accent: C.yellow, solid: true, key: 'ENTRÉE', size: 14, hoverSfx: true, onClick: () => this.start() });
+    const help = new HelpOverlay(this);
+    new Button(this, 30, 176, 150, 16, 'COMMANDES', { accent: C.cyan, key: 'I', size: 9, hoverSfx: true, onClick: () => help.toggle() });
     this.input.keyboard!.once('keydown-ENTER', () => this.start());
-    txt(this, W / 2, 196, 'Ou appuie sur ENTRÉE', 7, '#8a86b0').setOrigin(0.5);
+    hints(this, 0, H - 14, [['ENTRÉE', 'Jouer'], ['I', 'Commandes'], ['M', 'Son']], C.yellow).setX(30);
+    txt(this, W - 26, H - 14, 'Avatars VIPE Heroes (CC-BY) · décors Kenney & KayKit (CC0)', 5, T.off).setOrigin(1, 0.5);
 
-    new HelpOverlay(this);
     audio.setMusic('hub');
-    txt(this, W - 24, H - 12, 'Commandes', 7, '#8a86b0').setOrigin(1, 0.5);
   }
 
   private started = false;
@@ -71,8 +102,8 @@ export class MenuScene extends Phaser.Scene {
     if (this.started) return;
     this.started = true;
     audio.sfx('uiOpen');
-    this.cameras.main.fadeOut(250, 11, 8, 32);
-    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.start(SCENES.Hideout));
+    this.play?.setCardState('sel');
+    wipeTo(this, SCENES.Hideout);
   }
 
   update(_t: number, dt: number) {
@@ -80,11 +111,13 @@ export class MenuScene extends Phaser.Scene {
     this.t += dt / 1000;
     this.rigs.forEach(r => r.update(dt / 1000));
     world.panScreen(Math.sin(this.t * 0.15) * dt * 0.012, 0, CONFIG.WIDTH * CONFIG.ZOOM);
-    stageOpacity(fadeVisibility(this.cameras.main.fadeEffect));
+    if (this.built) this.stageA = Math.min(1, this.stageA + dt / 900);
+    stageOpacity(this.stageA);
+    this.sky?.update(dt / 1000);
+    this.sky?.objects.forEach(o => (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha(1 - this.stageA));
+    this.rain?.update(dt);
     world.frame();
-    // Occasional chromatic glitch on the title.
-    const glitch = Math.random() < 0.06;
-    this.ghost.setPosition(CONFIG.WIDTH / 2 + (glitch ? Phaser.Math.Between(-4, 4) : 2), 70 + (glitch ? Phaser.Math.Between(-2, 2) : 0));
-    this.title.setAlpha(Math.random() < 0.02 ? 0.4 : 1);
+    // The play button breathes.
+    if (this.play && !this.started) this.play.setAlpha(0.9 + 0.1 * Math.sin(this.t * 4));
   }
 }
