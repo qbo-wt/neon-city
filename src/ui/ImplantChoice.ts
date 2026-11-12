@@ -28,11 +28,11 @@ export class ImplantChoice {
     this.root.add(new GlitchText(scene, W / 2, 30, heading, 17, T.cyan, { every: 3500 }));
     this.root.add(txt(scene, W / 2, 46, 'Chaque implant augmente ta charge de psychose. 2 et 3 implants d\'une famille débloquent une synergie.', 6, T.mute).setOrigin(0.5));
 
-    const cw = 140, ch = 176, gap = 12, total = options.length * cw + (options.length - 1) * gap;
+    const cw = 140, ch = 152, gap = 12, total = options.length * cw + (options.length - 1) * gap;
     options.forEach((o, i) => {
       const imp = o.implant, rarity = imp.rarity ?? 'common';
       const border = RARITY_COLORS[rarity], fam = imp.family ? Phaser.Display.Color.HexStringToColor(FAMILY_COLORS[imp.family]).color : border;
-      const x = W / 2 - total / 2 + i * (cw + gap), y = 60;
+      const x = W / 2 - total / 2 + i * (cw + gap), y = 66;
       const card = new Card(scene, x, y, cw, ch, { accent: rarity === 'common' ? C.cyan : border, cut: 8, hoverSfx: true, fill: rarity === 'black' ? 0x0a1a12 : undefined, onClick: () => this.pick(o), bar: false });
       // Rarity band across the top, family on the right.
       const g = scene.add.graphics();
@@ -56,15 +56,15 @@ export class ImplantChoice {
       const desc = imp.describe?.(o.level) ?? imp.description;
       card.add(txt(scene, cw / 2, 88, desc, 6, rarity === 'black' ? T.green : T.yellow).setOrigin(0.5, 0).setWordWrapWidth(cw - 14).setAlign('center').setLineSpacing(1));
       const load = Math.round(implantLoad({ ...imp, level: o.level }) - (o.upgrade ? implantLoad({ ...imp, level: o.level - 1 }) : 0));
-      card.add(chip(scene, cw / 2, 136, `CHARGE PSY +${load}`, C.magenta, { size: 5, originX: 0.5 }));
+      card.add(chip(scene, cw / 2, 116, `CHARGE PSY +${load}`, C.magenta, { size: 5, originX: 0.5 }));
       // How this card moves its family toward the next synergy.
       if (imp.family && !o.upgrade) {
         const now = counts[imp.family], next = SYNERGIES[imp.family].tiers.find(t => t.count > now);
         const line = next ? `${FAMILY_NAMES[imp.family]} ${now + 1}/${next.count}${now + 1 >= next.count ? ' → ' + next.name : ''}` : `${FAMILY_NAMES[imp.family]} au maximum`;
         const ready = now + 1 >= (next?.count ?? 99);
-        card.add(bold(scene, cw / 2, 149, line, 5, ready ? T.green : hex(fam)).setOrigin(0.5));
+        card.add(bold(scene, cw / 2, 128, line, 5, ready ? T.green : hex(fam)).setOrigin(0.5));
       }
-      card.add(keycap(scene, cw / 2, 164, `${i + 1}`, C.yellow, 5, 0.5));
+      card.add(keycap(scene, cw / 2, 141, `${i + 1}`, C.yellow, 5, 0.5));
       this.root.add(card);
     });
     // Children must be camera-fixed too, or their hit areas are offset by the camera scroll.

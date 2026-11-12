@@ -10,7 +10,8 @@ import { buildRoom, type BuiltRoom, type RoomOptions } from '../systems/roomBuil
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
 import { txt } from '../ui/text';
-import { wipeTo } from '../ui/transition';
+import { hideLoading, showLoading, wipeTo } from '../ui/transition';
+import { roomStrip } from '../ui/roomStrip';
 import { audio } from '../audio/audio';
 import { nextLine } from '../core/story';
 import type { StoryNpc } from '../data/story';
@@ -51,7 +52,7 @@ export abstract class InteriorScene extends Phaser.Scene {
   private npcs: Npc[] = [];
   private npcGroup!: Phaser.Physics.Arcade.Group;
   private prompt!: Phaser.GameObjects.Text;
-  private info!: Phaser.GameObjects.Text;
+  private info!: ReturnType<typeof roomStrip>;
   private help!: HelpOverlay;
 
   protected abstract readonly grid: RoomTemplate;
@@ -77,6 +78,8 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.save = loadSave(getStorage());
     setupCamera(this, -HUD_H).fadeIn(250, 11, 8, 32);
     audio.setMusic('hub');
+    // Covered until the 3D set is built, so nothing pops in after the wipe.
+    showLoading(this, this.placeName);
 
     this.built = buildRoom(this, this.grid, 0, this.roomOptions);
     this.npcGroup = this.physics.add.group({ immovable: true });
@@ -94,14 +97,13 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.setup3d();
 
     this.help = new HelpOverlay(this);
-    txt(this, 4, -HUD_H + 3, `NEON CITY — ${this.placeName}`, 7, '#00f0ff');
-    this.info = txt(this, CONFIG.WIDTH - 4, -HUD_H + 3, '', 7, '#f5e663').setOrigin(1, 0);
+    this.info = roomStrip(this, this.placeName);
     this.prompt = txt(this, 0, 0, '', 7, '#e8e8ff').setOrigin(0.5).setDepth(50).setStroke('#05030f', 3);
     this.refreshInfo();
   }
 
   protected refreshInfo() {
-    this.info.setText(`${this.save.credits}¢   Runs : ${this.save.runs}   Record : secteur ${this.save.bestRoom}`);
+    this.info.setInfo(this.save.credits, this.save.runs, this.save.bestRoom);
   }
 
   protected persistSave(s: SaveData) {
@@ -154,7 +156,7 @@ export abstract class InteriorScene extends Phaser.Scene {
           return f.facing === 'u' ? { x: 0, y: -1 } : f.facing === 's' ? { x: f.flip ? -1 : 1, y: 0 } : { x: f.flip ? -0.35 : 0.35, y: 1 };
         }, (): AnimName => (moving() ? 'walk' : n.speaking || n.activity === 'talk' || n.activity === 'phone' || n.activity === 'cook' || n.activity === 'dance' ? 'talk' : 'idle'), 0, n.seat);
       }
-    }).catch(e => console.error('interior 3D', e));
+    }).catch(e => console.error('interior 3D', e)).finally(() => { if (this.view3d === view) hideLoading(); });
   }
 
   /** Invisible solid rectangle (left, top, width, height in world px): furniture footprints. */

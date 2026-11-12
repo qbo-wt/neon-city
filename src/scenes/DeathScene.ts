@@ -51,6 +51,7 @@ export class DeathScene extends Phaser.Scene {
     pips(g, x0 + 8, y0 + 36, data.roomReached, CONFIG.ROOMS_PER_RUN, C.cyan, 9.5, 3.5);
     bold(this, x0 + cw + gx + 8, y0 + 8, 'CRÉDITS RAPATRIÉS', 5, T.yellow).setOrigin(0, 0.5);
     title(this, x0 + cw + gx + 8, y0 + 26, `${data.creditsEarned}¢`, 26, T.yellow).setFontStyle('600').setOrigin(0, 0.5);
+    txt(this, x0 + cw + gx + 8, y0 + 37, 'Versés sur ton compte à la planque.', 5, T.mute).setOrigin(0, 0.5);
 
     const extra: [string, number][] = [];
     if (data.heat) extra.push([`NOTORIÉTÉ ${data.heat} : CRÉDITS x${(1 + data.heat * 0.1).toFixed(1)}`, C.magenta]);
