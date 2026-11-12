@@ -151,7 +151,7 @@ export abstract class InteriorScene extends Phaser.Scene {
         view.character(n, 'npc', modelFor(n.look), () => {
           if (moving()) return { x: body.velocity.x, y: body.velocity.y };
           // Whoever talks turns to the player.
-          if (n.speaking && n.activity !== 'cook' && n.activity !== 'play' && n.activity !== 'eat') return { x: this.player.x - n.x, y: this.player.y - n.y };
+          if (n.speaking && !(n.seat && n.look !== 'npc-nyx') && n.activity !== 'cook' && n.activity !== 'play' && n.activity !== 'eat') return { x: this.player.x - n.x, y: this.player.y - n.y };
           const f = n.faceDir;
           return f.facing === 'u' ? { x: 0, y: -1 } : f.facing === 's' ? { x: f.flip ? -1 : 1, y: 0 } : { x: f.flip ? -0.35 : 0.35, y: 1 };
         }, (): AnimName => (moving() ? 'walk' : n.speaking || n.activity === 'talk' || n.activity === 'phone' || n.activity === 'cook' || n.activity === 'dance' ? 'talk' : 'idle'), 0, n.seat);
