@@ -4,6 +4,7 @@ import type { SaveData } from '../core/save';
 import { CODEX, CODEX_TIERS } from '../data/codex';
 import { ENEMIES, type EnemyId } from '../data/enemies';
 import { title, txt } from './text';
+import { portraitTexture } from '../three/portraits';
 import { C, T, bold, chip, cutPoly, hints, pinToCamera, pips, screenFrame, stripes } from './kit';
 
 const ORDER: EnemyId[] = ['runner', 'gunner', 'brute', 'drone', 'bomber', 'hacker', 'warden', 'boss'];
@@ -33,9 +34,15 @@ export class CodexPanel {
       g.lineStyle(0.5, kills ? C.cyan : C.line, kills ? 0.9 : 0.7).strokePoints(cutPoly(14, y + 1, 26, 26, [4, 0, 4, 0]), true);
       if (!kills) stripes(g, 15, y + 2, 24, 24, C.white, 0.05, 3, 1);
       root.add(g);
+      // The anime character's bust; the old pixel sprite stands in until it is rendered.
+      const key = `portrait-${id}${kills ? '' : '-dark'}`;
       const big = id === 'warden' || id === 'boss' || id === 'brute';
-      const img = s.add.image(27, y + 14, `en-${id}`, 'd-idle0').setScale(big ? 0.75 : 1);
-      if (!kills) img.setTint(0x000000).setAlpha(0.7);
+      const img = s.textures.exists(key) ? s.add.image(27, y + 14, key).setDisplaySize(25, 25)
+        : s.add.image(27, y + 14, `en-${id}`, 'd-idle0').setScale(big ? 0.75 : 1);
+      if (!kills && !s.textures.exists(key)) img.setTint(0x000000).setAlpha(0.7);
+      if (!s.textures.exists(key)) void portraitTexture(s, id, !kills).then(k => {
+        if (k && img.active) img.setTexture(k).setScale(1).setDisplaySize(25, 25).clearTint().setAlpha(1);
+      });
       root.add(img);
       const [desc, tip, lore] = CODEX[id];
       if (!kills) {
