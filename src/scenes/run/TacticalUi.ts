@@ -24,6 +24,8 @@ export type SlotState = (s: SpellDef, i: number) => string | null;
 export class TacticalUi {
   private root: Phaser.GameObjects.Container;
   private slots: Phaser.GameObjects.Container[] = [];
+  private slotRects: Phaser.GameObjects.Rectangle[] = [];
+  private hovered: number | null = null;
   private stats: Phaser.GameObjects.Text;
   private endBtn: Phaser.GameObjects.Container;
   private endLabel: Phaser.GameObjects.Text;
@@ -57,9 +59,28 @@ export class TacticalUi {
     this.hintText = txt(scene, W / 2, top - 8, '', 6, '#e8e8ff').setOrigin(0.5).setStroke('#05030f', 3);
     this.root.add([this.tip, this.msg, this.timeline, this.info, this.roundText, this.hintText]);
     this.root.setScrollFactor(0, 0, true);
+    // Hover is worked out from the pointer, not from over/out events on the buttons: the bar is
+    // rebuilt on every refresh, and a button destroyed under the cursor never sends its "out".
+    const track = (p: Phaser.Input.Pointer) => {
+      const hit = this.root.visible ? scene.input.hitTestPointer(p) : [];
+      const i = this.slotRects.findIndex(r => hit.includes(r));
+      this.setHover(i < 0 ? null : i);
+    };
+    scene.input.on('pointermove', track);
+    scene.input.on('gameout', () => this.setHover(null));
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { scene.input.off('pointermove', track); });
   }
 
-  setVisible(v: boolean) { this.root.setVisible(v); }
+  private setHover(i: number | null) {
+    if (i === this.hovered) return;
+    this.hovered = i;
+    this.h.hoverSpell(i);
+  }
+
+  setVisible(v: boolean) {
+    this.root.setVisible(v);
+    if (!v) this.setHover(null);
+  }
 
   /** End-turn button text: "FIN DU TOUR", "PRÊT", or hidden. */
   setButton(label: string | null) {
@@ -78,6 +99,7 @@ export class TacticalUi {
   setSpells(spells: SpellDef[], state: SlotState, selected: number | null, cd: Record<string, number>) {
     this.slots.forEach(s => s.destroy());
     this.slots = [];
+    this.slotRects = [];
     const top = CONFIG.HEIGHT - BAR_H;
     spells.forEach((s, i) => {
       const x = SLOTS_X + i * (SLOT + GAP) + SLOT / 2, y = top + BAR_H / 2;
@@ -86,8 +108,7 @@ export class TacticalUi {
       const r = this.scene.add.rectangle(0, 0, SLOT, SLOT, sel ? 0x2a2410 : 0x140f2b).setStrokeStyle(1, sel ? COLORS.yellow : on ? s.color : 0x3a3550)
         .setInteractive({ useHandCursor: true });
       r.on('pointerdown', (p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { if (p.button === 0) { e.stopPropagation(); this.h.selectSpell(i); } });
-      r.on('pointerover', () => this.h.hoverSpell(i));
-      r.on('pointerout', () => this.h.hoverSpell(null));
+      this.slotRects.push(r);
       c.add(r);
       c.add(txt(this.scene, 0, -1, s.icon, 8, on ? hex(s.color) : '#5a5578').setOrigin(0.5));
       c.add(txt(this.scene, -SLOT / 2 + 2, -SLOT / 2 + 1, `${i + 1}`, 5, '#8a86b0'));
