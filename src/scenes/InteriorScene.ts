@@ -19,10 +19,9 @@ import { Interior3D, type InteriorStyle } from '../three/Interior3D';
 import { environment, showStage, stage, stageOpacity, fadeVisibility } from '../three/stage';
 import type { AnimName } from '../three/rigs';
 
-/** Which Mixamo model plays which 2D look. Residents cycle through the street faces. */
-const RESIDENT_MODELS = ['civil2', 'runner', 'gunner', 'hacker', 'civil5', 'bomber', 'civil3', 'brute', 'civil1', 'civil4'];
-const modelFor = (look: string) => look === 'npc-lo' ? 'civil1' : look === 'npc-doc' ? 'civil4' : look === 'npc-nyx' ? 'civil3'
-  : look.startsWith('res-') ? RESIDENT_MODELS[Number(look.slice(4)) % RESIDENT_MODELS.length] : 'civil2';
+/** Which anime avatar plays which 2D look. Residents cycle through ten faces. */
+const modelFor = (look: string) => look === 'npc-lo' ? 'lo' : look === 'npc-doc' ? 'doc' : look === 'npc-nyx' ? 'nyx'
+  : look.startsWith('res-') ? `res${Number(look.slice(4)) % 10}` : 'res0';
 /** 2D textures the 3D room builds itself (floor, walls, doors) or that only mark light. */
 const SKIP_3D = /^(floor-|wall-|cap-|door|shadow$|glow$|tile-)/;
 

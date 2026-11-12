@@ -4,7 +4,7 @@ import { COLORS, CONFIG } from '../config';
 import type { Pt, Unit } from '../tactics/types';
 import { CELL, type World3D } from './World3D';
 import { DroneRig, MannequinRig, PropRig, type AnimName, type Rig } from './rigs';
-import { MixamoRig, mixamoAvailable } from './mixamo';
+import { CAST, CharacterRig } from './characters';
 
 export type PoseKind = 'windup' | 'strike' | 'hurt' | 'charge';
 
@@ -71,16 +71,13 @@ export class UnitView3D {
       this.rig = new MannequinRig(npcKey ? 'npc' : k);
       // The real character replaces the stand-in as soon as it is loaded (if its files are there).
       const kindKey = npcKey ? 'npc' : k;
-      void mixamoAvailable().then(ok => {
-        if (!ok || this.dead) return;
-        const real = new MixamoRig(kindKey, kindKey === 'brute' ? 1.15 : kindKey === 'boss' || kindKey === 'warden' ? 1.2 : 1);
-        void real.ready.then(loaded => {
-          if (!loaded || this.dead) return;
-          this.holder.remove(this.rig.root);
-          this.holder.add(real.root);
-          this.rig = real;
-          real.play('idle');
-        });
+      const real = new CharacterRig(CAST[kindKey] ?? 'res0', kindKey === 'brute' ? 1.2 : kindKey === 'boss' || kindKey === 'warden' ? 1.25 : 1);
+      void real.ready.then(loaded => {
+        if (!loaded || this.dead) return;
+        this.holder.remove(this.rig.root);
+        this.holder.add(real.root);
+        this.rig = real;
+        real.play('idle');
       });
     }
     this.holder.add(this.rig.root);

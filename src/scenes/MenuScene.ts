@@ -7,7 +7,7 @@ import { audio } from '../audio/audio';
 import { environment, fadeVisibility, showStage, stage, stageOpacity } from '../three/stage';
 import { generateArena } from '../tactics/arena';
 import { createRng } from '../core/rng';
-import { MixamoRig } from '../three/mixamo';
+import { CharacterRig } from '../three/characters';
 import type * as THREE from 'three';
 
 export class MenuScene extends Phaser.Scene {
@@ -16,7 +16,7 @@ export class MenuScene extends Phaser.Scene {
 
   constructor() { super(SCENES.Menu); }
 
-  private rigs: MixamoRig[] = [];
+  private rigs: CharacterRig[] = [];
   private t = 0;
 
   create() {
@@ -32,9 +32,9 @@ export class MenuScene extends Phaser.Scene {
       if (!this.scene.isActive()) return;
       world.frameBoard(W * CONFIG.ZOOM, H * CONFIG.ZOOM, 0);
       world.zoomAt(1.9, W * CONFIG.ZOOM * 0.5, H * CONFIG.ZOOM * 0.62, W * CONFIG.ZOOM, H * CONFIG.ZOOM);
-      const people: [string, number, number, number][] = [['player', 7, 8, 0.4], ['runner', 9, 7, -2.4], ['hacker', 10, 7, -2], ['civil2', 5, 9, 1.2], ['civil3', 6, 10, 1.6]];
+      const people: [string, number, number, number][] = [['hero', 7, 8, 0.4], ['runner', 9, 7, -2.4], ['hacker', 10, 7, -2], ['res3', 5, 9, 1.2], ['res6', 6, 10, 1.6]];
       for (const [kind, x, y, yaw] of people) {
-        const r = new MixamoRig(kind === 'civil2' || kind === 'civil3' ? 'npc' : kind, 1, kind.startsWith('civil') ? kind : undefined);
+        const r = new CharacterRig(kind);
         // Never on a parked car: the first free cell along the row.
         let cx = x;
         while (cx < board.w - 1 && board.cells[y * board.w + cx] !== 'floor') cx++;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { World3D } from './World3D';
-import { MixamoRig, mixamoAvailable } from './mixamo';
+import { CAST, CharacterRig } from './characters';
 import { MannequinRig, type AnimName, type Rig } from './rigs';
 
 /**
@@ -342,11 +342,8 @@ export class Interior3D {
     this.add(holder);
     const c: Char = { rig, holder, src, face, anim, offsetY };
     this.chars.push(c);
-    void mixamoAvailable().then(ok => {
-      if (!ok) return;
-      const real = new MixamoRig(kind, 1, model);
-      void real.ready.then(loaded => { if (!loaded) return; holder.remove(rig.root); holder.add(real.root); rig = real; c.rig = real; });
-    });
+    const real = new CharacterRig(model ?? CAST[kind] ?? 'res0');
+    void real.ready.then(loaded => { if (!loaded) return; holder.remove(rig.root); holder.add(real.root); rig = real; c.rig = real; });
   }
 
   update(dt: number) {
