@@ -30,14 +30,18 @@ export const HALL = {
   /** Where the player comes out of each door. */
   spawn: { apartment: { x: 148, y: 106 }, doc: { x: 46, y: 106 }, net: { x: 438, y: 106 } },
   blockers: [
-    [176, 94, 80, 14], // ramen counter
-    [254, 80, 54, 14], // vending + arcade
-    [60, 192, 54, 22], // couch
-    [372, 196, 76, 28], // game corner
-    [150, 200, 56, 12], // bench
-    [262, 200, 56, 12], // bench
-    [64, 80, 12, 12], // plant between the clinic and 3710
-    [112, 172, 14, 12], // bin + mop
+    [173, 92, 84, 18], // ramen counter
+    [175, 110, 80, 10], // stools
+    [250, 80, 32, 18], // vending machine
+    [278, 80, 31, 27], // arcade cabinet
+    [56, 188, 62, 30], // couch
+    [36, 206, 22, 16], // boxes
+    [366, 194, 82, 32], // game corner
+    [148, 193, 60, 19], // bench
+    [260, 193, 60, 19], // bench
+    [63, 80, 16, 14], // plant between the clinic and 3710
+    [228, 208, 16, 14], // plant
+    [109, 164, 30, 20], // bin + wet floor sign
   ] as [number, number, number, number][],
 };
 

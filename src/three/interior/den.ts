@@ -25,12 +25,14 @@ export const DEN = {
   exit: { x: 56, y: 100 },
   spawn: { x: 58, y: 112 },
   blockers: [
-    [88, 80, 116, 16], // racks left
-    [296, 80, 172, 16], // racks right
-    [208, 106, 84, 14], // desk
+    [86, 80, 118, 18], // racks left
+    [294, 80, 174, 18], // racks right
+    [206, 104, 88, 22], // desk
+    [236, 134, 28, 16], // Nyx chair
     [56, 178, 34, 20], // beanbag
-    [380, 194, 64, 22], // tank
+    [378, 194, 68, 22], // tank
     [100, 196, 40, 16], // crates
+    [444, 104, 12, 14], // plant
   ] as [number, number, number, number][],
 };
 

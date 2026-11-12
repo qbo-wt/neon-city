@@ -31,20 +31,22 @@ export const APT = {
   /** Furniture footprints (left, top, w, h). */
   blockers: [
     [44, 80, 74, 13], // weapon locker
-    [120, 80, 20, 12], // plant
-    [176, 80, 82, 17], // desk
-    [240, 98, 16, 10], // chair
-    [313, 80, 26, 17], // server
-    [341, 80, 74, 16], // kitchen
-    [32, 122, 70, 32], // bed
-    [32, 106, 24, 14], // nightstand
-    [226, 152, 46, 14], // low table
-    [212, 190, 78, 22], // couch
-    [182, 196, 14, 12], // floor lamp
-    [306, 160, 26, 18], // armchair
-    [420, 186, 28, 26], // big plant
+    [121, 80, 18, 14], // plant
+    [158, 84, 16, 14], // plant by the desk
+    [174, 80, 84, 18], // desk
+    [234, 96, 28, 16], // chair
+    [312, 80, 28, 18], // server
+    [340, 80, 78, 17], // kitchen
+    [32, 113, 72, 41], // bed
+    [32, 95, 24, 17], // nightstand
+    [228, 146, 44, 24], // low table
+    [209, 184, 84, 34], // couch
+    [179, 192, 20, 18], // floor lamp
+    [302, 154, 34, 28], // armchair
+    [418, 188, 30, 24], // big plant
     [384, 202, 34, 20], // boxes
-    [128, 196, 26, 14], // laundry
+    [129, 194, 24, 17], // laundry
+    [434, 140, 14, 16], // guitar
   ] as [number, number, number, number][],
 };
 
@@ -300,8 +302,8 @@ function kitchen(v: Interior3D) {
 async function bedroom(v: Interior3D) {
   // Bed along the left wall, head to the wall.
   const bx = 66, by = 134;
-  await v.model('kaykit/bed_double_B', bx, by, { w: 2.15, yaw: -Math.PI / 2, recolor: 'night' });
-  blanket(v, at(bx + 6, by + 1, 0.54), 1.45, 1.5, 0x3a2a8a, 3).scale.y = 0.6;
+  await v.model('kaykit/bed_double_B', bx, by, { w: 2.15, yaw: -Math.PI / 2, recolor: 'night', stretch: [0.7, 1, 1] });
+  blanket(v, at(bx + 6, by + 1, 0.54), 1.45, 1.35, 0x3a2a8a, 3).scale.y = 0.6;
   await v.model('kaykit/pillow_B', bx - 22, by - 7, { s: 0.55, h: 0.56, yaw: 0.3, recolor: 'night' });
   await v.model('kaykit/pillow_A', bx - 24, by + 7, { s: 0.55, h: 0.6, yaw: -0.5, recolor: 'night' });
   cat(v, bx + 12, by - 4, 0.6, 0xf0ecf8);
@@ -309,10 +311,10 @@ async function bedroom(v: Interior3D) {
   v.box(at(bx - 4, by + 9, 0.62), 0.34, 0.015, 0.24, v.mat(0x1a1428));
   v.screen(at(bx - 4, by + 6, 0.73), 0.32, 0.2, codeRain('#ff2a6d', 9, 8), { tilt: -0.3, fps: 6, res: 64 });
   // Nightstand and lamp.
-  await v.model('kaykit/cabinet_small', 44, 114, { w: 0.55, recolor: 'night' });
-  await v.model('kaykit/lamp_table', 44, 113, { height: 0.42, h: 0.55, glow: 0.6 });
-  halo(v, at(44, 113, 0.82), 0.9, 0xff9a6a, 0.5);
-  v.pool(46, 120, 1.2, 0xff8c5a, 0.25);
+  await v.model('kaykit/cabinet_small', 44, 104, { w: 0.55, recolor: 'night' });
+  await v.model('kaykit/lamp_table', 44, 103, { height: 0.42, h: 0.55, glow: 0.6 });
+  halo(v, at(44, 103, 0.82), 0.9, 0xff9a6a, 0.5);
+  v.pool(46, 110, 1.2, 0xff8c5a, 0.25);
   // Clothes on the floor, sneakers.
   const cloth = [0x00b8d0, 0xff2a6d, 0x2a2238];
   for (let i = 0; i < 3; i++) blanket(v, at(112 + i * 7, 170 + (i % 2) * 6, 0.02), 0.45, 0.32, cloth[i], 20 + i).scale.set(1, 0.5, 1);

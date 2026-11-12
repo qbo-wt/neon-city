@@ -58,7 +58,7 @@ export class BuildingScene extends InteriorScene {
     res(380, 126, 'wander', { bounds: lane });
     res(185, 108, 'eat', { faceUp: true, seat: 0.66 });
     res(225, 108, 'eat', { faceUp: true, seat: 0.66 });
-    res(293, 104, 'play', { faceUp: true, lines: SPECIAL_LINES.gamer });
+    res(293, 113, 'play', { faceUp: true, lines: SPECIAL_LINES.gamer });
     res(116, 92, 'phone', { flip: true });
     res(386, 94, 'lean', { flip: true });
     res(80, 197, 'sit', { seat: 0.42 });

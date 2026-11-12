@@ -25,16 +25,19 @@ export const CLINIC = {
   exit: { x: 424, y: 100 },
   spawn: { x: 424, y: 112 },
   blockers: [
-    [40, 80, 100, 14], // workbench under the limb racks
-    [150, 80, 38, 12], // cabinet
-    [290, 80, 62, 12], // jar cabinet
-    [222, 136, 36, 26], // chair
-    [186, 150, 18, 12], // robot arm
-    [280, 120, 10, 8], // drip stand
-    [262, 172, 16, 10], // tray
-    [44, 176, 74, 26], // gurney
-    [364, 178, 62, 26], // desk
-    [418, 132, 26, 16], // bins
+    [38, 80, 104, 16], // workbench under the limb racks
+    [147, 80, 42, 14], // cabinet
+    [286, 80, 68, 14], // jar cabinet
+    [224, 132, 32, 38], // chair
+    [185, 148, 20, 16], // robot arm
+    [278, 118, 14, 12], // drip stand
+    [260, 170, 20, 13], // tray
+    [43, 178, 74, 24], // gurney
+    [122, 156, 8, 42], // curtain
+    [360, 178, 70, 34], // desk + stool
+    [416, 132, 30, 18], // bins
+    [430, 206, 20, 16], // box
+    [438, 92, 12, 14], // plant
   ] as [number, number, number, number][],
 };
 
