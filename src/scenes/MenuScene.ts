@@ -22,6 +22,7 @@ export class MenuScene extends Phaser.Scene {
   private stageA = 0;
   private built = false;
   private play?: Button;
+  private help?: HelpOverlay;
   private sky?: Skyline;
   private rain?: FineRain;
 
@@ -90,7 +91,9 @@ export class MenuScene extends Phaser.Scene {
     this.play = new Button(this, 30, 148, 150, 22, 'JOUER', { accent: C.yellow, solid: true, key: 'ENTRÉE', size: 14, hoverSfx: true, onClick: () => this.start() });
     const help = new HelpOverlay(this);
     new Button(this, 30, 176, 150, 16, 'COMMANDES', { accent: C.cyan, key: 'I', size: 9, hoverSfx: true, onClick: () => help.toggle() });
-    this.input.keyboard!.once('keydown-ENTER', () => this.start());
+    new Button(this, 30, 196, 150, 16, 'GUIDE DU RUNNER', { accent: C.magenta, size: 9, hoverSfx: true, onClick: () => help.openGuide() });
+    this.help = help;
+    this.input.keyboard!.on('keydown-ENTER', () => this.start());
     hints(this, 0, H - 14, [['ENTRÉE', 'Jouer'], ['I', 'Commandes'], ['M', 'Son']], C.yellow).setX(30);
     txt(this, W - 26, H - 14, 'Avatars VIPE Heroes (CC-BY) · décors Kenney & KayKit (CC0)', 5, T.off).setOrigin(1, 0.5);
 
@@ -99,7 +102,7 @@ export class MenuScene extends Phaser.Scene {
 
   private started = false;
   private start() {
-    if (this.started) return;
+    if (this.started || this.help?.isOpen) return;
     this.started = true;
     audio.sfx('uiOpen');
     this.play?.setCardState('sel');

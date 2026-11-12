@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config';
-import { C, T, cutPoly, hints, keycap, panel, pinToCamera } from './kit';
+import { Button, C, T, cutPoly, hints, keycap, panel, pinToCamera } from './kit';
+import { GuidePanel } from './GuidePanel';
 import { title, txt } from './text';
 
 const HUB_KEYS: [string, string][] = [
@@ -25,11 +26,14 @@ const RUN_KEYS: [string, string][] = [
 /** An "i" button in a screen corner; click it (or press I) to toggle the list of controls. */
 export class HelpOverlay {
   private panel?: Phaser.GameObjects.Container;
+  /** the full runner's guide, opened from this panel */
+  readonly guide: GuidePanel;
 
   private keys: [string, string][];
 
   constructor(private scene: Phaser.Scene, x = CONFIG.WIDTH - 12, y = CONFIG.HEIGHT - 12, mode: 'hub' | 'run' = 'hub') {
     this.keys = mode === 'run' ? RUN_KEYS : HUB_KEYS;
+    this.guide = new GuidePanel(scene);
     const g = scene.add.graphics();
     const draw = (hot: boolean) => {
       g.clear();
@@ -54,12 +58,20 @@ export class HelpOverlay {
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.input.keyboard?.off('keydown-I', onKey));
   }
 
-  get isOpen() { return !!this.panel; }
+  get isOpen() { return !!this.panel || this.guide.isOpen; }
+
+  /** Closes this panel and opens the full guide. */
+  openGuide() {
+    this.panel?.destroy();
+    this.panel = undefined;
+    this.guide.open();
+  }
 
   toggle() {
+    if (this.guide.isOpen) { this.guide.close(); return; }
     if (this.panel) { this.panel.destroy(); this.panel = undefined; return; }
     const s = this.scene, W = CONFIG.WIDTH, H = CONFIG.HEIGHT, rowH = 13;
-    const pw = 300, ph = 34 + this.keys.length * rowH;
+    const pw = 300, ph = 40 + this.keys.length * rowH;
     const left = (W - pw) / 2, top = (H - ph) / 2;
     const items: Phaser.GameObjects.GameObject[] = [
       s.add.rectangle(W / 2, H / 2, W, H, C.deep, 0.45),
@@ -71,7 +83,8 @@ export class HelpOverlay {
       items.push(keycap(s, left + 12, y, k, C.yellow, 5));
       items.push(txt(s, left + 124, y, v, 6, T.text).setOrigin(0, 0.5));
     });
-    items.push(hints(s, W / 2, top + ph - 8, [['I', 'Fermer']], C.cyan));
+    items.push(new Button(s, left + 12, top + ph - 15, 96, 11, 'GUIDE COMPLET', { accent: C.yellow, solid: true, font: 'ui', size: 5.5, onClick: () => this.openGuide() }));
+    items.push(hints(s, left + pw - 40, top + ph - 9.5, [['I', 'Fermer']], C.cyan));
     this.panel = s.add.container(0, 0, items).setDepth(2000);
     pinToCamera(this.panel);
   }

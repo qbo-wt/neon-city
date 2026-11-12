@@ -1076,6 +1076,8 @@ export class RunScene extends Phaser.Scene {
     if (this.choice) { this.choice.tick(); this.publishHud(); return; }
     if (this.panel) { this.panel.tick(); this.publishHud(); return; }
     this.run.timeMs += real;
+    // Help or guide open: the fight keeps running but takes no keys (Espace, numbers…).
+    if (this.help?.isOpen) { this.publishHud(); return; }
     if (this.controls.confirm()) this.onConfirm();
     if (this.controls.escape()) { this.selected = null; this.refreshUi(); }
     const n = this.controls.numberPressed();
