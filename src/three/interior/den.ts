@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { at, BACK_Y as B, MY, type Interior3D } from '../Interior3D';
 import { codeRain, graph, leds, terminal } from './fx';
-import { canvasTex, rng } from './paint';
+import { rng } from './paint';
 import { cans, carton, halo, plant } from './props';
 
 /**
@@ -106,9 +106,9 @@ async function desk(v: Interior3D, dark: THREE.Material) {
   const r = rng(8);
   for (let i = 0; i < 7; i++) {
     const sx = 100 + r() * 340;
-    v.cable([at(sx, B + 14, 0.3), at(sx, B + 22, 0.02), at((sx + x) / 2, 110 + r() * 20, 0.02), at(x + (r() - 0.5) * 60, cy + 4, 0.02)], 0.018 + r() * 0.012, [0x0c1012, 0x14201a, 0x0a1a20][i % 3]);
+    v.cable([at(sx, B + 14, 0.3), at(sx, B + 22, 0.02), at((sx + x) / 2, B + 24 + r() * 6, 0.02), at(x + (r() - 0.5) * 60, cy - 2, 0.02)], 0.018 + r() * 0.012, [0x0c1012, 0x14201a, 0x0a1a20][i % 3]);
   }
-  v.cable([at(160, B + 10, 0.02), at(200, 150, 0.01), at(x - 20, cy + 8, 0.02)], 0.01, 0, { glow: 0x39ff88 });
+  v.cable([at(150, B + 16, 0.02), at(190, B + 20, 0.015), at(x - 34, B + 24, 0.015), at(x - 30, cy - 2, 0.02)], 0.01, 0, { glow: 0x39ff88 });
 }
 
 /** Beanbag, jellyfish tank, crates, junk, floor cables in front. */
@@ -137,8 +137,6 @@ function floor(v: Interior3D) {
   carton(v, 128, 206, 0.5, 0.35, 0.45, { color: 0x3a4a40, yaw: -0.2 });
   carton(v, 116, 204, 0.4, 0.3, 0.35, { h: 0.45, color: 0x1a2a24, yaw: 0.4 });
   plant(v, 452, 112, 0.9, { seed: 40, leaf: 0x1a6a4a });
-  // Floor cable runs and a hatch, drawn tags.
-  const tag = canvasTex(256, 64, (c) => { c.clearRect(0, 0, 256, 64); c.fillStyle = 'rgba(57,255,136,0.45)'; c.font = '600 44px monospace'; c.fillText('NYX//0xFF', 8, 48); });
-  v.decal(170, 160, 1.8, 0.45, new THREE.MeshBasicMaterial({ map: tag, transparent: true, depthWrite: false, toneMapped: false }), 0.004);
-  for (let i = 0; i < 3; i++) v.cable([at(0, 150 + i * 12, 0.02), at(90, 160 + i * 8, 0.02), at(200, 140, 0.02)], 0.02, 0x0a0e10);
+  // Her tag, in neon over the right-hand racks.
+  v.neon('NYX//0xFF', 376, 2.86, 0.6, 0x39ff88, { washK: 0.6 });
 }
