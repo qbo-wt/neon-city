@@ -6,7 +6,8 @@ import { readdirSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const DIRS = ['assets/vrm', 'assets/mixamo/anims', 'assets/kenney', 'assets/kaykit', 'assets/music'];
+// Not assets/music: the <audio> elements stream it while it plays (src/audio/audio.ts).
+const DIRS = ['assets/vrm', 'assets/mixamo/anims', 'assets/kenney', 'assets/kaykit'];
 const EXT = /\.(vrm|fbx|glb|gltf|bin|png|jpe?g|webp|ktx2|ogg|mp3)$/i;
 
 function walk(dir, out) {

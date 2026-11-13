@@ -22,6 +22,7 @@ VRM anime (VIPE Heroes, Polygonal Mind, CC-BY) dans `public/assets/vrm/`, charg�
 
 - `public/assets/kenney/<kit>/*.glb` (+ `Textures/colormap.png`, une palette par kit) : `commercial` (immeubles, auvents), `industrial`, `roads` (routes, lampadaires, barrières), `suburban`, `cars` (berline, taxi, police, van…), `station` (lits, chaises, ordis, écrans, conteneurs, tuyaux, portes, murs SF), `space` (couloirs modulaires, câbles), `arcade` (bornes d'arcade, distributeur, flipper), `market` (étagères, frigos, caisse).
 - `public/assets/kaykit/furniture/*.gltf` (+ `texture/furniturebits_texture.png`) : lits, canapés, fauteuils, tables, étagères, lampes, tapis, cadres, plantes.
+- **Seuls les modèles référencés dans `src/` sont dans le repo** (`node scripts/prune-kits.mjs --delete` retire les autres ; les noms construits à l'exécution vont dans sa liste `DYNAMIC`). Les kits complets sont dans l'historique git (commit qui précède `perf: lighter first download`) : `git checkout <commit> -- public/assets/kenney/<kit>/<nom>.glb` pour en récupérer un.
 - Les palettes `colormap.png` peuvent être **recolorées** vers la palette néon (copie modifiée, ne pas écraser l'original sans raison). Ces textures-palettes ne doivent **pas** être aplaties par `stylizeScene` (qui réduit les textures photo à une couleur moyenne).
 - Les anciens assets Poly Haven (`public/assets/ph`, hors git) ne doivent plus être utilisés à terme.
 
@@ -30,4 +31,5 @@ VRM anime (VIPE Heroes, Polygonal Mind, CC-BY) dans `public/assets/vrm/`, charg�
 - three.js 0.181 sous un canvas Phaser transparent (`src/three/stage.ts`). Phaser garde toute la logique (collisions, interactions, panneaux, bulles), en coordonnées logiques 480×270 (canvas 1920×1080, `CONFIG.ZOOM = 4`).
 - Intérieurs : caméra orthographique regardant le nord, mapping pixel exact `at(px, py, h)` dans `Interior3D.ts`, pour que les bulles et invites Phaser restent alignées.
 - Rues : caméra iso orthographique, `CELL = 1.5` m, `World3D.buildBoard`.
+- Poids des assets : l'écran de chargement télécharge tout `public/assets/manifest.json` (`scripts/asset-manifest.mjs`, sans la musique, streamée). Tout nouveau VRM passe par `scripts/slim-vrm.mjs` puis `scripts/compress-vrm.mjs` (textures 1024 px en PNG palette, morphs en accessors sparse, index 16 bits) : ~1,1 Mo par perso au lieu de ~3.
 - Tests : `npx vitest run` (93), `npx tsc --noEmit -p .`, `npx vite build`. Dev server : `http://localhost:5199/?debug` (`window.__NEON__` = jeu Phaser). Scripts Playwright d'exemple dans le scratchpad `pw/` (Edge headless, `--use-angle=d3d11`).
