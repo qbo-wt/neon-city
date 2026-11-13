@@ -167,6 +167,8 @@ export interface Unit {
   /** bosses: bonuses gained when HP drops under 50 % then 25 % (each applied once) */
   phases?: { pa: number; pm: number; dmg: number }[];
   phase?: number;
+  /** per-fight counters kept by hooks (relics, arena rules); cloneFight copies them */
+  mem: Record<string, number>;
   dead: boolean;
   /** last facing on the board, for the renderer */
   face: Pt;

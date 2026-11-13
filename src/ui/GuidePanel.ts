@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config';
 import { SPELLS } from '../data/spells';
+import { RELICS } from '../data/relics';
+import { RELIC_RARITY_COLORS, RELIC_RARITY_NAMES } from '../core/relics';
+import type { Relic } from '../core/types';
 import { audio } from '../audio/audio';
 import { zoneIcon, zoneLabel } from './spellInfo';
 import { hex, title, txt } from './text';
@@ -14,11 +17,19 @@ type Block =
   | { keys: [string, string][] }
   | { list: [string, string][] }
   | { zones: string[] }
-  | { chips: [string, number][] };
+  | { chips: [string, number][] }
+  | { relics: readonly Relic[] };
 
 interface Chapter { name: string; pages: Block[][] }
 
 const PSY = CONFIG;
+const RELICS_PER_PAGE = 8;
+
+/** Every relic, a page at a time, from the game's own data. */
+const relicPages: Block[][] = Array.from({ length: Math.ceil(RELICS.length / RELICS_PER_PAGE) }, (_, i) => [
+  { h: `Catalogue ${i + 1}/${Math.ceil(RELICS.length / RELICS_PER_PAGE)}` },
+  { relics: RELICS.slice(i * RELICS_PER_PAGE, (i + 1) * RELICS_PER_PAGE) },
+]);
 
 /** Everything a new runner needs, chapter by chapter. Numbers come from the game's own config. */
 const CHAPTERS: Chapter[] = [
@@ -81,7 +92,7 @@ const CHAPTERS: Chapter[] = [
     { h: 'Poussée' },
     { p: `Certains sorts repoussent ou attirent. Une cible poussée contre un mur ou une créature prend ${5} dégâts par case qu'elle n'a pas pu faire (plus tes bonus de poussée). La créature heurtée en prend la moitié.` },
     { h: 'Couverts et objets cassables' },
-    { p: 'Murs, voitures, barrières et créatures bloquent la ligne de vue : mets-les entre toi et les tireurs. Caisses, barils, poubelles et distributeurs se cassent ; ils lâchent parfois des crédits ou des soins, très rarement une relique.' },
+    { p: 'Murs, voitures, barrières et créatures bloquent la ligne de vue : mets-les entre toi et les tireurs. Caisses, barils, poubelles et distributeurs se cassent ; ils lâchent souvent des crédits ou des soins, rarement une relique.' },
     { chips: [['CAISSE 14 PV', C.yellow], ['BARIL 18 PV', C.orange], ['POUBELLE 8 PV', C.green], ['DISTRIBUTEUR 26 PV', C.cyan]] },
   ]] },
   { name: 'PSYCHOSE', pages: [[
@@ -137,6 +148,20 @@ const CHAPTERS: Chapter[] = [
     { h: 'Marché noir' },
     { p: 'Dès le secteur 3, une carte du marché noir peut apparaître : un gros avantage, avec une contrepartie.' },
   ]] },
+  { name: 'RELIQUES', pages: [[
+    { h: 'Des objets uniques' },
+    { p: `Une relique reste avec toi jusqu'à la fin de la run, sans charge psy. Il en existe ${RELICS.length}, et la plupart changent ta façon de jouer : effets aux éliminations, en début ou fin de tour, quand tu encaisses, selon ta position, sur la psychose, les crédits, les implants ou tes sorts.` },
+    { h: 'Où les trouver' },
+    { list: [
+      ['BOSS', 'Le Lieutenant des Rats (secteur 5) en laisse toujours une, au choix parmi trois.'],
+      ['ÉLITE', 'Une fois sur deux, une relique au choix parmi deux, en plus de l\'implant.'],
+      ['MAMA KIT', 'En vend une sous le comptoir.'],
+      ['COFFRE', 'Parfois une relique au fond du coffre.'],
+      ['OBJETS CASSABLES', 'Rarement, au milieu des crédits et des soins.'],
+    ] },
+    { chips: [['COMMUNE', 0x8a86b0], ['RARE', C.cyan], ['LÉGENDAIRE', C.yellow], ['MAUDITE', C.green]] },
+    { tip: 'Les maudites donnent beaucoup, mais se paient. Échap refuse un choix de reliques. En run, survole la ligne RELIQUES au-dessus de la barre pour relire leurs effets.' },
+  ], ...relicPages] },
   { name: 'ROUTE & RENCONTRES', pages: [[
     { h: 'Choisir sa sortie' },
     { p: 'Après chaque combat, 2 ou 3 sorties s\'ouvrent ; chacune annonce sa récompense : implant (avec sa famille), crédits, soin, coffre, rencontre ou secteur d\'élite.' },
@@ -330,6 +355,17 @@ export class GuidePanel {
         root.add(txt(s, cx, y + 36.5, zoneLabel(sp), 4.5, T.mute).setOrigin(0.5));
       });
       return y + 42;
+    }
+    if ('relics' in b) {
+      for (const r of b.relics) {
+        const col = RELIC_RARITY_COLORS[r.rarity];
+        root.add(bold(s, x, y, r.name.toUpperCase(), 5.5, col));
+        root.add(chip(s, x + w, y + 2.5, RELIC_RARITY_NAMES[r.rarity], Phaser.Display.Color.HexStringToColor(col).color, { size: 4.5, originX: 1 }));
+        const t = txt(s, x, y + 7.5, r.description, 6, T.text).setWordWrapWidth(w - 60).setLineSpacing(1.5);
+        root.add(t);
+        y += 9 + t.height;
+      }
+      return y;
     }
     let cx = x;
     for (const [label, col] of b.chips) {

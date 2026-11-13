@@ -11,16 +11,20 @@ export function baseStats(): Stats {
     psyResist: 0, implantLoadMult: 1, psyRateMult: 1, creditMult: 1, regenOnClear: 0, healMult: 1,
     startBlockers: 0, blockerAmount: CONFIG.BLOCKER_AMOUNT, bossBonusMult: 1,
     overheatPa: CONFIG.OVERHEAT_PA, overheatPsy: CONFIG.OVERHEAT_PSY,
+    psyPerKill: CONFIG.PSY_PER_KILL, psyDrainMult: 1, edgePa: 0, edgePm: 0, priceMult: 1, interest: 0, foeDamage: 0, lootBonus: 0,
   };
 }
+
+/** Extra implants each carried family counts for the synergies (relics). */
+export const synergyBonus = (relics: readonly Relic[] = []) => relics.reduce((n, r) => n + (r.synergyBonus ?? 0), 0);
 
 /** Skill nodes apply first (permanent body), then run implants (at their level), family synergies, then relics. */
 export function computeStats(implants: readonly Implant[], ownedNodes: readonly string[], relics: readonly Relic[] = []): Stats {
   let s = baseStats();
   for (const node of SKILL_NODES) if (ownedNodes.includes(node.id)) s = node.modify(s);
   for (const imp of implants) s = imp.modify(s, imp.level ?? 1);
-  for (const { synergy, tier } of activeSynergies(implants)) s = SYNERGIES[synergy].tiers[tier].modify(s);
-  for (const r of relics) s = r.modify(s);
+  for (const { synergy, tier } of activeSynergies(implants, synergyBonus(relics))) s = SYNERGIES[synergy].tiers[tier].modify(s);
+  for (const r of relics) s = r.modify(s, implants);
   // Negative resist is possible (black-market implants make psychosis climb faster).
   s.psyResist = Math.min(0.9, Math.max(-1, s.psyResist));
   s.res = Math.min(0.6, s.res);

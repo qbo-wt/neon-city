@@ -19,10 +19,11 @@ export class ImplantChoice {
   private root: Phaser.GameObjects.Container;
   private done = false;
 
-  constructor(private scene: Phaser.Scene, readonly options: Offer[], private controls: Controls, owned: readonly Implant[],
+  /** `bonus`: extra implants each carried family counts for the synergies (relic). */
+  constructor(private scene: Phaser.Scene, readonly options: Offer[], private controls: Controls, owned: readonly Implant[], bonus: number,
     private onPick: (o: Offer) => void, heading = 'CLINIQUE CLANDESTINE — CHOISIS UN IMPLANT') {
     const { WIDTH: W, HEIGHT: H } = CONFIG;
-    const counts = familyCounts(owned);
+    const counts = familyCounts(owned, bonus);
     this.root = scene.add.container(0, 0).setScrollFactor(0).setDepth(5000);
     this.root.add(backdrop(scene, 0.86, C.cyan));
     this.root.add(new GlitchText(scene, W / 2, 30, heading, 17, T.cyan, { every: 3500 }));
@@ -59,9 +60,10 @@ export class ImplantChoice {
       card.add(chip(scene, cw / 2, 116, `CHARGE PSY +${load}`, C.magenta, { size: 5, originX: 0.5 }));
       // How this card moves its family toward the next synergy.
       if (imp.family && !o.upgrade) {
-        const now = counts[imp.family], next = SYNERGIES[imp.family].tiers.find(t => t.count > now);
-        const line = next ? `${FAMILY_NAMES[imp.family]} ${now + 1}/${next.count}${now + 1 >= next.count ? ' → ' + next.name : ''}` : `${FAMILY_NAMES[imp.family]} au maximum`;
-        const ready = now + 1 >= (next?.count ?? 99);
+        // The bonus only counts for families you already carry: a first implant of a family brings it along.
+        const now = counts[imp.family], after = now > 0 ? now + 1 : 1 + bonus, next = SYNERGIES[imp.family].tiers.find(t => t.count > now);
+        const line = next ? `${FAMILY_NAMES[imp.family]} ${after}/${next.count}${after >= next.count ? ' → ' + next.name : ''}` : `${FAMILY_NAMES[imp.family]} au maximum`;
+        const ready = after >= (next?.count ?? 99);
         card.add(bold(scene, cw / 2, 128, line, 5, ready ? T.green : hex(fam)).setOrigin(0.5));
       }
       card.add(keycap(scene, cw / 2, 141, `${i + 1}`, C.yellow, 5, 0.5));

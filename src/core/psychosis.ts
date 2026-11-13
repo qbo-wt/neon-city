@@ -21,8 +21,9 @@ export function addPsy(v: number, amount: number, resist: number): number {
   return clamp(v + (amount > 0 ? amount * (1 - resist) : amount));
 }
 
-export function psyOnKill(v: number, resist: number): number {
-  return addPsy(v, CONFIG.PSY_PER_KILL, resist);
+/** `amount` is the build's psychosis per kill (a relic can make it negative). */
+export function psyOnKill(v: number, resist: number, amount: number = CONFIG.PSY_PER_KILL): number {
+  return addPsy(v, amount, resist);
 }
 
 export function applyBlocker(v: number, amount: number): number {

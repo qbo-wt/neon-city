@@ -3,7 +3,7 @@ import { generateRun, makeElite, type RoomPlan } from '../core/runMap';
 import { createRng } from '../core/rng';
 import { heatEffects, heatPoints, type HeatRanks } from '../data/heat';
 import { computeStats } from '../core/stats';
-import type { Implant, Relic } from '../core/types';
+import type { Implant, Relic, RelicRarity } from '../core/types';
 import type { Contract } from '../core/contract';
 import type { WeaponId } from '../data/weapons';
 
@@ -43,7 +43,9 @@ export interface RunState {
 /** Live values the HUD draws each frame. */
 export interface HudData {
   hp: number; maxHp: number; psy: number; credits: number; blockers: number;
-  room: number; rooms: number; implants: string[]; relics: string[];
+  room: number; rooms: number; implants: string[];
+  /** carried relics, with their effect for the hover list */
+  relics: { name: string; desc: string; rarity: RelicRarity }[];
   synergies: string[];
   /** what the current psychosis tier gives, e.g. "+25 % DÉG" */
   psyBonus: string;

@@ -1,3 +1,6 @@
+import type { FightHooks } from '../tactics/fight';
+import type { SpellDef } from '../tactics/types';
+
 /** The player's build: base values, then skill nodes, implants, synergies, relics and the weapon aspect. */
 export interface Stats {
   maxHp: number;
@@ -50,6 +53,21 @@ export interface Stats {
   /** Surchauffe: PA gained and psychosis paid */
   overheatPa: number;
   overheatPsy: number;
+  /** psychosis change on each kill (negative: kills calm you down) */
+  psyPerKill: number;
+  /** factor on the HP lost each turn at high psychosis */
+  psyDrainMult: number;
+  /** PA / PM gained at the start of your turns from 50 % psychosis */
+  edgePa: number;
+  edgePm: number;
+  /** factor on the prices of street encounters */
+  priceMult: number;
+  /** fraction of the run's credits paid as interest when you leave a sector */
+  interest: number;
+  /** extra damage dealt by enemies (0.2 = +20 %) */
+  foeDamage: number;
+  /** breakables always drop something, credits x(1 + lootBonus) */
+  lootBonus: number;
 }
 
 export type Family = 'chrome' | 'neural' | 'blood' | 'optic';
@@ -72,13 +90,29 @@ export interface Implant {
   spell?: string;
 }
 
+/** Cursed relics give a big edge with a real drawback. */
+export type RelicRarity = 'common' | 'rare' | 'legendary' | 'cursed';
+
+/**
+ * A run-long find, no psychosis load. It can change your stats (`modify`, which also sees your implants),
+ * add a spell, rework your spells, count as extra implants for the synergies, or listen to fight events.
+ */
 export interface Relic {
   id: string;
   name: string;
   description: string;
-  texture: string;
-  modify: (s: Stats) => Stats;
+  rarity: RelicRarity;
+  texture?: string;
+  modify: (s: Stats, implants: readonly Implant[]) => Stats;
   spell?: string;
+  /** applied to every spell of your bar (a private copy) */
+  editSpell?: (s: SpellDef) => void;
+  /** each family you carry counts this many more implants for the synergies */
+  synergyBonus?: number;
+  /** fight listeners; they act for the player's unit only */
+  hooks?: FightHooks;
+  /** only offered when it can do something for this spell bar */
+  fits?: (spells: readonly SpellDef[]) => boolean;
 }
 
 export interface SkillNode {

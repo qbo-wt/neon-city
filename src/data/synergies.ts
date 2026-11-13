@@ -23,15 +23,17 @@ export const SYNERGIES: Record<Family, Synergy> = {
   ] },
 };
 
-export function familyCounts(implants: readonly Implant[]): Record<Family, number> {
+/** Implants per family; `bonus` is added to every family you carry at least one of (relic). */
+export function familyCounts(implants: readonly Implant[], bonus = 0): Record<Family, number> {
   const c: Record<Family, number> = { chrome: 0, neural: 0, blood: 0, optic: 0 };
   for (const i of implants) if (i.family) c[i.family]++;
+  if (bonus) for (const f of Object.keys(c) as Family[]) if (c[f] > 0) c[f] += bonus;
   return c;
 }
 
 /** Every unlocked tier, lowest first, e.g. [{ synergy: 'chrome', tier: 0 }]. */
-export function activeSynergies(implants: readonly Implant[]): { synergy: Family; tier: number }[] {
-  const counts = familyCounts(implants), out: { synergy: Family; tier: number }[] = [];
+export function activeSynergies(implants: readonly Implant[], bonus = 0): { synergy: Family; tier: number }[] {
+  const counts = familyCounts(implants, bonus), out: { synergy: Family; tier: number }[] = [];
   for (const f of Object.keys(SYNERGIES) as Family[]) SYNERGIES[f].tiers.forEach((t, i) => { if (counts[f] >= t.count) out.push({ synergy: f, tier: i }); });
   return out;
 }

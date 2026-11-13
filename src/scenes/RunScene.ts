@@ -6,7 +6,8 @@ import { addPsy, applyBlocker, hpDrainPerTurn, psyDamageMult, psyOnKill, psyOnTu
 import { makeElite, makeEvent, type EliteMod, type Reward, type RoomPlan } from '../core/runMap';
 import { createRng, pick, type Rng } from '../core/rng';
 import { loadSave, writeSave, type SaveData } from '../core/save';
-import { computeStats, grantedSpells, totalLoad } from '../core/stats';
+import { computeStats, grantedSpells, synergyBonus, totalLoad } from '../core/stats';
+import { RELIC_RARITY_NAMES, applyRelicSpells, offerRelics, relicHooks, relicPool } from '../core/relics';
 import { getStorage } from '../core/storage';
 import type { Family, Relic, Stats } from '../core/types';
 import { ENEMIES, type EnemyId } from '../data/enemies';
@@ -162,7 +163,7 @@ export class RunScene extends Phaser.Scene {
     const geared = equip(this.run.weapon, computeStats(this.run.implants, this.run.ownedNodes, this.run.relics), this.run.aspect, this.run.aspectRank);
     const h = heatEffects(this.run.heat);
     this.stats = { ...geared.stats, healMult: geared.stats.healMult * h.healMult, psyRateMult: geared.stats.psyRateMult * h.psyRateMult };
-    this.spells = [...geared.spells, ...grantedSpells(this.run.implants, this.run.relics).map(spell), spell('overheat'), spell('blocker')];
+    this.spells = applyRelicSpells([...geared.spells, ...grantedSpells(this.run.implants, this.run.relics).map(spell), spell('overheat'), spell('blocker')], this.run.relics);
   }
 
   create() {
@@ -297,6 +298,7 @@ export class RunScene extends Phaser.Scene {
     };
     return {
       rng: Math.random,
+      price: n => Math.max(1, Math.round(n * this.stats.priceMult)),
       credits: () => this.run.creditsEarned,
       spend: n => { this.run.creditsEarned = Math.max(0, this.run.creditsEarned - n); audio.sfx('buy'); },
       gain: n => { this.run.creditsEarned += n; audio.sfx('credit'); },
@@ -311,7 +313,7 @@ export class RunScene extends Phaser.Scene {
           : offerImplants(Math.random, this.run.implants, this.run.roomIndex, opts);
         if (options.length) this.time.delayedCall(10, () => this.openImplantChoice(options, () => undefined, opts === 'black' ? 'MARCHÉ NOIR — UNE GREFFE, UN PRIX' : 'GREFFE DE RUE — CHOISIS UN IMPLANT'));
       },
-      relicLeft: () => this.relicsLeft()[0],
+      relicLeft: () => offerRelics(Math.random, this.relicsLeft())[0],
       giveRelic: r => this.grantRelic(r),
       canUpgrade: () => this.run.implants.some(canUpgrade),
       upgradeRandom: () => {
@@ -334,7 +336,7 @@ export class RunScene extends Phaser.Scene {
     const h = heatEffects(this.run.heat), ri = this.run.roomIndex;
     return {
       hpMult: h.hpMult * (1 + CONFIG.DEPTH_HP * ri) * (boss ? h.bossHpMult : 1),
-      dmgMult: h.damageMult * (1 + CONFIG.DEPTH_DAMAGE * ri),
+      dmgMult: h.damageMult * (1 + CONFIG.DEPTH_DAMAGE * ri) * (1 + this.stats.foeDamage),
       pmBonus: h.pmBonus, paBonus: boss ? h.bossPaBonus : 0, initBonus: h.initBonus, elite: this.room.elite,
     };
   }
@@ -428,6 +430,7 @@ export class RunScene extends Phaser.Scene {
     const f = createFight(this.board, [], Math.random, (kind, team, at, by) => makeSummon(kind, team, at, by));
     f.units = all;
     f.nextUid = this.uidSeq + 100;
+    f.hooks = relicHooks(this.run.relics);
     this.fight = f;
     for (const v of this.views.values()) { v.showBar = true; v.drawBar(); }
     audio.setIntensity(1);
@@ -545,7 +548,8 @@ export class RunScene extends Phaser.Scene {
       case 'psy': {
         const before = this.run.psy;
         this.run.psy = addPsy(this.run.psy, e.v, this.stats.psyResist);
-        if (view) floatText(this, view.x, view.y - 32, `+${Math.round(this.run.psy - before)} PSY`, '#39ff88', 7);
+        const d = Math.round(this.run.psy - before);
+        if (view && d) floatText(this, view.x, view.y - 32, `${d > 0 ? '+' : ''}${d} PSY`, '#39ff88', 7);
         break;
       }
       case 'prime': if (view) { view.setPrimed(true); audio.sfx('windup'); floatText(this, view.x, view.y - 30, 'AMORCÉ !', '#f5e663', 8); } break;
@@ -609,8 +613,13 @@ export class RunScene extends Phaser.Scene {
     this.run.psy = psyOnTurn(this.run.psy, totalLoad(this.run.implants, this.stats), this.stats.psyResist, this.stats.psyRateMult);
     const tier = psyTier(this.run.psy);
     if (Math.floor(this.run.psy) > Math.floor(before) + 1) floatText(this, this.views.get(1)!.x, this.views.get(1)!.y - 34, `+${Math.round(this.run.psy - before)} PSY`, '#39ff88', 6);
+    // Masque Oni: from 50 % psychosis, more PA / PM this turn.
+    if (this.run.psy >= 50 && (this.stats.edgePa || this.stats.edgePm)) {
+      p.pa += this.stats.edgePa; p.pm += this.stats.edgePm;
+      floatText(this, this.views.get(1)!.x, this.views.get(1)!.y - 40, `+${this.stats.edgePa} PA +${this.stats.edgePm} PM (psychose)`, '#00f0ff', 6);
+    }
     // High psychosis: the body pays at the start of each turn, but the blows land harder.
-    const drain = Math.round(p.maxHp * hpDrainPerTurn(tier));
+    const drain = Math.round(p.maxHp * hpDrainPerTurn(tier) * this.stats.psyDrainMult);
     if (drain > 0) {
       p.hp = Math.max(0, p.hp - drain);
       floatText(this, this.views.get(1)!.x, this.views.get(1)!.y - 24, `-${drain} (psychose)`, '#ff2a6d', 7);
@@ -664,7 +673,7 @@ export class RunScene extends Phaser.Scene {
       if (!selfBlast) {
         this.run.kills++;
         this.run.killsByType[u.kind] = (this.run.killsByType[u.kind] ?? 0) + 1;
-        this.run.psy = psyOnKill(this.run.psy, this.stats.psyResist);
+        this.run.psy = psyOnKill(this.run.psy, this.stats.psyResist, this.stats.psyPerKill);
         if (this.mode === 'input' || this.mode === 'busy') this.turnKills++;
         const gain = Math.round((ENEMIES[u.kind as EnemyId]?.credits ?? 0) * this.stats.creditMult);
         this.run.creditsEarned += gain;
@@ -687,16 +696,16 @@ export class RunScene extends Phaser.Scene {
     this.views.delete(u.uid);
   }
 
+  /** Relics not found yet in this run that can do something for the current spell bar. */
   private relicsLeft(): Relic[] {
-    const owned = new Set(this.run.relics.map(r => r.id));
-    return RELICS.filter(r => !owned.has(r.id));
+    return relicPool(RELICS, this.run.relics, this.spells);
   }
 
   /** What a broken object (or a boss) leaves: applied right away. */
   private loot(x: number, y: number) {
-    const loot = rollLoot(Math.random, this.relicsLeft().length > 0);
+    const loot = rollLoot(Math.random, this.relicsLeft().length > 0, this.stats.lootBonus > 0);
     if (loot.kind === 'credits') {
-      const gain = Math.round(loot.amount * this.stats.creditMult);
+      const gain = Math.round(loot.amount * this.stats.creditMult * (1 + this.stats.lootBonus));
       this.run.creditsEarned += gain;
       floatText(this, x, y - 14, `+${gain}¢`, '#f5e663', 7);
       audio.sfx('credit');
@@ -704,7 +713,7 @@ export class RunScene extends Phaser.Scene {
       const g = this.heal(loot.amount);
       floatText(this, x, y - 14, `+${Math.round(g)} PV`, '#39ff88', 7);
       audio.sfx('heal');
-    } else if (loot.kind === 'relic') this.grantRelic(pick(Math.random, this.relicsLeft()));
+    } else if (loot.kind === 'relic') { const r = offerRelics(Math.random, this.relicsLeft())[0]; if (r) this.grantRelic(r); }
   }
 
   private heal(amount: number) {
@@ -719,12 +728,25 @@ export class RunScene extends Phaser.Scene {
   }
 
   private grantRelic(relic: Relic) {
+    if (this.run.relics.some(r => r.id === relic.id)) return;
     this.run.relics.push(relic);
     this.refreshBuild();
+    // Found mid-fight (a crate): its fight effects start right away.
+    if (this.fight) this.fight.hooks = relicHooks(this.run.relics);
     this.cameras.main.flash(250, 255, 59, 59);
     audio.sfx('relic');
-    const t = this.screenText(`★ ${relic.name.toUpperCase()} ★\n${relic.description}`, 9, '#ff3b3b', 80);
-    this.tweens.add({ targets: t, alpha: 0, delay: 2200, duration: 500, onComplete: () => t.destroy() });
+    const t = this.screenText(`★ RELIQUE ${RELIC_RARITY_NAMES[relic.rarity]} — ${relic.name.toUpperCase()} ★\n${relic.description}`, 9, relic.rarity === 'cursed' ? '#39ff88' : '#ff3b3b', 80);
+    this.tweens.add({ targets: t, alpha: 0, delay: 2600, duration: 500, onComplete: () => t.destroy() });
+  }
+
+  /** Boss and elite rewards: pick one relic among a few (Échap: none). */
+  private openRelicChoice(options: Relic[], then: () => void, title: string) {
+    if (!options.length) { then(); return; }
+    const before = this.run.relics.length;
+    this.panel = new ChoicePanel(this, this.controls, title, 'Une relique te suit jusqu\'à la fin de la run, sans charge psy. Les maudites donnent beaucoup, mais se paient. Échap : aucune.',
+      options.map(r => ({ label: r.name, desc: r.description, cost: RELIC_RARITY_NAMES[r.rarity], pick: () => this.grantRelic(r) })),
+      // The panel closes before the pick runs: wait a tick, then leave time to read the relic's banner.
+      () => { this.panel = undefined; this.time.delayedCall(10, () => this.time.delayedCall(this.run.relics.length > before ? 1500 : 0, then)); }, 0xff3b3b);
   }
 
   /** The build changed (implant, relic): new stats and spell bar, HP gained with a higher max. */
@@ -754,7 +776,7 @@ export class RunScene extends Phaser.Scene {
     if (result === 'lose') { this.endRun(false); return; }
     // Back to walking: no turn state carries over to the next fight.
     const h = this.hero;
-    h.cd = {}; h.casts = {}; h.buffs = []; h.bleed = []; h.shield = 0; h.shieldTurns = 0; h.pa = h.maxPa; h.pm = h.maxPm;
+    h.cd = {}; h.casts = {}; h.buffs = []; h.bleed = []; h.mem = {}; h.shield = 0; h.shieldTurns = 0; h.pa = h.maxPa; h.pm = h.maxPm;
     this.tally.rounds = this.fight!.round;
     this.tally.bestTurnKills = Math.max(this.tally.bestTurnKills, this.turnKills);
     for (const v of this.views.values()) { v.showBar = false; v.drawBar(); }
@@ -779,9 +801,16 @@ export class RunScene extends Phaser.Scene {
     this.ui.setTimeline(undefined);
     const steps: ((next: () => void) => void)[] = [];
     const ri = this.run.roomIndex;
+    // A mid-run boss always leaves a relic (one among three); an elite squad, one time in two (one among two).
+    const relicRng = createRng(this.run.seed + ri * 41);
+    if (this.room.isBoss) {
+      const offer = offerRelics(relicRng, this.relicsLeft(), 3, true);
+      steps.push(next => this.openRelicChoice(offer, next, 'BUTIN DU LIEUTENANT — UNE RELIQUE'));
+    }
     if (this.room.elite) {
       this.run.creditsEarned += Math.round(15 * this.stats.creditMult);
       steps.push(next => this.openImplantChoice(offerImplants(createRng(this.run.seed + ri * 29), this.run.implants, ri, { minRarity: ri >= 6 ? 'epic' : 'rare' }), next, 'BUTIN D\'ÉLITE — CHOISIS UN IMPLANT'));
+      if (relicRng() < 0.5) steps.push(next => this.openRelicChoice(offerRelics(relicRng, this.relicsLeft(), 2, true), next, 'BUTIN D\'ÉLITE — UNE RELIQUE'));
     }
     const c = this.run.contract;
     if (c && c.room === ri) {
@@ -832,6 +861,11 @@ export class RunScene extends Phaser.Scene {
     const family: Family = this.room.doorFamilies[i];
     audio.sfx('door', { pitch: 1.3 });
     const ri = this.run.roomIndex;
+    // Intérêts composés: the run's credits earn a little each time you move on.
+    if (this.stats.interest > 0) {
+      const gain = Math.min(20, Math.round(this.run.creditsEarned * this.stats.interest));
+      if (gain > 0) { this.run.creditsEarned += gain; floatText(this, this.views.get(1)!.x, this.views.get(1)!.y - 32, `+${gain}¢ (intérêts)`, '#f5e663', 7); }
+    }
     if (reward === 'implant') {
       const options = offerImplants(createRng(this.run.seed + ri * 13), this.run.implants, ri, { family, allowBlack: ri >= 2 });
       if (options.length) { this.openImplantChoice(options, () => this.nextRoom()); return; }
@@ -839,21 +873,29 @@ export class RunScene extends Phaser.Scene {
     }
     if (reward === 'credits') this.run.creditsEarned += Math.round((8 + ri * 2) * this.stats.creditMult);
     if (reward === 'heal') { const g = this.heal(this.stats.maxHp * CONFIG.HEAL_FRACTION); floatText(this, this.views.get(1)!.x, this.views.get(1)!.y - 24, `+${Math.round(g)} PV`, '#39ff88', 9); audio.sfx('heal'); }
-    if (reward === 'chest') { this.run.creditsEarned += Math.round((5 + ri * 2) * this.stats.creditMult); if (Math.random() < 0.5) this.run.blockers++; }
+    let relic: Relic | undefined;
+    if (reward === 'chest') {
+      this.run.creditsEarned += Math.round((5 + ri * 2) * this.stats.creditMult);
+      if (Math.random() < 0.5) this.run.blockers++;
+      // Now and then the chest holds a relic.
+      if (Math.random() < 0.15) relic = offerRelics(Math.random, this.relicsLeft())[0];
+      if (relic) this.grantRelic(relic);
+    }
     const next = this.run.rooms[ri + 1];
     if (next && !next.isBoss && reward === 'event') this.run.rooms[ri + 1] = makeEvent(next);
     if (next && !next.isBoss && reward === 'elite') this.run.rooms[ri + 1] = makeElite(next, createRng(this.run.seed + ri * 37));
-    this.time.delayedCall(reward === 'heal' ? 500 : 0, () => this.nextRoom());
+    this.time.delayedCall(relic ? 2200 : reward === 'heal' || this.stats.interest > 0 ? 500 : 0, () => this.nextRoom());
   }
 
   private openImplantChoice(options: Offer[], then: () => void, title?: string) {
     audio.sfx('uiOpen');
-    this.choice = new ImplantChoice(this, options, this.controls, this.run.implants, o => {
+    this.choice = new ImplantChoice(this, options, this.controls, this.run.implants, synergyBonus(this.run.relics), o => {
       audio.sfx('implant');
-      const had = new Set(activeSynergies(this.run.implants).map(a => `${a.synergy}${a.tier}`));
+      const bonus = synergyBonus(this.run.relics);
+      const had = new Set(activeSynergies(this.run.implants, bonus).map(a => `${a.synergy}${a.tier}`));
       this.run.implants = applyOffer(this.run.implants, o);
       this.refreshBuild();
-      const fresh = activeSynergies(this.run.implants).filter(a => !had.has(`${a.synergy}${a.tier}`));
+      const fresh = activeSynergies(this.run.implants, bonus).filter(a => !had.has(`${a.synergy}${a.tier}`));
       this.choice = undefined;
       if (fresh.length) {
         const t = SYNERGIES[fresh[0].synergy].tiers[fresh[0].tier];
@@ -983,6 +1025,7 @@ export class RunScene extends Phaser.Scene {
 
   /** Run-side conditions of a spell (neuro-blockers left). */
   private spellBlocked(s: SpellDef): string | null {
+    if (s.id === 'blocker' && this.stats.blockerAmount <= 0) return 'neuro-bloqueurs grillés';
     if (s.id === 'blocker' && this.run.blockers <= 0) return 'aucun neuro-bloqueur';
     if (s.id === 'blocker' && this.hero.pa < BLOCKER_PA) return 'PA insuffisants';
     return null;
@@ -1199,8 +1242,8 @@ export class RunScene extends Phaser.Scene {
     const hud: HudData = {
       hp: this.hero.hp, maxHp: this.hero.maxHp, psy: this.run.psy, credits: this.run.creditsEarned, blockers: this.run.blockers,
       room: this.run.roomIndex + 1, rooms: CONFIG.ROOMS_PER_RUN,
-      implants: this.run.implants.map(i => i.name + (i.level && i.level > 1 ? ' ' + ['', 'I', 'II', 'III'][i.level] : '')), relics: this.run.relics.map(r => r.name),
-      synergies: activeSynergies(this.run.implants).map(a => SYNERGIES[a.synergy].tiers[a.tier].name),
+      implants: this.run.implants.map(i => i.name + (i.level && i.level > 1 ? ' ' + ['', 'I', 'II', 'III'][i.level] : '')), relics: this.run.relics.map(r => ({ name: r.name, desc: r.description, rarity: r.rarity })),
+      synergies: activeSynergies(this.run.implants, synergyBonus(this.run.relics)).map(a => SYNERGIES[a.synergy].tiers[a.tier].name),
       psyBonus: psyBonusLabel(this.run.psy),
       notice: this.run.contract && this.run.contract.room === this.run.roomIndex ? contractProgress(this.run.contract, this.tally)
         : this.run.contract ? 'CONTRAT EN ATTENTE' : this.room.elite ? `ÉLITE — ${ELITE_LABELS[this.room.elite]}` : undefined,

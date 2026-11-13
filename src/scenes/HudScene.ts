@@ -3,6 +3,7 @@ import { CONFIG, COLORS, SCENES } from '../config';
 import { psyTier } from '../core/psychosis';
 import { audio } from '../audio/audio';
 import type { HudData } from '../systems/runState';
+import { RELIC_RARITY_COLORS, RELIC_RARITY_NAMES } from '../core/relics';
 import { title, txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
 import { C, GlitchText, T, bold, drawBar, scanlines, skewPoly, stripes } from '../ui/kit';
@@ -28,6 +29,11 @@ export class HudScene extends Phaser.Scene {
   private synergyText!: Phaser.GameObjects.Text;
   private noticeText!: Phaser.GameObjects.Text;
   private tagText!: Phaser.GameObjects.Text;
+  /** carried relics; hovering the line lists what each one does */
+  private relicText!: Phaser.GameObjects.Text;
+  private relicTip?: Phaser.GameObjects.Container;
+  private relicKey = '';
+  private relics: HudData['relics'] = [];
   private glitchUntil = 0;
   private nextGlitchAt = 0;
   /** lagging HP fraction: the white damage trail behind the bar */
@@ -68,6 +74,30 @@ export class HudScene extends Phaser.Scene {
     this.synergyText = txt(this, 4, CONFIG.HEIGHT - 54, '', 5, T.green).setStroke('#05030f', 2);
     this.noticeText = bold(this, W - 4, 46, '', 6, T.yellow).setOrigin(1, 0).setStroke('#05030f', 3);
     this.tagText = bold(this, W / 2, 18, '', 5, T.magenta).setOrigin(0.5, 0).setStroke('#05030f', 3);
+    this.relicText = txt(this, 4, CONFIG.HEIGHT - 61, '', 5, T.red).setStroke('#05030f', 2);
+    this.relicText.on('pointerover', () => this.showRelicTip(true));
+    this.relicText.on('pointerout', () => this.showRelicTip(false));
+    this.relicKey = '';
+    this.relicTip = undefined;
+  }
+
+  /** The list of carried relics and their effects, above the relic line. */
+  private showRelicTip(on: boolean) {
+    this.relicTip?.destroy();
+    this.relicTip = undefined;
+    if (!on || !this.relics.length) return;
+    const w = 300, rowH = 15, h = 8 + this.relics.length * rowH, x = 4, y = CONFIG.HEIGHT - 64 - h;
+    const g = this.add.graphics();
+    g.fillStyle(C.deep, 0.94).fillRect(x, y, w, h);
+    g.lineStyle(0.5, C.red, 0.8).strokeRect(x, y, w, h);
+    const items: Phaser.GameObjects.GameObject[] = [g];
+    this.relics.forEach((r, i) => {
+      const ry = y + 4 + i * rowH;
+      items.push(bold(this, x + 5, ry, r.name.toUpperCase(), 5, RELIC_RARITY_COLORS[r.rarity]));
+      items.push(bold(this, x + w - 5, ry, RELIC_RARITY_NAMES[r.rarity], 4.5, RELIC_RARITY_COLORS[r.rarity]).setOrigin(1, 0));
+      items.push(txt(this, x + 5, ry + 6.5, r.desc, 5, T.text));
+    });
+    this.relicTip = this.add.container(0, 0, items).setDepth(50);
   }
 
   update(time: number, dtMs = 16) {
@@ -76,7 +106,7 @@ export class HudScene extends Phaser.Scene {
     g.clear();
     const show = !!d;
     for (const t of [this.base, ...this.labels, this.hpText, this.psyText, this.psyLabel, this.sectorText, this.creditsText, this.neuroText]) t.setVisible(show);
-    if (!d) return;
+    if (!d) { this.relicText.setVisible(false); this.showRelicTip(false); return; }
     const W = CONFIG.WIDTH, tier = psyTier(d.psy), dt = Math.min(dtMs, 50) / 1000;
 
     // HP, with a white trail that catches up after a hit.
@@ -101,8 +131,21 @@ export class HudScene extends Phaser.Scene {
     sep(this.sectorText.x - this.sectorText.width - 4.5);
     sep(this.creditsText.x - this.creditsText.width - 4.5);
 
-    const parts = [d.weapon.toUpperCase(), d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : '', d.relics.length ? 'RELIQUES : ' + d.relics.join(' · ') : ''];
-    this.implantsText.setText(parts.filter(Boolean).join('   |   ')).setVisible(!this.registry.get('modal'));
+    const modal = !!this.registry.get('modal');
+    const parts = [d.weapon.toUpperCase(), d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : ''];
+    this.implantsText.setText(parts.filter(Boolean).join('   |   ')).setVisible(!modal);
+    // Relics on their own line; the hit area follows the text when the list changes.
+    const key = d.relics.map(r => r.name).join('|');
+    if (key !== this.relicKey) {
+      this.relicKey = key;
+      this.relics = d.relics;
+      this.relicText.setText(d.relics.length ? `RELIQUES [survol] : ${d.relics.map(r => r.name).join(' · ')}` : '');
+      this.relicText.removeInteractive(true);
+      if (d.relics.length) this.relicText.setInteractive({ useHandCursor: true });
+      this.showRelicTip(false);
+    }
+    this.relicText.setVisible(!modal && d.relics.length > 0);
+    if (modal && this.relicTip) this.showRelicTip(false);
     this.synergyText.setVisible(!this.registry.get('modal'));
     this.synergyText.setText(d.synergies.length ? 'SYNERGIES : ' + d.synergies.join(' · ') : '');
     this.tagText.setText(d.tag).setY(d.boss ? 37 : 18);

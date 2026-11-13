@@ -13,7 +13,7 @@ const baseSt = (): UnitStats => ({
 function unit(o: Partial<Unit> & Pick<Unit, 'team' | 'kind' | 'name' | 'maxHp'> & Pt): Unit {
   return {
     uid: 0, hp: o.maxHp, shield: 0, shieldTurns: 0, pa: 0, pm: 0, maxPa: 0, maxPm: 0, init: 0, st: baseSt(),
-    spells: [], cd: {}, casts: {}, buffs: [], bleed: [], ai: 'none', dead: false, face: { x: 1, y: 0 }, ...o,
+    spells: [], cd: {}, casts: {}, buffs: [], bleed: [], mem: {}, ai: 'none', dead: false, face: { x: 1, y: 0 }, ...o,
   };
 }
 

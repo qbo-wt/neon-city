@@ -9,6 +9,41 @@ export const BLOCKER_PA = 2;
 
 export type Spawner = (kind: string, team: 0 | 1, at: Pt, by: Unit) => Unit;
 
+/**
+ * Listeners on what happens in a fight (relics today; arena objects and boss rules can plug in the same
+ * way). Every method is optional and gets the fight and the event list to push to. Hooks keep no state
+ * of their own: the AI and the previews run them on cloned fights. Per-unit state goes in `unit.mem`,
+ * which clones copy. Effects on the run itself (psychosis, credits) go out as events.
+ */
+export interface FightHooks {
+  /** u's turn begins: PA / PM refilled, cooldowns and buffs ticked, before bleeding and primed bombs */
+  turnStart?(f: Fight, u: Unit, ev: FightEvent[]): void;
+  /** u is about to end its turn (unspent PA / PM still there) */
+  turnEnd?(f: Fight, u: Unit, ev: FightEvent[]): void;
+  /** u walked (`walk`) or was moved by a push, pull, charge, dash or jump; `path` ends on its new cell */
+  moved?(f: Fight, u: Unit, path: Pt[], kind: 'walk' | 'push' | 'pull' | 'charge' | 'dash' | 'jump', ev: FightEvent[]): void;
+  /** extra factor on the damage src deals to t with spells (1 = none); factors multiply */
+  damageMult?(f: Fight, src: Unit, t: Unit): number;
+  /** a spell blow from src landed on t (after the damage, lifesteal and crit heal) */
+  struck?(f: Fight, src: Unit, t: Unit, dealt: number, crit: boolean, ev: FightEvent[]): void;
+  /** t lost `amount` (HP + shield); `by` is undefined for bleeding and self-inflicted damage */
+  damaged?(f: Fight, t: Unit, amount: number, by: Unit | undefined, ev: FightEvent[]): void;
+  /** t dropped to 0 HP: return true to keep it alive (the hook puts its HP back above 0) */
+  saveFromDeath?(f: Fight, t: Unit, by: Unit | undefined, ev: FightEvent[]): boolean;
+  /** t died; `by` is the unit credited with the kill */
+  killed?(f: Fight, t: Unit, by: Unit | undefined, ev: FightEvent[]): void;
+  /** t was healed by `gained` HP; `overflow` is what did not fit under its max HP */
+  healed?(f: Fight, t: Unit, gained: number, overflow: number, ev: FightEvent[]): void;
+}
+
+type Notify = Exclude<keyof FightHooks, 'damageMult' | 'saveFromDeath'>;
+
+/** Calls one hook on every listener of the fight. */
+function emit<K extends Notify>(f: Fight, name: K, ...args: Parameters<NonNullable<FightHooks[K]>>) {
+  if (!f.hooks) return;
+  for (const h of f.hooks) (h[name] as ((...a: unknown[]) => void) | undefined)?.(...args);
+}
+
 export interface Fight {
   board: Board;
   units: Unit[];
@@ -20,6 +55,8 @@ export interface Fight {
   nextUid: number;
   spawn?: Spawner;
   over?: 'win' | 'lose';
+  /** listeners on fight events (see FightHooks) */
+  hooks?: FightHooks[];
 }
 
 // ---------- queries ----------
@@ -136,7 +173,8 @@ const isDazed = (f: Fight, u: Unit) => u.dazedRound !== undefined && f.round - u
 export function damageMult(f: Fight, src: Unit, t: Unit): number {
   const low = src.hp < src.maxHp * 0.4 ? src.st.lowHpDamage : 0;
   const dazed = isDazed(f, t) ? src.st.dazedDamage : 0;
-  const atk = (1 + src.st.dmgPct + buffSum(src, 'dmg') / 100 + low + dazed) * src.st.extraMult;
+  let atk = (1 + src.st.dmgPct + buffSum(src, 'dmg') / 100 + low + dazed) * src.st.extraMult;
+  for (const h of f.hooks ?? []) if (h.damageMult) atk *= h.damageMult(f, src, t);
   return Math.max(0, atk) * (1 - clampRes(t.st.res + buffSum(t, 'res') / 100));
 }
 
@@ -146,41 +184,45 @@ export function damageRange(f: Fight, src: Unit, t: Unit, min: number, max: numb
   return [Math.max(1, Math.round((min + src.st.flat) * m)), Math.max(1, Math.round((max + src.st.flat) * m))];
 }
 
-function hurt(f: Fight, t: Unit, amount: number, ev: FightEvent[], by: Unit | undefined, o: { crit?: boolean; push?: boolean; bleed?: boolean } = {}) {
+/** Takes `amount` from t (shield first); a killing blow goes through the `saveFromDeath` hooks. Returns what t lost. */
+export function hurt(f: Fight, t: Unit, amount: number, ev: FightEvent[], by: Unit | undefined, o: { crit?: boolean; push?: boolean; bleed?: boolean } = {}) {
   if (t.dead || amount <= 0) return 0;
   const absorbed = Math.min(t.shield, amount);
   t.shield -= absorbed;
   const real = Math.min(t.hp, amount - absorbed);
   t.hp -= real;
   ev.push({ t: 'damage', uid: t.uid, amount, crit: !!o.crit, absorbed, push: o.push, bleed: o.bleed });
-  if (t.hp <= 0) kill(f, t, ev, by);
+  if (t.hp <= 0 && !(f.hooks ?? []).some(h => h.saveFromDeath?.(f, t, by, ev))) kill(f, t, ev, by);
+  if (real + absorbed > 0) emit(f, 'damaged', f, t, real + absorbed, by, ev);
   return real + absorbed;
 }
 
-function heal(t: Unit, amount: number, ev: FightEvent[]) {
-  const g = Math.min(t.maxHp - t.hp, Math.round(amount));
-  if (g <= 0 || t.dead) return;
-  t.hp += g;
-  ev.push({ t: 'heal', uid: t.uid, amount: g });
+export function heal(f: Fight, t: Unit, amount: number, ev: FightEvent[]) {
+  if (t.dead) return;
+  const raw = Math.round(amount), g = Math.max(0, Math.min(t.maxHp - t.hp, raw));
+  if (g > 0) { t.hp += g; ev.push({ t: 'heal', uid: t.uid, amount: g }); }
+  if (raw > 0) emit(f, 'healed', f, t, g, raw - g, ev);
 }
 
-function kill(f: Fight, t: Unit, ev: FightEvent[], by?: Unit) {
+export function kill(f: Fight, t: Unit, ev: FightEvent[], by?: Unit) {
   if (t.dead) return;
   t.dead = true;
   t.hp = 0;
   ev.push({ t: 'death', uid: t.uid, by: by?.uid });
   if (by && !by.dead && by !== t && opposed(by, t)) {
-    if (by.st.killHeal > 0) heal(by, by.st.killHeal, ev);
+    if (by.st.killHeal > 0) heal(f, by, by.st.killHeal, ev);
     if (by.st.killPa > 0 && !by.killPaUsed && current(f) === by) { by.killPaUsed = true; by.pa += by.st.killPa; ev.push({ t: 'stat', uid: by.uid, stat: 'pa', v: by.st.killPa }); }
   }
   // Explosive elites go off when they fall.
   if (t.elite === 'explosive') blast(f, t, 1, 10, 14, ev);
+  emit(f, 'killed', f, t, by, ev);
   // Summons fall with their summoner.
   for (const s of f.units) if (!s.dead && s.summoner === t.uid) kill(f, s, ev);
   checkOver(f);
 }
 
-function blast(f: Fight, src: Unit, r: number, min: number, max: number, ev: FightEvent[]) {
+/** An explosion around src: a roll in [min, max] to every other unit within r, resistance applies. */
+export function blast(f: Fight, src: Unit, r: number, min: number, max: number, ev: FightEvent[]) {
   const cells = zoneCells(f, src, { zone: { shape: 'circle', r } } as SpellDef, src);
   ev.push({ t: 'explode', uid: src.uid, cells });
   for (const p of cells) {
@@ -206,7 +248,9 @@ export function moveTo(f: Fight, u: Unit, to: Pt): FightEvent[] {
   const last = path[path.length - 1], prev = path.length > 1 ? path[path.length - 2] : { x: u.x, y: u.y };
   u.face = { x: last.x - prev.x, y: last.y - prev.y };
   u.x = to.x; u.y = to.y;
-  return [{ t: 'move', uid: u.uid, path }];
+  const ev: FightEvent[] = [{ t: 'move', uid: u.uid, path }];
+  emit(f, 'moved', f, u, path, 'walk', ev);
+  return ev;
 }
 
 /** Slides t up to n cells along d. Returns the cells travelled and what stopped it. */
@@ -263,7 +307,7 @@ function applyEffect(f: Fight, u: Unit, s: SpellDef, e: Effect, cell: Pt, origin
     }
     case 'heal': {
       const targets = s.target === 'self' ? [u] : inZone().filter(t => t.team === u.team);
-      for (const t of targets) heal(t, randInt(f.rng, e.min, e.max), ev);
+      for (const t of targets) heal(f, t, randInt(f.rng, e.min, e.max), ev);
       break;
     }
     case 'push':
@@ -277,7 +321,7 @@ function applyEffect(f: Fight, u: Unit, s: SpellDef, e: Effect, cell: Pt, origin
         if (e.k === 'pull') d = { x: -d.x, y: -d.y };
         if (!d.x && !d.y) continue;
         const r = slide(f, t, d, e.n, e.k === 'pull' ? { x: u.x, y: u.y } : undefined);
-        if (r.path.length) ev.push({ t: 'shove', uid: t.uid, path: r.path, kind: e.k });
+        if (r.path.length) { ev.push({ t: 'shove', uid: t.uid, path: r.path, kind: e.k }); emit(f, 'moved', f, t, r.path, e.k, ev); }
         if (e.k === 'push' && r.left > 0 && (r.wall || r.hit)) {
           const dmg = r.left * (PUSH_BASE + u.st.pushDmg + buffSum(u, 'pushDmg'));
           hurt(f, t, dmg, ev, u, { push: true });
@@ -290,12 +334,12 @@ function applyEffect(f: Fight, u: Unit, s: SpellDef, e: Effect, cell: Pt, origin
       const t = unitAt(f, cell);
       if (!t) break;
       const d = stepToward(u, t), r = slide(f, u, d, dist(u, t) - 1);
-      if (r.path.length) ev.push({ t: 'shove', uid: u.uid, path: r.path, kind: 'charge' });
+      if (r.path.length) { ev.push({ t: 'shove', uid: u.uid, path: r.path, kind: 'charge' }); emit(f, 'moved', f, u, r.path, 'charge', ev); }
       break;
     }
     case 'dash': {
       const d = stepToward(u, cell), r = slide(f, u, d, dist(u, cell));
-      if (r.path.length) ev.push({ t: 'shove', uid: u.uid, path: r.path, kind: 'dash' });
+      if (r.path.length) { ev.push({ t: 'shove', uid: u.uid, path: r.path, kind: 'dash' }); emit(f, 'moved', f, u, r.path, 'dash', ev); }
       const hit = new Set<Unit>();
       for (const p of [origin, ...r.path]) for (const dd of DIRS) {
         const o = unitAt(f, { x: p.x + dd.x, y: p.y + dd.y });
@@ -309,6 +353,7 @@ function applyEffect(f: Fight, u: Unit, s: SpellDef, e: Effect, cell: Pt, origin
       const from = { x: u.x, y: u.y };
       u.x = cell.x; u.y = cell.y;
       ev.push({ t: 'shove', uid: u.uid, path: [from, cell], kind: 'jump' });
+      emit(f, 'moved', f, u, [{ ...cell }], 'jump', ev);
       break;
     }
     case 'buff': {
@@ -358,13 +403,14 @@ function strike(f: Fight, u: Unit, t: Unit, min: number, max: number, crit: bool
   const roll = randInt(f.rng, min, max) + u.st.flat;
   const amount = Math.max(1, Math.round(roll * damageMult(f, u, t) * (crit ? u.st.critMult : 1)));
   const done = hurt(f, t, amount, ev, u, { crit });
-  if (u.st.lifesteal > 0 && done > 0) heal(u, done * u.st.lifesteal, ev);
-  if (crit && u.st.critHeal > 0) heal(u, u.st.critHeal, ev);
+  if (u.st.lifesteal > 0 && done > 0) heal(f, u, done * u.st.lifesteal, ev);
+  if (crit && u.st.critHeal > 0) heal(f, u, u.st.critHeal, ev);
+  if (done > 0) emit(f, 'struck', f, u, t, done, crit, ev);
   // Thorns: whoever hits a spiked unit in melee takes some back.
   if (melee && !t.dead && t.st.thorns > 0 && !u.dead) hurt(f, u, t.st.thorns, ev, t);
 }
 
-function addBuff(f: Fight, t: Unit, stat: BuffStat, v: number, turns: number, ev: FightEvent[]) {
+export function addBuff(f: Fight, t: Unit, stat: BuffStat, v: number, turns: number, ev: FightEvent[]) {
   if (t.dead) return;
   if ((stat === 'pa' || stat === 'pm') && v < 0) t.dazedRound = f.round;
   // PA / PM gained or lost during the unit's own turn change its pool right away.
@@ -397,6 +443,7 @@ export function startTurn(f: Fight): FightEvent[] {
   for (const k of Object.keys(u.cd)) if (u.cd[k] > 0) u.cd[k]--;
   u.buffs = u.buffs.map(b => ({ ...b, turns: b.turns - 1 })).filter(b => b.turns > 0);
   if (u.shieldTurns > 0 && --u.shieldTurns === 0) u.shield = 0;
+  emit(f, 'turnStart', f, u, ev);
   for (const b of u.bleed) { hurt(f, u, b.v, ev, undefined, { bleed: true }); b.turns--; }
   u.bleed = u.bleed.filter(b => b.turns > 0);
   if (!u.dead && u.primed) {
@@ -410,6 +457,8 @@ export function startTurn(f: Fight): FightEvent[] {
 /** Ends the current turn and starts the next living unit's. New rounds count up. */
 export function endTurn(f: Fight): FightEvent[] {
   const ev: FightEvent[] = [];
+  const ending = current(f);
+  if (ending && !ending.dead && !f.over) emit(f, 'turnEnd', f, ending, ev);
   for (let guard = 0; guard < f.order.length * 2 && !f.over; guard++) {
     f.turnIdx++;
     if (f.turnIdx >= f.order.length) { f.turnIdx = 0; f.round++; }
@@ -449,7 +498,7 @@ export function createFight(board: Board, units: Unit[], rng: Rng, spawn?: Spawn
 export function cloneFight(f: Fight, rng: Rng = () => 0.5): Fight {
   return {
     ...f, rng, order: [...f.order],
-    units: f.units.map(u => ({ ...u, cd: { ...u.cd }, casts: { ...u.casts }, buffs: u.buffs.map(b => ({ ...b })), bleed: u.bleed.map(b => ({ ...b })), face: { ...u.face } })),
+    units: f.units.map(u => ({ ...u, cd: { ...u.cd }, casts: { ...u.casts }, buffs: u.buffs.map(b => ({ ...b })), bleed: u.bleed.map(b => ({ ...b })), face: { ...u.face }, mem: { ...u.mem } })),
   };
 }
 
