@@ -6,8 +6,8 @@ import { readdirSync, statSync, writeFileSync, existsSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const DIRS = ['assets/vrm', 'assets/mixamo/anims', 'assets/kenney', 'assets/kaykit'];
-const EXT = /\.(vrm|fbx|glb|gltf|bin|png|jpe?g|webp|ktx2)$/i;
+const DIRS = ['assets/vrm', 'assets/mixamo/anims', 'assets/kenney', 'assets/kaykit', 'assets/music'];
+const EXT = /\.(vrm|fbx|glb|gltf|bin|png|jpe?g|webp|ktx2|ogg|mp3)$/i;
 
 function walk(dir, out) {
   for (const name of readdirSync(dir)) {

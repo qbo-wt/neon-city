@@ -1,7 +1,7 @@
 /**
- * All sound is synthesised with WebAudio: no audio files. Sound effects are short layered voices
- * (oscillators / noise with pitch and filter sweeps); the music is a small synthwave sequencer whose
- * layers fade in and out with the action (hub, street fight, boss).
+ * Sound effects are synthesised with WebAudio: short layered voices (oscillators / noise with pitch
+ * and filter sweeps), no audio files. The music is recorded tracks (public/assets/music) streamed
+ * through the same AudioContext, crossfaded when the mode changes (hub, street fight, boss).
  *
  * Browsers only allow audio after a user gesture: the context is created on the first click / key.
  */
@@ -61,128 +61,120 @@ const SFX: Record<SfxId, Voice[]> = {
 
 export type MusicMode = 'off' | 'hub' | 'run' | 'boss';
 
-/** Synthwave sequencer: pad, arpeggio, bass and drums, scheduled ahead on the audio clock. */
+interface Track { file: string; /** level trim, 1 = as mastered */ vol: number }
+
+/**
+ * Recorded tracks in public/assets/music (all CC0, see CREDITS.md). A mode with several tracks plays
+ * them one after the other; a mode with a single track loops it.
+ */
+const TRACKS: Record<Exclude<MusicMode, 'off'>, Track[]> = {
+  hub: [{ file: 'hub-space-city.ogg', vol: 1 }, { file: 'hub-dark-city.mp3', vol: 1 }],
+  run: [{ file: 'run-cyberpunk-moonlight-sonata.mp3', vol: 1 }, { file: 'run-night-prowler.ogg', vol: 1 }],
+  boss: [{ file: 'boss-the-9th-circle.mp3', vol: 1 }],
+};
+const MUSIC_DIR = 'assets/music/';
+/** Crossfade between modes, in seconds. */
+const FADE = 1;
+
+/** One track: a streaming <audio> element routed into the AudioContext through its own fader. */
+interface Deck { el: HTMLAudioElement; gain: GainNode; vol: number; stop?: ReturnType<typeof setTimeout> }
+
+/** Plays the recorded tracks with crossfades; intensity opens a low-pass filter on the run music. */
 class Music {
-  private layers!: Record<'pad' | 'arp' | 'bass' | 'drums', GainNode>;
-  private delay!: DelayNode;
-  private step = 0;
-  private nextTime = 0;
-  private timer?: ReturnType<typeof setInterval>;
+  private filter: BiquadFilterNode;
+  private lift: GainNode;
+  private decks = new Map<string, Deck>();
+  private lists: Record<Exclude<MusicMode, 'off'>, Track[]>;
+  private index = { hub: 0, run: 0, boss: 0 };
+  private current?: Deck;
   mode: MusicMode = 'off';
   private intensity = 1;
 
-  constructor(private ctx: AudioContext, out: AudioNode, private noise: AudioBuffer) {
-    const mk = () => { const g = ctx.createGain(); g.gain.value = 0; g.connect(out); return g; };
-    this.layers = { pad: mk(), arp: mk(), bass: mk(), drums: mk() };
-    // Echo on the arpeggio, the signature of the genre.
-    this.delay = ctx.createDelay(1);
-    const fb = ctx.createGain(); fb.gain.value = 0.35;
-    const wet = ctx.createGain(); wet.gain.value = 0.4;
-    this.delay.connect(fb).connect(this.delay);
-    this.delay.connect(wet).connect(this.layers.arp);
+  constructor(private ctx: AudioContext, out: AudioNode) {
+    this.filter = ctx.createBiquadFilter();
+    this.filter.type = 'lowpass'; this.filter.Q.value = 0.5; this.filter.frequency.value = 20000;
+    this.lift = ctx.createGain();
+    this.filter.connect(this.lift).connect(out);
+    // Drop the formats this browser cannot decode (older Safari has no Ogg Vorbis).
+    const probe = document.createElement('audio');
+    const ok = (t: Track) => probe.canPlayType(t.file.endsWith('.ogg') ? 'audio/ogg; codecs="vorbis"' : 'audio/mpeg') !== '';
+    this.lists = { hub: TRACKS.hub.filter(ok), run: TRACKS.run.filter(ok), boss: TRACKS.boss.filter(ok) };
   }
-
-  private get bpm() { return this.mode === 'boss' ? 124 : this.mode === 'run' ? 106 : 84; }
-  /** Chord roots (MIDI) per bar; minor triads, the boss adds a darker phrygian turn. */
-  private get chords() { return this.mode === 'boss' ? [45, 46, 45, 40] : [45, 41, 48, 43]; }
 
   setMode(mode: MusicMode) {
     if (mode === this.mode) return;
     this.mode = mode;
-    if (mode === 'off') { this.fade({ pad: 0, arp: 0, bass: 0, drums: 0 }, 1.2); return; }
-    if (!this.timer) {
-      this.nextTime = this.ctx.currentTime + 0.05;
-      this.timer = setInterval(() => this.schedule(), 25);
-    }
-    this.applyIntensity();
+    this.switchTo(mode === 'off' ? undefined : this.pick(mode), FADE);
+    this.applyIntensity(FADE / 3);
   }
 
   /** 0 = calm (cleared street), 1 = full fight. */
   setIntensity(v: number) {
     if (Math.abs(v - this.intensity) < 0.01) return;
     this.intensity = v;
-    this.applyIntensity();
+    this.applyIntensity(0.4);
   }
 
-  private applyIntensity() {
-    const i = this.intensity, m = this.mode;
-    if (m === 'hub') this.fade({ pad: 0.12, arp: 0.05, bass: 0.05, drums: 0 }, 1.5);
-    else if (m === 'run') this.fade({ pad: 0.09, arp: 0.05, bass: 0.07 * (0.4 + 0.6 * i), drums: 0.11 * i }, 1.2);
-    else if (m === 'boss') this.fade({ pad: 0.08, arp: 0.05, bass: 0.1, drums: 0.14 }, 0.8);
+  /** Called on every user gesture: retries a play() the browser refused before the first one. */
+  resume() {
+    const d = this.current;
+    if (d && d.el.paused) void d.el.play().catch(() => { /* still blocked: next gesture retries */ });
   }
 
-  private fade(target: Record<string, number>, sec: number) {
+  private applyIntensity(tc: number) {
+    // Only the street fights react; hub and boss always play wide open.
+    const i = this.mode === 'run' ? Math.min(1, Math.max(0, this.intensity)) : 1;
     const t = this.ctx.currentTime;
-    for (const [k, g] of Object.entries(this.layers)) {
-      g.gain.cancelScheduledValues(t);
-      g.gain.setValueAtTime(g.gain.value, t);
-      g.gain.linearRampToValueAtTime(target[k] ?? 0, t + sec);
+    this.filter.frequency.setTargetAtTime(3000 * Math.pow(20000 / 3000, i), t, tc);
+    this.lift.gain.setTargetAtTime(0.82 + 0.18 * i, t, tc);
+  }
+
+  private pick(mode: Exclude<MusicMode, 'off'>): Deck | undefined {
+    const list = this.lists[mode];
+    return list.length ? this.deck(list[this.index[mode] % list.length], list.length === 1) : undefined;
+  }
+
+  private deck(track: Track, loop: boolean): Deck {
+    let d = this.decks.get(track.file);
+    if (d) return d;
+    const el = new Audio(MUSIC_DIR + track.file);
+    el.preload = 'auto'; el.loop = loop;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0;
+    this.ctx.createMediaElementSource(el).connect(gain).connect(this.filter);
+    d = { el, gain, vol: track.vol };
+    const deck = d;
+    el.addEventListener('ended', () => this.onEnded(deck));
+    this.decks.set(track.file, d);
+    return d;
+  }
+
+  /** End of a track in a playlist: the next one takes over. */
+  private onEnded(d: Deck) {
+    if (d !== this.current || this.mode === 'off') return;
+    this.index[this.mode]++;
+    this.switchTo(this.pick(this.mode), 0.05);
+  }
+
+  private switchTo(next: Deck | undefined, sec: number) {
+    const prev = this.current;
+    this.current = next;
+    if (prev && prev !== next) this.fade(prev, 0, sec);
+    if (next) {
+      if (next.el.ended) next.el.currentTime = 0;
+      this.fade(next, next.vol, sec);
+      this.resume();
     }
   }
 
-  private schedule() {
-    if (this.mode === 'off' && this.layers.pad.gain.value < 0.001) return;
-    // Tab in the background or music paused: never try to catch up on missed steps.
-    if (this.nextTime < this.ctx.currentTime - 0.2) this.nextTime = this.ctx.currentTime + 0.05;
-    while (this.nextTime < this.ctx.currentTime + 0.12) {
-      this.playStep(this.step, this.nextTime);
-      this.nextTime += 60 / this.bpm / 4;
-      this.step = (this.step + 1) % 64;
-    }
-  }
-
-  private note(dest: AudioNode, wave: OscillatorType, midi: number, t: number, dur: number, vol: number, cutoff = 2000, attack = 0.01) {
-    const c = this.ctx, o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter();
-    o.type = wave; o.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
-    f.type = 'lowpass'; f.frequency.value = cutoff;
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(f).connect(g).connect(dest);
-    o.start(t); o.stop(t + dur + 0.05);
-    return o;
-  }
-
-  private hit(t: number, kind: 'kick' | 'snare' | 'hat') {
-    const c = this.ctx, g = c.createGain();
-    g.connect(this.layers.drums);
-    if (kind === 'kick') {
-      const o = c.createOscillator();
-      o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.15);
-      g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
-      o.connect(g); o.start(t); o.stop(t + 0.3);
-      return;
-    }
-    const s = c.createBufferSource(), f = c.createBiquadFilter();
-    s.buffer = this.noise;
-    f.type = kind === 'hat' ? 'highpass' : 'bandpass'; f.frequency.value = kind === 'hat' ? 7000 : 1800;
-    const len = kind === 'hat' ? 0.04 : 0.16;
-    g.gain.setValueAtTime(kind === 'hat' ? 0.35 : 0.7, t); g.gain.exponentialRampToValueAtTime(0.001, t + len);
-    s.connect(f).connect(g); s.start(t, Math.random() * 0.5, len + 0.02);
-  }
-
-  private playStep(step: number, t: number) {
-    const bar = Math.floor(step / 16), beat = step % 16, root = this.chords[bar % 4];
-    const triad = [root, root + 3, root + 7];
-    const sixteenth = 60 / this.bpm / 4;
-    if (beat === 0) {
-      // Pad: detuned saws holding the chord for the whole bar.
-      for (const n of triad) for (const det of [-0.08, 0.08]) {
-        const o = this.note(this.layers.pad, 'sawtooth', n + 12 + det, t, sixteenth * 16, 0.12, 1100, 0.4);
-        o.detune.value = det * 100;
-      }
-    }
-    // Arpeggio: up through the chord, two octaves, sixteenths (eighths in the hub).
-    if (this.mode !== 'hub' || beat % 2 === 0) {
-      const seq = [0, 1, 2, 1, 2, 0, 1, 2], n = triad[seq[beat % 8] % 3] + 24 + (beat % 8 >= 4 ? 12 : 0);
-      const o = this.note(this.layers.arp, 'square', n, t, sixteenth * 0.9, 0.08, 2600);
-      o.connect(this.delay);
-    }
-    // Bass: eighths on the root (driving sixteenths on the boss), octave jump on the off-beat.
-    if (this.mode === 'boss' || beat % 2 === 0) this.note(this.layers.bass, 'sawtooth', root - 12 + (beat % 4 === 2 ? 12 : 0), t, sixteenth * 1.8, 0.35, 500);
-    if (this.mode !== 'hub') {
-      if (beat % 4 === 0) this.hit(t, 'kick');
-      if (beat === 4 || beat === 12) this.hit(t, 'snare');
-      if (beat % 2 === 1 || this.mode === 'boss') this.hit(t, 'hat');
-    }
+  private fade(d: Deck, to: number, sec: number) {
+    const t = this.ctx.currentTime, g = d.gain.gain;
+    clearTimeout(d.stop);
+    g.cancelScheduledValues(t);
+    g.setValueAtTime(g.value, t);
+    g.linearRampToValueAtTime(to, t + sec);
+    // Faded out: pause it (keeps its position, so the hub picks up where it left off).
+    if (to === 0) d.stop = setTimeout(() => { if (d !== this.current) d.el.pause(); }, sec * 1000 + 100);
   }
 }
 
@@ -221,15 +213,17 @@ class AudioEngine {
       this.sfxBus = this.ctx.createGain();
       this.sfxBus.connect(this.master);
       const musicBus = this.ctx.createGain();
-      musicBus.gain.value = 0.9;
+      // Recorded tracks are mastered loud: keep them under the effects.
+      musicBus.gain.value = 0.35;
       musicBus.connect(this.master);
       this.noise = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
       const d = this.noise.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-      this.music = new Music(this.ctx, musicBus, this.noise);
+      this.music = new Music(this.ctx, musicBus);
       this.music.setMode(this.pendingMode);
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
+    this.music?.resume();
   }
 
   toggleMute() {
