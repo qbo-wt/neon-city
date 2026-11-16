@@ -179,3 +179,9 @@ export function basicTutorialPending(place: string): boolean {
 
 /** Test hook: forget the live copy (the next read loads from storage). */
 export function _forgetTutorial() { current = undefined; pending.clear(); }
+
+/** This step may still show (not done, tutorial on): e.g. 'f-exit' until a first sector is cleared. */
+export function tutorialStepOpen(id: string): boolean {
+  const st = TUTORIAL_STEPS.find(s => s.id === id);
+  return !!st && stillOpen(tutorialState(), st);
+}

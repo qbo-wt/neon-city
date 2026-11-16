@@ -40,14 +40,14 @@ const HUB: Step[] = [
   { id: 'b-talk', track: 'basic', place: 'building', point: 'lo', ack: true, until: ['hub:talk'],
     text: 'Tout l\'étage vit ici. Approche-toi de quelqu\'un et appuie sur E pour lui parler : Mamie Lo, au stand de ramen, a toujours un mot.' },
   { id: 'b-shops', track: 'basic', place: 'building', point: 'clinic', ack: true, after: ['b-talk'], until: ['enter:clinic', 'enter:den'],
-    text: 'La clinique du Doc (corps) et le repaire de Nyx, au bout (esprit), vendent des améliorations permanentes contre tes crédits.' },
+    text: 'La clinique du Doc (corps) et, à l\'autre bout, le repaire de Nyx (esprit) vendent des améliorations permanentes contre tes crédits.' },
   { id: 'b-run', track: 'basic', place: 'building', point: 'elevator', ack: true, after: ['b-shops'], until: ['hub:elevator'],
     text: 'Prêt ? L\'ascenseur descend dans la rue : c\'est là que commence un run. Les crédits gagnés reviennent avec toi.' },
   // The shops, whenever you first walk in.
   { id: 'c-doc', track: 'basic', place: 'clinic', point: 'doc', ack: true, until: ['hub:shop:doc'],
-    text: 'Doc Kessler greffe du chrome : PV, PA, dégâts. Parle-lui (E) pour ouvrir son catalogue ; tout reste acquis d\'un run à l\'autre.' },
+    text: 'Doc Kessler greffe du chrome : PV, dégâts, PM… Parle-lui (E) pour ouvrir son catalogue ; tout reste acquis d\'un run à l\'autre.' },
   { id: 'd-nyx', track: 'basic', place: 'den', point: 'nyx', ack: true, until: ['hub:shop:nyx'],
-    text: 'Nyx calibre ton esprit : résistance à la psychose, charge d\'implants, réseau. Parle-lui (E) pour voir ses greffes.' },
+    text: 'Nyx calibre ton esprit : résistance à la psychose, charge d\'implants, crédits. Parle-lui (E) pour voir ses greffes.' },
 ];
 
 const FIGHT: Step[] = [

@@ -46,6 +46,8 @@ export class TacticalUi {
   private hintText: Phaser.GameObjects.Text;
   private hintG: Phaser.GameObjects.Graphics;
   private last?: { spells: SpellDef[]; state: SlotState; selected: number | null; cd: Record<string, number> };
+  /** units shown on the turn-order timeline */
+  private timelineCount = 0;
 
   constructor(private scene: Phaser.Scene, private h: UiHandlers) {
     const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, top = H - BAR_H;
@@ -332,6 +334,7 @@ export class TacticalUi {
     const cur = f.units.find(u => u.uid === f.order[f.turnIdx]);
     const start = order.indexOf(cur!);
     const list = [...order.slice(start), ...order.slice(0, start)].slice(0, 12);
+    this.timelineCount = list.length;
     const W = CONFIG.WIDTH, sc = this.scene;
     const g = sc.add.graphics();
     this.timeline.add(g);
@@ -349,6 +352,25 @@ export class TacticalUi {
       this.timeline.add(bold(sc, x, y, u.kind === 'player' ? 'TOI' : u.name.slice(0, 2).toUpperCase(), u.kind === 'player' ? 4 : 5, now ? T.yellow : hex(col)).setOrigin(0.5));
     });
     pinToCamera(this.timeline);
+  }
+
+  /**
+   * Where a piece of the bar is on screen, for the tutorial's pointer: 'papm' (the PA / PM numbers),
+   * 'slot<i>' (a spell button), 'end' (end turn / ready), 'timeline' (turn order).
+   */
+  anchorRect(name: string): { x: number; y: number; w: number; h: number } | undefined {
+    const W = CONFIG.WIDTH, top = CONFIG.HEIGHT - BAR_H;
+    if (name === 'papm') return { x: 3, y: top + 3, w: 88, h: 20 };
+    if (name === 'end') return this.endBtn.visible ? { x: W - 86, y: top + 6, w: 80, h: 26 } : undefined;
+    if (name === 'timeline') {
+      const n = this.timelineCount;
+      if (!n) return undefined;
+      const w = (n - 1) * 14.5 + 15;
+      return { x: W - 6 - w, y: 27, w, h: 18 };
+    }
+    const m = /^slot(\d+)$/.exec(name);
+    if (m && Number(m[1]) < this.slots.length) return { x: SLOTS_X + Number(m[1]) * (SLOT + GAP), y: top + BAR_H / 2 - SLOT / 2, w: SLOT, h: SLOT };
+    return undefined;
   }
 
   destroy() { this.root.destroy(); }

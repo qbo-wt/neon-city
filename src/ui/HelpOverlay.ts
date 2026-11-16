@@ -11,6 +11,7 @@ const HUB_KEYS: [string, string][] = [
   ['1 / 2 / 3 / 4', 'Choisir une option'],
   ['ÉCHAP', 'Fermer un panneau, sinon les options'],
   ['M', 'Couper / remettre le son'],
+  ['P', 'Passer le tutoriel (ses bulles)'],
   ['I', 'Afficher / cacher cette aide'],
 ];
 const RUN_KEYS: [string, string][] = [
@@ -23,6 +24,7 @@ const RUN_KEYS: [string, string][] = [
   ['ÉCHAP (aucun sort choisi)', 'Options : son, vitesse des combats…'],
   ['SURVOL', 'Infos d\'une créature, portée et dégâts prévus'],
   ['M', 'Couper / remettre le son'],
+  ['P', 'Passer le tutoriel (ses bulles)'],
   ['I', 'Afficher / cacher cette aide'],
 ];
 

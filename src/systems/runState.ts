@@ -38,6 +38,8 @@ export interface RunState {
   killsByType: Record<string, number>;
   /** what landed the last blow on you (enemy id), or 'psychosis' */
   killer?: string;
+  /** the player's first run with the fight tutorial: its first sector is an easier fight */
+  gentle?: boolean;
 }
 
 /** Live values the HUD draws each frame. */

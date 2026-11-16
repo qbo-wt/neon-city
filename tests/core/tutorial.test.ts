@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   TUTORIAL_KEY, _forgetTutorial, applyEvent, basicTutorialPending, completeStep, currentStep, freshTutorial, liveStep, loadTutorial,
-  resetTutorial, skipTutorial, tutorialDone, tutorialEvent, tutorialState, writeTutorial, type TutorialState, type TutorialStep,
+  resetTutorial, skipTutorial, tutorialDone, tutorialEvent, tutorialState, tutorialStepOpen, writeTutorial, type TutorialState, type TutorialStep,
 } from '../../src/core/tutorial';
 import { SAVE_KEY, defaultSave } from '../../src/core/save';
 import { TUTORIAL_STEPS, type TutorialCtx } from '../../src/data/tutorial';
@@ -191,6 +191,20 @@ describe('the live tutorial', () => {
     at({ turn: 'enemy' });
     expect(seen).toEqual(['f-place', 'f-ready', 'f-papm', 'f-move', 'f-spell', 'f-aim', 'f-end', 'f-enemy']);
     expect(basicTutorialPending('run')).toBe(true);
+  });
+
+  it('the easier first fight lasts until a sector is cleared, and never for a veteran or a skipped tutorial', () => {
+    expect(tutorialStepOpen('f-exit')).toBe(true);
+    // Dying in the first fight: the next run is easy again.
+    tutorialEvent('run:endturn');
+    expect(tutorialStepOpen('f-exit')).toBe(true);
+    tutorialEvent('run:exit');
+    expect(tutorialStepOpen('f-exit')).toBe(false);
+    seed(2);
+    expect(tutorialStepOpen('f-exit')).toBe(false);
+    seed(0);
+    skipTutorial();
+    expect(tutorialStepOpen('f-exit')).toBe(false);
   });
 });
 

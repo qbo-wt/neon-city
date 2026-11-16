@@ -53,6 +53,10 @@ import { UnitView3D as UnitView } from '../three/UnitView3D';
 import { stage, environment, showStage, stageOpacity, fadeVisibility } from '../three/stage';
 import type { World3D } from '../three/World3D';
 import { BAR_H, TacticalUi } from './run/TacticalUi';
+import { TutorialOverlay, type Rect } from '../ui/Tutorial';
+import { tutorialStepOpen } from '../core/tutorial';
+import type { TutorialCtx } from '../data/tutorial';
+import { isCovered } from '../ui/transition';
 
 export const HUD_H = 14;
 
@@ -134,6 +138,10 @@ export class RunScene extends Phaser.Scene {
   private trapHit = false;
   /** what each boss announced, pinned over its head until it goes off */
   private intents = new Map<number, Phaser.GameObjects.Text>();
+  private tut!: TutorialOverlay;
+  /** the last enemy hovered in cover (the cover tip points at it) */
+  private coverCell?: Pt;
+  private psyTold = false;
 
   constructor() { super(SCENES.Run); }
 
@@ -144,7 +152,10 @@ export class RunScene extends Phaser.Scene {
       if (data.daily) { const key = dateKey(); setRun(this.registry, newRun(dailySeed(key), sv.ownedNodes, 'blade', { daily: key })); }
       else {
         const aspect = sv.aspect[sv.weapon] ?? defaultAspect(sv.weapon);
-        setRun(this.registry, newRun(data.seed, sv.ownedNodes, sv.weapon, { heat: sv.heat, aspect, aspectRank: aspectRank(sv.aspects, aspect) }));
+        const run = newRun(data.seed, sv.ownedNodes, sv.weapon, { heat: sv.heat, aspect, aspectRank: aspectRank(sv.aspects, aspect) });
+        // Still learning the fights (no sector cleared with the tutorial on): the first one is easier.
+        run.gentle = tutorialStepOpen('f-exit');
+        setRun(this.registry, run);
       }
     }
     this.run = getRun(this.registry);
@@ -170,6 +181,8 @@ export class RunScene extends Phaser.Scene {
     this.hazards = [];
     this.trapHit = false;
     this.intents = new Map();
+    this.coverCell = undefined;
+    this.psyTold = false;
   }
 
   /** Stats and spell bar of the run: skill nodes, implants, synergies, relics, weapon and aspect, notoriety. */
@@ -190,6 +203,10 @@ export class RunScene extends Phaser.Scene {
     const event = this.room.kind === 'event';
     const arena = generateArena(style, rng, this.room.isBoss && !this.room.doorRewards.length ? 0 : this.room.doorRewards.length, this.room.isBoss, this.run.roomIndex);
     this.board = arena.board;
+    // The tutorial's first fight: two enemies at most, and only bonus cells (no trap) on the ground.
+    const gentle = !!this.run.gentle && this.run.roomIndex === 0 && !event && !this.room.isBoss;
+    if (gentle) this.room = { ...this.room, waves: [this.room.waves[0].slice(0, 2)] };
+    const hazards = gentle ? arena.hazards.filter(h => h.kind === 'medkit' || h.kind === 'relay') : arena.hazards;
     this.build();
     this.controls = new Controls(this);
 
@@ -218,6 +235,15 @@ export class RunScene extends Phaser.Scene {
     });
     // Échap opens the options when nothing else would take it (a panel, a chosen spell).
     this.help = new HelpOverlay(this, CONFIG.WIDTH - 12, HUD_H + 40, 'run', () => this.ready && !this.ending && !this.choice && !this.panel && this.selected === null);
+    this.tut = new TutorialOverlay(this, {
+      place: 'run',
+      top: HUD_H + 2,
+      bottom: CONFIG.HEIGHT - BAR_H,
+      restY: 60,
+      ctx: () => this.tutorialCtx(),
+      anchor: name => this.tutorialAnchor(name),
+      blocked: () => !this.ready || this.ending || this.leaving || this.modal() || isCovered(),
+    });
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.onPointerMove(p));
     this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
@@ -247,7 +273,7 @@ export class RunScene extends Phaser.Scene {
       this.time.delayedCall(250, showBanner);
       this.addUnit(this.hero);
       if (event) this.setupEvent(createRng(this.run.seed + this.run.roomIndex));
-      else this.setupFight(arena.breakables, arena.hazards, rng);
+      else this.setupFight(arena.breakables, hazards, rng);
       this.ready = true;
       this.refreshUi();
     });
@@ -383,6 +409,11 @@ export class RunScene extends Phaser.Scene {
     this.showStarts();
     this.ui.setButton('PRÊT');
     this.ui.say('Placement : clique une case bleue, puis PRÊT (Espace)', '#00f0ff');
+    // What this arena holds that the tutorial may not have shown yet.
+    if (this.hazards.some(h => h.kind !== 'medkit' && h.kind !== 'relay')) this.tut.event('see:trap');
+    if (this.hazards.some(h => h.kind === 'medkit' || h.kind === 'relay')) this.tut.event('see:bonus');
+    if (this.units.some(isBarrel)) this.tut.event('see:barrel');
+    if (this.room.isBoss) this.tut.event('see:boss');
     if (this.room.isBoss) this.time.delayedCall(900, () => {
       const b = this.units.find(u => u.boss);
       if (b) { audio.sfx('bossRoar'); camShake(this.cameras.main, 400, 0.005); this.bossSay(bossIntro(b.kind as 'warden' | 'boss', this.meta)); }
@@ -461,6 +492,7 @@ export class RunScene extends Phaser.Scene {
     f.hooks = this.fightHooks();
     f.hazards = this.hazards;
     this.fight = f;
+    this.tut.event('run:ready');
     for (const v of this.views.values()) { v.showBar = true; v.drawBar(); }
     audio.setIntensity(1);
     this.ui.setButton('FIN DU TOUR');
@@ -519,6 +551,7 @@ export class RunScene extends Phaser.Scene {
     this.selected = null;
     this.mode = 'busy';
     this.tally.bestTurnKills = Math.max(this.tally.bestTurnKills, this.turnKills);
+    this.tut.event('run:endturn');
     await this.play(endTurn(f));
     await this.loop();
   }
@@ -654,6 +687,7 @@ export class RunScene extends Phaser.Scene {
         this.world.flashCells(e.cells, col, 600);
         audio.sfx('windup');
         this.ui.say(`${u?.name ?? 'Le boss'} prépare : ${e.text.toLowerCase()} — sors des cases marquées avant son tour !`, css);
+        this.tut.event('see:telegraph');
         await wait(this, 450);
         break;
       }
@@ -737,6 +771,7 @@ export class RunScene extends Phaser.Scene {
     }
     p.st.extraMult = psyDamageMult(tier) * (1 + this.stats.psyDamage * this.run.psy);
     this.ui.say('À TOI DE JOUER', '#00f0ff');
+    this.tut.event('run:turn');
   }
 
   private onPlayerCast(s: SpellDef) {
@@ -865,6 +900,7 @@ export class RunScene extends Phaser.Scene {
     if (this.run.relics.some(r => r.id === relic.id)) return;
     this.run.relics.push(relic);
     this.refreshBuild();
+    this.tut.event('got:relic');
     // Found mid-fight (a crate): its fight effects start right away.
     if (this.fight) this.fight.hooks = this.fightHooks();
     camFlash(this.cameras.main, 250, 255, 59, 59);
@@ -998,6 +1034,7 @@ export class RunScene extends Phaser.Scene {
   private takeExit(i: number) {
     if (this.leaving) return;
     this.leaving = true;
+    this.tut.event('run:exit');
     let reward = this.room.doorRewards[i];
     const family: Family = this.room.doorFamilies[i];
     audio.sfx('door', { pitch: 1.3 });
@@ -1036,6 +1073,7 @@ export class RunScene extends Phaser.Scene {
       const had = new Set(activeSynergies(this.run.implants, bonus).map(a => `${a.synergy}${a.tier}`));
       this.run.implants = applyOffer(this.run.implants, o);
       this.refreshBuild();
+      this.tut.event('got:implant');
       const fresh = activeSynergies(this.run.implants, bonus).filter(a => !had.has(`${a.synergy}${a.tier}`));
       this.choice = undefined;
       if (fresh.length) {
@@ -1109,6 +1147,40 @@ export class RunScene extends Phaser.Scene {
     this.tweens.add({ targets: t, alpha: 0, delay: 2600 * this.tweens.timeScale, duration: 500 * this.tweens.timeScale, onComplete: () => { t.destroy(); if (this.bossLine === t) this.bossLine = undefined; } });
   }
 
+  // ---------- tutorial ----------
+
+  private tutorialCtx(): TutorialCtx {
+    const f = this.fight;
+    const turn = this.mode === 'placement' ? 'placement' : !f || f.over ? 'none' : current(f)?.kind === 'player' ? 'player' : 'enemy';
+    return { turn, aiming: this.selected !== null, exits: this.exitsOpen };
+  }
+
+  /** Where the tutorial's anchors are on screen (see src/data/tutorial.ts). */
+  private tutorialAnchor(name: string): Rect | undefined {
+    const at = (p: Pt | undefined): Rect | undefined => { if (!p) return undefined; const c = this.centre(p); return { x: c.x, y: c.y, w: 0, h: 0 }; };
+    const live = this.liveUnits();
+    const hazards = this.fight ? this.fight.hazards ?? [] : this.hazards;
+    const bonus = (h: Hazard) => h.kind === 'medkit' || h.kind === 'relay';
+    const H = CONFIG.HEIGHT;
+    switch (name) {
+      case 'hero': return at(this.hero);
+      case 'start': return at(this.board.playerStarts.find(p => !same(p, this.hero)) ?? this.hero);
+      case 'foe': return at(live.filter(u => u.team === 1).sort((a, b) => dist(a, this.hero) - dist(b, this.hero))[0]);
+      case 'exit': return this.exitsOpen ? at(this.board.exits.find((_, i) => this.room.doorRewards[i])) : undefined;
+      case 'trap': return at(hazards.find(h => !bonus(h)));
+      case 'bonus': return at(hazards.find(bonus));
+      case 'barrel': return at(live.find(isBarrel));
+      case 'cover': return this.fight ? at(this.coverCell) : undefined;
+      case 'boss': return at(live.find(u => u.boss));
+      case 'telegraph': { const t = this.fight?.telegraphs?.[0]; return at(t?.cells[Math.floor(t.cells.length / 2)]); }
+      // The top strip and the lists above the bar are drawn by the HUD scene (src/scenes/HudScene.ts).
+      case 'psy': return { x: 156, y: 1, w: 126, h: 12 };
+      case 'relics': return this.run.relics.length ? { x: 3, y: H - 63, w: 130, h: 8 } : undefined;
+      case 'implants': return this.run.implants.length ? { x: 3, y: H - 49, w: 150, h: 8 } : undefined;
+      default: return this.ui.anchorRect(name);
+    }
+  }
+
   // ---------- input ----------
 
   private modal() { return !!(this.choice || this.panel || this.help?.isOpen); }
@@ -1127,7 +1199,11 @@ export class RunScene extends Phaser.Scene {
     const tile = cell ? this.tileInfo(cell) : undefined;
     const notes: string[] = [];
     // An enemy in cover from where you stand takes less from your ranged spells.
-    if (f && u && u.team === 1 && inCover(f, this.hero, u)) notes.push('à couvert : -25 % de tes dégâts à distance');
+    if (f && u && u.team === 1 && inCover(f, this.hero, u)) {
+      notes.push('à couvert : -25 % de tes dégâts à distance');
+      this.coverCell = { x: u.x, y: u.y };
+      this.tut.event('see:cover');
+    }
     if (f && u) notes.push(...bossNotes(f, u));
     if (u || tile) this.ui.setInfo(u, f, tile, notes);
     else this.ui.setInfo(f ? current(f) : undefined, f);
@@ -1153,6 +1229,7 @@ export class RunScene extends Phaser.Scene {
     this.hero.x = cell.x; this.hero.y = cell.y;
     this.views.get(1)!.place(cell);
     audio.sfx('ui');
+    this.tut.event('run:placed');
   }
 
   private clickFight(cell: Pt) {
@@ -1165,6 +1242,7 @@ export class RunScene extends Phaser.Scene {
       const ev = cast(f, p, s, cell);
       // Keep the spell selected while it can still be cast this turn (several hits per turn).
       if (this.slotError(s)) this.selected = null;
+      this.tut.event('run:cast');
       void this.playerAct(ev);
       return;
     }
@@ -1174,6 +1252,7 @@ export class RunScene extends Phaser.Scene {
       if (u && u.team === 1) this.ui.say('Choisis un sort (1-9) pour attaquer', '#f5e663');
       return;
     }
+    this.tut.event('run:moved');
     void this.playerAct(moveTo(f, p, cell));
   }
 
@@ -1235,10 +1314,12 @@ export class RunScene extends Phaser.Scene {
       const f = this.fight!;
       const e = castError(f, this.hero, s, this.hero);
       if (e) { this.ui.say(e, '#ff2a6d'); audio.sfx('deny'); return; }
+      this.tut.event('run:cast');
       void this.playerAct(cast(f, this.hero, s, this.hero));
       return;
     }
     this.selected = i;
+    this.tut.event('run:select');
     audio.sfx('ui');
     this.refreshUi();
   }
@@ -1271,6 +1352,7 @@ export class RunScene extends Phaser.Scene {
     stageOpacity(fadeVisibility(this.cameras.main.fadeEffect));
     this.world.frame();
     if (!this.ready || this.ending) return;
+    if (!this.psyTold && psyTier(this.run.psy) !== 'stable') { this.psyTold = true; this.tut.event('psy:high'); }
     // Modal windows (implant cards, street events) hide the fight bar and its spell card.
     const modal = !!(this.choice || this.panel);
     this.ui.setVisible(!modal);
