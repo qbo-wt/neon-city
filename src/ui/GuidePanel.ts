@@ -145,6 +145,7 @@ const CHAPTERS: Chapter[] = [
     { p: 'Chaque boss a 3 phases (sous 50 % puis 25 % de vie) : une bannière annonce sa nouvelle règle, et il gagne PA, PM et dégâts. Ses grosses attaques sont annoncées un tour à l\'avance : cases rayées qui clignotent au sol, intention affichée au-dessus de lui. Elles frappent au début de son tour suivant, sur ces cases et seulement elles.' },
     { list: [
       ['LIEUTENANT DES RATS', `Secteur 5. Mortier en croix sur toi, tous les 2 tours puis à chaque tour. Phase 2 : des Rats arrivent des bords avec des barils ; tant qu'un de ses Rats est debout, il encaisse ${Math.round((1 - BOSS_TUNING.warden.guardMult) * 100)} % de moins de tes sorts (pas des explosions ni des poussées).`],
+      ['EXÉCUTEUR PSY-SEC', `Secteur 10. Surcharge : la ligne où tu te tiens, puis ta ligne et ta colonne, qui restent électrifiées ${BOSS_TUNING.boss.surge.shock[1]} rounds. Phase 2 : bouclier psionique rechargé par 2 relais ; détruis-les pour le briser (il perd ${BOSS_TUNING.boss.breakPa} PA). Phase 3 : surcharge à chaque tour, ta psychose monte à chacun de ses tours.`],
     ] },
     { tip: 'Il ne lance jamais une attaque annoncée dont tu ne pourrais pas sortir en marchant. Survole une case rayée pour voir les dégâts prévus.' },
   ]] },

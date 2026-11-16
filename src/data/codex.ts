@@ -40,8 +40,8 @@ export const CODEX: Record<EnemyId, [desc: string, tip: string, lore: string]> =
     'Il tient le secteur 5 depuis six ans. Personne n\'a jamais vu son visage.',
   ],
   boss: [
-    'L\'Exécuteur Psy-Sec. Chasseur de cyberpsychos : lame géante, halo psionique.',
-    'Son onde psy frappe tout à 2 cases autour de lui, son rayon perce les lignes : ne reste ni collé ni aligné.',
+    'L\'Exécuteur Psy-Sec. Chasseur de cyberpsychos : lame géante, halo psionique. Électrifie la ligne où tu te tiens (annoncé un tour avant).',
+    'Sous la moitié de sa vie, deux relais rechargent son bouclier : détruis-les et il vacille. À la fin, la surcharge tombe à chaque tour sur ta ligne et ta colonne : change des deux à chaque tour.',
     'Psy-Sec ne dit pas qui est sous l\'armure. Certains disent qu\'il n\'y a plus personne.',
   ],
 };

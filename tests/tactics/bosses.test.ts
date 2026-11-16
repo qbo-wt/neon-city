@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { walkable } from '../../src/tactics/board';
 import { beginFight, byUid, cloneFight, createFight, current, endTurn, kill, moveTo, previewCast, unitAt, type Fight } from '../../src/tactics/fight';
 import { playTurn } from '../../src/tactics/ai';
-import { BOSS_HOOKS, BOSS_TUNING, guarded } from '../../src/tactics/bosses';
+import { BOSS_HOOKS, BOSS_TUNING, guarded, relays } from '../../src/tactics/bosses';
 import { hazardAt } from '../../src/tactics/hazards';
 import { TERRAIN_HOOKS, addHazard } from '../../src/tactics/terrain';
 import { makeBreakable, makeEnemy, makePlayer, makeSummon } from '../../src/tactics/units';
@@ -165,5 +165,127 @@ describe('Lieutenant des Rats', () => {
       if (!f.over) endTurn(f);
     }
     expect(f.round).toBeGreaterThan(1);
+  });
+});
+
+describe('Exécuteur Psy-Sec', () => {
+  const exec = (f: Fight) => f.units.find(u => u.kind === 'boss')!;
+
+  it('phase 1: a whole line through the player, hitting only that line, at its next turn', () => {
+    const f = bossFight(9, 9, [hero({ x: 2, y: 6 }), makeEnemy('boss', { x: 6, y: 1 }, sc),
+      makeEnemy('drone', { x: 5, y: 6 }, sc), makeEnemy('runner', { x: 5, y: 7 }, sc)]);
+    const p = player(f), b = exec(f), onLine = unitAt(f, { x: 5, y: 6 })!, below = unitAt(f, { x: 5, y: 7 })!;
+    toTurn(f, b.uid);
+    toTurn(f, p.uid);
+    expect(f.telegraphs).toHaveLength(1);
+    const t = f.telegraphs![0];
+    expect(t.kind).toBe('surge');
+    sameCells(t.cells, Array.from({ length: 9 }, (_, x) => ({ x, y: 6 })));
+    moveTo(f, p, { x: 2, y: 5 });
+    const hp = { p: p.hp, below: below.hp };
+    const ev = toTurn(f, b.uid);
+    const hit = [...new Set(ev.filter(e => e.t === 'damage').map(e => (e as { uid: number }).uid))];
+    expect(hit).toEqual([onLine.uid]);
+    expect([p.hp, below.hp]).toEqual([hp.p, hp.below]);
+    expect(ev.some(e => e.t === 'psy')).toBe(false);
+    // Phase 1 leaves no live floor behind.
+    expect(f.hazards ?? []).toHaveLength(0);
+  });
+
+  it('caught in the surge: damage and psychosis for the player', () => {
+    const f = bossFight(9, 9, [hero({ x: 2, y: 6 }), makeEnemy('boss', { x: 6, y: 1 }, sc)]);
+    const p = player(f), b = exec(f);
+    toTurn(f, b.uid);
+    toTurn(f, p.uid);
+    const before = p.hp;
+    const ev = toTurn(f, b.uid);
+    expect(p.hp).toBeLessThan(before);
+    expect(ev.find(e => e.t === 'psy' && e.uid === p.uid)).toMatchObject({ v: BOSS_TUNING.boss.surge.psy });
+  });
+
+  it('phase 2: shield fed by two relays, a cross that leaves the floor live, and the shield breaks with the last relay', () => {
+    const f = bossFight(13, 13, [hero({ x: 6, y: 11 }), makeEnemy('boss', { x: 6, y: 1 }, sc)]);
+    const p = player(f), b = exec(f), T = BOSS_TUNING.boss;
+    b.hp = Math.floor(b.maxHp * 0.45);
+    const ev = toTurn(f, b.uid);
+    expect(b.phase).toBe(1);
+    expect(b.shield).toBe(Math.round(b.maxHp * T.shieldPct));
+    const rs = relays(f, b);
+    expect(rs).toHaveLength(T.relays);
+    for (const r of rs) {
+      expect(r.team).toBe(2);
+      expect(Math.abs(r.x - b.x) + Math.abs(r.y - b.y)).toBeGreaterThanOrEqual(4);
+      expect(f.units.filter(o => !o.dead && o.x === r.x && o.y === r.y)).toHaveLength(1);
+    }
+    expect(ev.filter(e => e.t === 'summon')).toHaveLength(T.relays);
+
+    toTurn(f, p.uid);
+    const t = f.telegraphs![0];
+    const cross = [...Array.from({ length: 13 }, (_, x) => ({ x, y: 11 })), ...Array.from({ length: 13 }, (_, y) => ({ x: 6, y })).filter(c => c.y !== 11 && c.y !== b.y)];
+    // Relays stand on the cross? They are objects: the line runs under them all the same.
+    sameCells(t.cells, cross);
+    moveTo(f, p, { x: 5, y: 10 });
+    const hp = p.hp;
+    toTurn(f, b.uid);
+    expect(p.hp).toBe(hp);
+    expect(hazardAt(f, { x: 0, y: 11 })?.kind).toBe('shock');
+    expect(hazardAt(f, { x: 6, y: 8 })?.kind).toBe('shock');
+    // Not under anything standing on the line (the relays here).
+    for (const r of rs) expect(hazardAt(f, r)).toBeUndefined();
+    expect(hazardAt(f, { x: 5, y: 10 })).toBeUndefined();
+    expect(hazardAt(f, { x: 0, y: 0 })).toBeUndefined();
+
+    // One relay down: the shield still refills at its turn.
+    kill(f, rs[0], [], p);
+    expect(b.shield).toBeGreaterThan(0);
+    b.shield = 5;
+    toTurn(f, p.uid);
+    toTurn(f, b.uid);
+    expect(b.shield).toBe(5 + Math.round(b.maxHp * T.regenPct));
+    // The last one, on the player's turn: the shield drops at once, and it pays in PA at its next turn.
+    toTurn(f, p.uid);
+    const out: FightEvent[] = [];
+    kill(f, rs[1], out, p);
+    expect(b.shield).toBe(0);
+    expect(out.some(e => e.t === 'callout' && e.text.includes('BRISÉ'))).toBe(true);
+    toTurn(f, b.uid);
+    expect(b.shield).toBe(0);
+    expect(b.pa).toBe(b.maxPa - T.breakPa);
+  });
+
+  it('phase 3: a surge every turn and psychosis at each of its turns', () => {
+    const f = bossFight(13, 13, [hero({ x: 6, y: 11 }), makeEnemy('boss', { x: 6, y: 1 }, sc)]);
+    const p = player(f), b = exec(f);
+    b.hp = Math.floor(b.maxHp * 0.2);
+    for (let i = 0; i < 2; i++) {
+      const ev = toTurn(f, b.uid);
+      expect(ev.some(e => e.t === 'psy' && e.uid === p.uid && e.v === BOSS_TUNING.boss.purgePsy)).toBe(true);
+      const end = toTurn(f, p.uid);
+      expect(end.some(e => e.t === 'telegraph' && e.on)).toBe(true);
+      // Step out of the cross every time.
+      const safe = [{ x: p.x + 1, y: p.y - 1 }, { x: p.x - 1, y: p.y - 1 }, { x: p.x + 1, y: p.y + 1 }, { x: p.x - 1, y: p.y + 1 }].find(c => walkable(f.board, c) && !unitAt(f, c))!;
+      moveTo(f, p, safe);
+    }
+  });
+
+  it('the AI plays the Exécuteur on a copy without touching the real fight, and a whole AI fight ends cleanly', () => {
+    const f = bossFight(13, 13, [hero({ x: 6, y: 11 }), makeEnemy('boss', { x: 6, y: 2 }, sc)]);
+    const b = exec(f);
+    b.hp = Math.floor(b.maxHp * 0.45);
+    toTurn(f, b.uid);
+    const snap = () => JSON.stringify({ u: f.units.map(u => [u.uid, u.x, u.y, u.hp, u.shield, u.dead]), t: f.telegraphs, h: f.hazards });
+    const before = snap();
+    const g = cloneFight(f);
+    expect(() => playTurn(g, byUid(g, b.uid)!)).not.toThrow();
+    for (const r of relays(g, byUid(g, b.uid)!)) kill(g, r, []);
+    expect(snap()).toBe(before);
+
+    const h = bossFight(13, 13, [hero({ x: 6, y: 11 }), makeEnemy('boss', { x: 6, y: 1 }, { ...sc, hpMult: 1.54, dmgMult: 1.27 })]);
+    player(h).ai = 'melee';
+    for (let i = 0; i < 500 && !h.over && h.round < 40; i++) {
+      playTurn(h, current(h)!);
+      if (!h.over) endTurn(h);
+    }
+    expect(h.round).toBeGreaterThan(1);
   });
 });

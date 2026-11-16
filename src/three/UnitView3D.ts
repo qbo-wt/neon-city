@@ -64,6 +64,8 @@ export class UnitView3D {
   private bar: Phaser.GameObjects.Graphics;
   private ring?: THREE.Mesh;
   private primeLight?: THREE.Sprite;
+  /** a part that turns on its own (the relay's crystal) */
+  private spin?: THREE.Object3D;
   private cell: Pt;
   private busy = 0;
   private dead = false;
@@ -72,7 +74,21 @@ export class UnitView3D {
   constructor(private scene: Phaser.Scene, private world: World3D, readonly unit: Unit, _weaponArt?: string, npcKey?: string) {
     const k = unit.kind;
     if (k === 'drone') this.rig = new DroneRig();
-    else if (unit.team === 2 && !npcKey) {
+    else if (k === 'pylon') {
+      // Psionic relay of the Exécuteur: a dark mast, a violet crystal spinning over it, a halo.
+      const g = new THREE.Group(), mat = new THREE.MeshStandardMaterial({ color: 0x2a2440, roughness: 0.45, metalness: 0.7 });
+      const glow = new THREE.MeshBasicMaterial({ color: 0xb84dff, toneMapped: false });
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.4, 0.18, 6), mat); base.position.y = 0.09;
+      const mast = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.1, 0.16), mat); mast.position.y = 0.7;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.03, 6, 20), glow); ring.position.y = 1.05; ring.rotation.x = Math.PI / 2;
+      const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.17), glow); core.position.y = 1.45;
+      this.spin = core;
+      [base, mast].forEach(m => { m.castShadow = true; });
+      const h = halo(0xb84dff, 1.8); h.position.y = 1.4; h.material.opacity = 0.7;
+      g.add(base, mast, ring, core, h);
+      this.rig = new PropRig(g);
+      this.rig.height = 1.6;
+    } else if (unit.team === 2 && !npcKey) {
       // Placeholder until the prop model is loaded.
       const g = new THREE.Group();
       this.rig = new PropRig(g);
@@ -197,6 +213,7 @@ export class UnitView3D {
     if (this.ring) this.ring.rotation.z += dt * 0.8;
     if (this.primeLight) this.primeLight.scale.setScalar(1.4 + Math.sin(performance.now() / 90) * 0.5);
     if (this.aura) this.aura.scale.setScalar(3 + Math.sin(performance.now() / 240) * 0.45);
+    if (this.spin) { this.spin.rotation.y += dt * 2.4; this.spin.position.y = 1.45 + Math.sin(performance.now() / 300) * 0.06; }
     this.sync();
   }
 

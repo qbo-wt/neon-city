@@ -40,7 +40,7 @@ function score(before: Fight, after: Fight, u: Unit): number {
       v -= lost * (b.uid === u.uid ? 1.5 : 1.2);
       if (a.dead && b.uid !== u.uid) v -= 25;
       v += Math.max(0, a.buffs.length - b.buffs.length) * 3 + Math.max(0, a.shield - b.shield) * 0.6;
-    } else if (b.team === 2) v += lost * 0.05;
+    } else if (b.team === 2) v += lost * (b.kind !== 'pylon' ? 0.05 : u.team === 0 ? 1 : -2);
   }
   // A summon on the board is worth a hit.
   v += (after.units.length - before.units.length) * 14;
