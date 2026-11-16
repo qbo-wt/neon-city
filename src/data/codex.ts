@@ -35,8 +35,8 @@ export const CODEX: Record<EnemyId, [desc: string, tip: string, lore: string]> =
     'Il lit tes implants comme un livre ouvert. Il sait exactement où appuyer.',
   ],
   warden: [
-    'Le Lieutenant des Rats. Armure anti-émeute, fusil lourd, bobine de choc.',
-    'Il appelle des Rats en renfort et repousse contre les murs. Sous la moitié de sa vie, il gagne des PM.',
+    'Le Lieutenant des Rats. Armure anti-émeute, fusil lourd, mortier. Pilonne en croix les cases où tu te tiens (annoncé un tour avant).',
+    'Sous la moitié de sa vie, sa meute arrive des bords avec des barils : tant qu\'un Rat est debout, tes sorts lui font moins mal. Tue la garde ou fais sauter les barils sur lui.',
     'Il tient le secteur 5 depuis six ans. Personne n\'a jamais vu son visage.',
   ],
   boss: [

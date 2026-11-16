@@ -195,4 +195,30 @@ export type FightEvent =
   /** a hazard went off on uid (shock, acid, steam, medkit, relay) */
   | { t: 'trap'; uid: number; kind: HazardKind; at: Pt }
   /** a hazard appeared on (on) or left (off) a cell */
-  | { t: 'hazard'; kind: HazardKind; at: Pt; on: boolean };
+  | { t: 'hazard'; kind: HazardKind; at: Pt; on: boolean }
+  /** a boss announced a big attack on these cells (on), or it went off / was called off (off) */
+  | { t: 'telegraph'; uid: number; kind: TelegraphKind; cells: Pt[]; text: string; on: boolean }
+  /** a telegraphed attack goes off on its cells */
+  | { t: 'strike'; uid: number; kind: TelegraphKind; cells: Pt[] }
+  /** a short shout over a unit (boss rules: guard broken, shield up…); big: an anime impact word */
+  | { t: 'callout'; uid: number; text: string; color: number; big?: boolean };
+
+/** Big boss attacks announced one turn ahead (see tactics/bosses.ts). */
+export type TelegraphKind = 'mortar' | 'surge';
+
+/**
+ * An attack a boss announced at the end of its turn: it goes off at the start of its next turn on
+ * exactly these cells. Kept in the fight (cloneFight copies it) so the AI and the previews see it.
+ */
+export interface Telegraph {
+  kind: TelegraphKind;
+  /** the boss that fires it */
+  by: number;
+  cells: Pt[];
+  min: number;
+  max: number;
+  /** psychosis added to the player if caught */
+  psy?: number;
+  /** rounds the cells stay electrified after the strike (0 / undefined: none) */
+  shock?: number;
+}

@@ -39,6 +39,53 @@ export class AnimeFx {
     }
   }
 
+  /** A one-off impact word over (x, y): callouts of the boss rules ("GARDE ROMPUE !"). */
+  shout(x: number, y: number, str: string, color: string, size = 26) {
+    this.word(x, y, str, color, size);
+  }
+
+  /**
+   * Boss phase title card: a slanted band slams across the screen with the phase name in big
+   * condensed letters and its rule under it, speed lines, a flash; gone after ~2 s. Resolves when
+   * the card has been read (the fight waits on it).
+   */
+  banner(title: string, sub: string, color: number): Promise<void> {
+    const sc = this.scene, W = CONFIG.WIDTH, H = CONFIG.HEIGHT, y = H * 0.36;
+    const css = '#' + color.toString(16).padStart(6, '0');
+    this.world.impact(0.9, 0.5, y / H, color);
+    this.speedLines(W / 2, y, 34, color);
+    const band = sc.add.graphics().setScrollFactor(0).setDepth(1150);
+    // Slanted quads: left edge (top, bottom) and right edge (top, bottom) heights.
+    const quad = (col: number, alpha: number, lt: number, lb: number, rt: number, rb: number) => {
+      band.fillStyle(col, alpha).beginPath();
+      band.moveTo(-20, y + lt); band.lineTo(W + 20, y + rt); band.lineTo(W + 20, y + rb); band.lineTo(-20, y + lb);
+      band.closePath(); band.fillPath();
+    };
+    quad(0x0b0820, 0.88, -26, 32, -34, 24);
+    quad(color, 1, -30, -26, -38, -34);
+    quad(color, 1, 32, 35, 24, 27);
+    const head = sc.add.text(W / 2, y - 6, title, {
+      fontFamily: TITLE_FONT, fontSize: '40px', color: '#ffffff', fontStyle: '600', stroke: '#0b0820', strokeThickness: 6, resolution: CONFIG.ZOOM,
+      shadow: { offsetX: 3, offsetY: 3, color: css, blur: 0, fill: true, stroke: true },
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1151).setAngle(-1.5);
+    const line = sc.add.text(W / 2, y + 16, sub, {
+      fontFamily: TITLE_FONT, fontSize: '15px', color: css, stroke: '#0b0820', strokeThickness: 4, resolution: CONFIG.ZOOM,
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(1151).setAngle(-1.5);
+    if (head.width > W - 16) head.setScale((W - 16) / head.width);
+    if (line.width > W - 16) line.setScale((W - 16) / line.width);
+    const parts = [band, head, line];
+    band.x = -W; head.x += W; line.x -= W;
+    sc.tweens.add({ targets: band, x: 0, duration: 160, ease: 'Cubic.easeOut' });
+    sc.tweens.add({ targets: head, x: W / 2, duration: 200, ease: 'Back.easeOut' });
+    sc.tweens.add({ targets: line, x: W / 2, duration: 240, delay: 60, ease: 'Cubic.easeOut' });
+    return new Promise(res => {
+      sc.time.delayedCall(1700, () => {
+        sc.tweens.add({ targets: parts, alpha: 0, duration: 300, onComplete: () => parts.forEach(p => p.destroy()) });
+        res();
+      });
+    });
+  }
+
   /** Wedges from the screen edges toward the impact, quickly gone. */
   private speedLines(x: number, y: number, n: number, tint = 0xffffff) {
     const W = CONFIG.WIDTH, H = CONFIG.HEIGHT;

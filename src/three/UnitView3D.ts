@@ -120,6 +120,8 @@ export class UnitView3D {
   /** Screen position of the feet, in Phaser world units. */
   get x() { return this.screen(0).x; }
   get y() { return this.screen(0).y; }
+  /** Screen y just over the health bar (texts pinned above the unit). */
+  get top() { return this.screen(this.rig.height + 0.25).y; }
   private screen(h: number) { return this.world.toScreen(this.holder.position.clone().setY(h), CONFIG.WIDTH, CONFIG.HEIGHT); }
 
   place(p: Pt) {
@@ -194,6 +196,7 @@ export class UnitView3D {
     this.rig.update(dt);
     if (this.ring) this.ring.rotation.z += dt * 0.8;
     if (this.primeLight) this.primeLight.scale.setScalar(1.4 + Math.sin(performance.now() / 90) * 0.5);
+    if (this.aura) this.aura.scale.setScalar(3 + Math.sin(performance.now() / 240) * 0.45);
     this.sync();
   }
 
@@ -221,6 +224,23 @@ export class UnitView3D {
     } else if (!on && this.primeLight) { this.holder.remove(this.primeLight); this.primeLight = undefined; }
   }
 
+  /** Bosses: a big throbbing halo in the colour of their phase (none: undefined). */
+  private aura?: THREE.Sprite;
+  private auraColor?: number;
+  setAura(color?: number) {
+    if (color === this.auraColor) return;
+    if (this.aura) { this.holder.remove(this.aura); this.aura = undefined; }
+    this.auraColor = color;
+    if (color === undefined || this.dead) return;
+    this.aura = halo(color, 3.2);
+    this.aura.material.opacity = 0.5;
+    this.aura.position.y = 1.1;
+    this.holder.add(this.aura);
+    // New posture: a flash of the phase colour and a power-up gesture.
+    this.rig.flash(color);
+    this.rig.play('cast', true);
+  }
+
   /** A glowing ring at the feet of the unit whose turn it is. */
   setActive(on: boolean) {
     if (on && !this.ring) {
@@ -234,7 +254,7 @@ export class UnitView3D {
   }
 
   async die(): Promise<void> {
-    this.setPrimed(false); this.setActive(false);
+    this.setPrimed(false); this.setActive(false); this.setAura(undefined);
     this.dead = true;
     this.bar.clear();
     this.rig.play('death', true);

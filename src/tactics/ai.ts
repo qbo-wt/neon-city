@@ -1,16 +1,20 @@
 import { dist, lineOfSight, walkDistances } from './board';
 import { byUid, cast, castError, cloneFight, moveTo, occupied, opponents, reachFor, type Fight } from './fight';
+import { telegraphAt } from './bosses';
 import { hazardAt, hurtsAt } from './hazards';
 import { inCover, isBarrel } from './terrain';
 import type { Pt, SpellDef, Unit } from './types';
 
 /**
- * Arena sense, for every profile: do not wait on a trap that will go off at the next turn, keep out
- * of the blast of a barrel, and (shooters) stand behind cover from the target.
+ * Arena sense, for every profile: do not wait on a trap that will go off at the next turn, nor in a
+ * cell a boss announced, keep out of the blast of a barrel, and (shooters) stand behind cover from
+ * the target.
  */
 function terrainScore(f: Fight, u: Unit, at: Pt, target: Unit): number {
   let v = 0;
   if (hurtsAt(hazardAt(f, at), f.round + 1)) v -= 10;
+  // A boss's announced attack lands there at its next turn (its own blows never hit itself).
+  if (telegraphAt(f, at, u.uid)) v -= 12;
   for (const o of f.units) if (isBarrel(o) && !o.dead && Math.max(Math.abs(o.x - at.x), Math.abs(o.y - at.y)) <= 1) v -= 4;
   if ((u.ai === 'ranged' || u.ai === 'coward') && inCover(f, target, at)) v += 3;
   return v;

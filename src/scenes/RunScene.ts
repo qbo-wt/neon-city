@@ -33,7 +33,7 @@ import { STREET_EVENTS, STREET_EVENT_IDS, eventLine, eventOptions, type EventCtx
 import { contractMet, contractProgress, type SectorTally } from '../core/contract';
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
-import { txt } from '../ui/text';
+import { title, txt } from '../ui/text';
 import { hideLoading, showLoading, wipeTo } from '../ui/transition';
 import { DIRS, dist, keyOf, pathTo, reachable, same, walkable } from '../tactics/board';
 import { generateArena, type ArenaStyle, type BreakableKind } from '../tactics/arena';
@@ -44,6 +44,7 @@ import {
 import { nextAction } from '../tactics/ai';
 import { HAZARD_COLORS, HAZARD_NAMES, hazardAt, hazardText, steamActive, steamIn, type Hazard } from '../tactics/hazards';
 import { BARREL_BLAST, TERRAIN_HOOKS, inCover, isBarrel } from '../tactics/terrain';
+import { BOSS_HOOKS, BOSS_PHASES, TELEGRAPH_COLORS, bossNotes, isBossKind, telegraphAt, telegraphInfo } from '../tactics/bosses';
 import { makeBreakable, makeEnemy, makePlayer, makeSummon, type EnemyScaling } from '../tactics/units';
 import type { Board, FightEvent, Pt, SpellDef, Unit } from '../tactics/types';
 import { UnitView3D as UnitView } from '../three/UnitView3D';
@@ -129,6 +130,8 @@ export class RunScene extends Phaser.Scene {
   private hazards: Hazard[] = [];
   /** the last thing that hurt the player was a trap (for the death screen) */
   private trapHit = false;
+  /** what each boss announced, pinned over its head until it goes off */
+  private intents = new Map<number, Phaser.GameObjects.Text>();
 
   constructor() { super(SCENES.Run); }
 
@@ -164,6 +167,7 @@ export class RunScene extends Phaser.Scene {
     this.bossLine = undefined;
     this.hazards = [];
     this.trapHit = false;
+    this.intents = new Map();
   }
 
   /** Stats and spell bar of the run: skill nodes, implants, synergies, relics, weapon and aspect, notoriety. */
@@ -455,6 +459,13 @@ export class RunScene extends Phaser.Scene {
     for (const v of this.views.values()) { v.showBar = true; v.drawBar(); }
     audio.setIntensity(1);
     this.ui.setButton('FIN DU TOUR');
+    // Boss fight: the first phase's title card says what it does.
+    const boss = all.find(isBossKind);
+    if (boss) {
+      const ph = BOSS_PHASES[boss.kind][0];
+      this.views.get(boss.uid)?.setAura(ph.color);
+      await this.fx.banner(`PHASE 1 — ${ph.title}`, ph.sub, ph.color);
+    }
     const ev = beginFight(f);
     await this.play(ev);
     await this.loop();
@@ -610,15 +621,65 @@ export class RunScene extends Phaser.Scene {
         if (!u) break;
         const v = this.addUnit(u);
         v.showBar = true; v.drawBar();
-        sparks(this, v.x, v.y - 8, u.team === 0 ? COLORS.cyan : COLORS.magenta, 8, 14);
+        sparks(this, v.x, v.y - 8, u.team === 0 ? COLORS.cyan : u.team === 2 ? COLORS.yellow : COLORS.magenta, 8, 14);
         audio.sfx('spawn');
+        // Arrivals called by a boss: one at a time, so each one is seen.
+        if (f && byUid(f, e.by)?.boss) await wait(this, 160);
         break;
       }
       case 'phase': {
-        if (u && (u.kind === 'warden' || u.kind === 'boss')) { const l = BOSS_LINES[u.kind]; this.bossSay(e.phase >= 2 ? l.frenzy : l.enraged); this.cameras.main.flash(200, 255, 42, 109); }
+        if (!u || !isBossKind(u)) break;
+        const l = BOSS_LINES[u.kind], ph = BOSS_PHASES[u.kind][Math.min(2, e.phase)];
+        this.bossSay(e.phase >= 2 ? l.frenzy : l.enraged);
+        audio.sfx('bossRoar');
+        this.cameras.main.shake(300, 0.006);
+        view?.setAura(ph.color);
+        await this.fx.banner(`PHASE ${e.phase + 1} — ${ph.title}`, ph.sub, ph.color);
+        break;
+      }
+      case 'telegraph': {
+        this.syncWarnings();
+        if (!e.on) { this.intents.get(e.uid)?.destroy(); this.intents.delete(e.uid); break; }
+        const col = TELEGRAPH_COLORS[e.kind], css = '#' + col.toString(16).padStart(6, '0');
+        this.intents.get(e.uid)?.destroy();
+        // The intent stays pinned over the boss until the attack goes off.
+        const label = title(this, view?.x ?? 0, (view?.top ?? 0) - 6, `⚠ ${e.text}`, 13, css).setOrigin(0.5, 1).setDepth(995).setStroke('#05030f', 4);
+        this.intents.set(e.uid, label);
+        this.tweens.add({ targets: label, scale: { from: 1.6, to: 1 }, duration: 180, ease: 'Back.easeOut' });
+        this.world.flashCells(e.cells, col, 600);
+        audio.sfx('windup');
+        this.ui.say(`${u?.name ?? 'Le boss'} prépare : ${e.text.toLowerCase()} — sors des cases marquées avant son tour !`, css);
+        await wait(this, 450);
+        break;
+      }
+      case 'strike': {
+        const col = TELEGRAPH_COLORS[e.kind];
+        this.world.flashCells(e.cells, e.kind === 'surge' ? 0xffffff : col, 300);
+        this.world.flashCells(e.cells, col, 700);
+        e.cells.forEach((c, i) => { if (e.kind === 'mortar' || i % 2 === 0) { const p = this.centre(c); sparks(this, p.x, p.y - 6, col, 6, 16); } });
+        const mid = this.centre(e.cells[Math.floor(e.cells.length / 2)] ?? (u ?? { x: 0, y: 0 }));
+        this.fx.hit(mid.x, mid.y - 8, 'blast', col);
+        audio.sfx(e.kind === 'mortar' ? 'explode' : 'stun');
+        this.cameras.main.shake(260, 0.01);
+        await wait(this, 280);
+        break;
+      }
+      case 'callout': {
+        if (!view) break;
+        const css = '#' + e.color.toString(16).padStart(6, '0');
+        if (e.big) this.fx.shout(view.x, view.top, e.text, css);
+        else floatText(this, view.x, view.top - 4, e.text, css, 8);
+        audio.sfx('special');
+        view.drawBar();
+        await wait(this, 200);
         break;
       }
     }
+  }
+
+  /** The cells of the bosses' announced attacks, on the 3D ground. */
+  private syncWarnings() {
+    this.world.setWarnings((this.fight?.telegraphs ?? []).flatMap(t => t.cells.map(p => ({ p, color: TELEGRAPH_COLORS[t.kind] }))));
   }
 
   /** Visual of a spell: slash arcs, tracer, blast ring, wire, hack glyphs. */
@@ -707,7 +768,7 @@ export class RunScene extends Phaser.Scene {
       }
       const x = view?.x ?? 0, y = view?.y ?? 0;
       // A barrel holds nothing but its blast, which follows at once.
-      if (isBarrel(u)) { void view?.die(); this.views.delete(u.uid); return; }
+      if (isBarrel(u) || u.kind === 'pylon') { void view?.die(); this.views.delete(u.uid); return; }
       await view?.die();
       this.views.delete(u.uid);
       this.loot(x, y);
@@ -742,8 +803,8 @@ export class RunScene extends Phaser.Scene {
     this.views.delete(u.uid);
   }
 
-  /** Fight listeners: the arena's rules (traps, barrels, cover), then the relics. */
-  private fightHooks() { return [TERRAIN_HOOKS, ...relicHooks(this.run.relics)]; }
+  /** Fight listeners: the arena's rules (traps, barrels, cover), the bosses' rules, then the relics. */
+  private fightHooks() { return [TERRAIN_HOOKS, BOSS_HOOKS, ...relicHooks(this.run.relics)]; }
 
   /** The hazards on the 3D ground: the fight's (live), the sector's before it, none after it. */
   private syncHazards() {
@@ -757,6 +818,9 @@ export class RunScene extends Phaser.Scene {
 
   /** What the hovered cell holds, for the info panel. */
   private tileInfo(p: Pt) {
+    // A boss's announced attack matters more than what lies on the floor.
+    const tg = this.fight && telegraphInfo(this.fight, p);
+    if (tg) return tg;
     const h = hazardAt({ hazards: this.fight ? this.fight.hazards : this.hazards, round: this.fight?.round ?? 1 }, p);
     return h ? { name: HAZARD_NAMES[h.kind], text: hazardText(h, this.fight?.round ?? 1), color: HAZARD_COLORS[h.kind] } : undefined;
   }
@@ -865,7 +929,10 @@ export class RunScene extends Phaser.Scene {
     // Traps die down with the fight: walking to an exit is safe.
     this.hazards = [];
     this.trapHit = false;
+    this.intents.forEach(t => t.destroy());
+    this.intents.clear();
     this.syncHazards();
+    this.syncWarnings();
     this.ui.setButton(null);
     this.ui.setTimeline(undefined);
     const steps: ((next: () => void) => void)[] = [];
@@ -1056,6 +1123,7 @@ export class RunScene extends Phaser.Scene {
     const notes: string[] = [];
     // An enemy in cover from where you stand takes less from your ranged spells.
     if (f && u && u.team === 1 && inCover(f, this.hero, u)) notes.push('à couvert : -25 % de tes dégâts à distance');
+    if (f && u) notes.push(...bossNotes(f, u));
     if (u || tile) this.ui.setInfo(u, f, tile, notes);
     else this.ui.setInfo(f ? current(f) : undefined, f);
   }
@@ -1188,6 +1256,8 @@ export class RunScene extends Phaser.Scene {
     const real = Math.min(delta, CONFIG.MAX_DT_MS);
     for (const l of [this.overlay, this.hoverG, this.markLayer]) if (l.dirty) { this.world.setOverlay(l.name, l.cells, l.order); l.dirty = false; }
     this.views.forEach(v => v.update(real / 1000));
+    // Boss intents follow their boss.
+    for (const [uid, t] of this.intents) { const v = this.views.get(uid); if (v) t.setPosition(v.x, v.top - 6); }
     if (this.ready) this.moveCamera(real);
     stageOpacity(fadeVisibility(this.cameras.main.fadeEffect));
     this.world.frame();
@@ -1298,8 +1368,8 @@ export class RunScene extends Phaser.Scene {
       for (const q of path) this.diamond(g, q, bad && hazardAt(f, q) ? 0xff2a6d : 0x39ff88, 0.4);
       const cost = map.get(keyOf(cell))!.cost;
       const c = this.centre(cell);
-      const trap = (lost > 0 ? `  -${lost} PV${sp.dead ? ' ✝' : ''}` : lost < 0 ? `  +${-lost} PV` : '') + (corroded ? '  corrosion' : '');
-      this.hoverLabels.push(txt(this, c.x, c.y - 4, `${cost} PM${cost > path.length ? ' (tacle)' : ''}${trap}`, 6, bad ? '#ff2a6d' : '#39ff88').setOrigin(0.5).setDepth(990).setStroke('#05030f', 3));
+      const trap = (lost > 0 ? `  -${lost} PV${sp.dead ? ' ✝' : ''}` : lost < 0 ? `  +${-lost} PV` : '') + (corroded ? '  corrosion' : '') + (telegraphAt(f, cell) ? '  ⚠ zone du boss' : '');
+      this.hoverLabels.push(txt(this, c.x, c.y - 4, `${cost} PM${cost > path.length ? ' (tacle)' : ''}${trap}`, 6, bad || telegraphAt(f, cell) ? '#ff2a6d' : '#39ff88').setOrigin(0.5).setDepth(990).setStroke('#05030f', 3));
     }
   }
   private hoverLabels: Phaser.GameObjects.Text[] = [];
@@ -1324,6 +1394,7 @@ export class RunScene extends Phaser.Scene {
     this.drawHover();
     this.showInfo();
     this.syncHazards();
+    this.syncWarnings();
   }
 
   private publishHud() {

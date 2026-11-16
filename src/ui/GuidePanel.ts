@@ -7,6 +7,7 @@ import type { Relic } from '../core/types';
 import { audio } from '../audio/audio';
 import { zoneIcon, zoneLabel } from './spellInfo';
 import { BARREL_BLAST, BARREL_HP, COVER_MULT } from '../tactics/terrain';
+import { BOSS_TUNING } from '../tactics/bosses';
 import { hex, title, txt } from './text';
 import { Button, C, Card, T, bold, chip, cutPoly, hints, keycap, pinToCamera, screenFrame } from './kit';
 
@@ -138,9 +139,14 @@ const CHAPTERS: Chapter[] = [
       ['KAMIKAZE', 'S\'amorce à côté de toi et explose à son tour suivant, sur ses alliés aussi. Éloigne-toi ou pousse-le vers eux.'],
       ['NETRUNNER', 'Hacks sans ligne de vue (dégâts et psychose), ralentit, soigne ses alliés et fuit. Dès le secteur 4.'],
     ] },
-    { h: 'Les boss' },
-    { p: 'Secteur 5 : le Lieutenant des Rats, qui appelle des renforts. Secteur 10 : l\'Exécuteur Psy-Sec, qui se téléporte et lâche des drones. Sous 50 % puis 25 % de vie, ils passent en phase supérieure : plus de PA, de PM et de dégâts.' },
     { tip: `Plus tu descends, plus ils sont solides : +${Math.round(CONFIG.DEPTH_HP * 100)} % de vie et +${Math.round(CONFIG.DEPTH_DAMAGE * 100)} % de dégâts par secteur.` },
+  ], [
+    { h: 'Les boss' },
+    { p: 'Chaque boss a 3 phases (sous 50 % puis 25 % de vie) : une bannière annonce sa nouvelle règle, et il gagne PA, PM et dégâts. Ses grosses attaques sont annoncées un tour à l\'avance : cases rayées qui clignotent au sol, intention affichée au-dessus de lui. Elles frappent au début de son tour suivant, sur ces cases et seulement elles.' },
+    { list: [
+      ['LIEUTENANT DES RATS', `Secteur 5. Mortier en croix sur toi, tous les 2 tours puis à chaque tour. Phase 2 : des Rats arrivent des bords avec des barils ; tant qu'un de ses Rats est debout, il encaisse ${Math.round((1 - BOSS_TUNING.warden.guardMult) * 100)} % de moins de tes sorts (pas des explosions ni des poussées).`],
+    ] },
+    { tip: 'Il ne lance jamais une attaque annoncée dont tu ne pourrais pas sortir en marchant. Survole une case rayée pour voir les dégâts prévus.' },
   ]] },
   { name: 'ARMES & ASPECTS', pages: [[
     { h: 'Le râtelier' },

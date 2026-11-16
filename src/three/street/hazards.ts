@@ -193,3 +193,80 @@ export class HazardDecals {
 
   clear() { for (const it of [...this.items.values()]) this.drop(it); }
 }
+
+/** The "incoming" mark: diagonal hazard stripes in a thick frame, an exclamation mark in the middle. Drawn white, tinted per attack. */
+let warnTex: THREE.Texture | undefined;
+function warnTexture(): THREE.Texture {
+  if (warnTex) return warnTex;
+  const S = 128, { c, g } = canvas(S, S);
+  g.save();
+  g.beginPath(); g.rect(10, 10, 108, 108); g.clip();
+  g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(10, 10, 108, 108);
+  g.fillStyle = 'rgba(255,255,255,0.55)';
+  for (let i = -128; i < 256; i += 28) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i + 14, 0); g.lineTo(i + 14 - 128, 128); g.lineTo(i - 128, 128); g.closePath(); g.fill(); }
+  g.restore();
+  g.lineJoin = 'round';
+  g.lineWidth = 12; g.strokeStyle = 'rgba(10,6,20,0.9)'; g.strokeRect(8, 8, 112, 112);
+  g.lineWidth = 7; g.strokeStyle = '#ffffff'; g.strokeRect(8, 8, 112, 112);
+  // The exclamation mark, ink-outlined.
+  g.fillStyle = 'rgba(10,6,20,0.95)'; g.fillRect(52, 26, 24, 52); g.fillRect(52, 86, 24, 20);
+  g.fillStyle = '#ffffff'; g.fillRect(57, 31, 14, 42); g.fillRect(57, 91, 14, 10);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  warnTex = t;
+  return t;
+}
+
+/** One cell where a boss's announced attack will land. */
+export interface WarningView { p: Pt; color: number }
+
+/**
+ * Danger cells of the bosses' announced attacks: a striped mark that throbs fast and a glow over
+ * the cell, so the zone reads at a glance from anywhere on the board.
+ */
+export class WarningDecals {
+  private items = new Map<string, { root: THREE.Group; mat: THREE.MeshBasicMaterial; glow: THREE.Sprite; color: number }>();
+  private geo: THREE.PlaneGeometry;
+  private t = 0;
+
+  constructor(private parent: THREE.Object3D, private cellPos: (p: Pt, y?: number) => THREE.Vector3, private CELL: number) {
+    this.geo = new THREE.PlaneGeometry(CELL * 0.96, CELL * 0.96).rotateX(-Math.PI / 2);
+  }
+
+  sync(list: WarningView[]) {
+    const keep = new Set<string>();
+    for (const w of list) {
+      const key = `${w.p.x},${w.p.y}`;
+      keep.add(key);
+      const old = this.items.get(key);
+      if (old && old.color === w.color) continue;
+      if (old) this.drop(key);
+      const root = new THREE.Group();
+      root.position.copy(this.cellPos(w.p, 0.03));
+      const mat = new THREE.MeshBasicMaterial({ map: warnTexture(), color: w.color, transparent: true, depthWrite: false, toneMapped: false, blending: THREE.AdditiveBlending });
+      const mark = new THREE.Mesh(this.geo, mat);
+      mark.renderOrder = 3;
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: w.color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false, opacity: 0.3 }));
+      glow.scale.setScalar(this.CELL * 1.2); glow.position.y = 0.2;
+      root.add(mark, glow);
+      this.parent.add(root);
+      this.items.set(key, { root, mat, glow, color: w.color });
+    }
+    for (const k of [...this.items.keys()]) if (!keep.has(k)) this.drop(k);
+  }
+
+  private drop(key: string) {
+    const it = this.items.get(key);
+    if (!it) return;
+    this.parent.remove(it.root);
+    it.mat.dispose();
+    it.glow.material.dispose();
+    this.items.delete(key);
+  }
+
+  tick(dt: number) {
+    this.t += dt;
+    const k = Math.abs(Math.sin(this.t * 4.5));
+    for (const it of this.items.values()) { it.mat.opacity = 0.45 + 0.55 * k; it.glow.material.opacity = 0.12 + 0.3 * k; }
+  }
+}

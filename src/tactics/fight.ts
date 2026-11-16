@@ -1,7 +1,7 @@
 import { randInt, type Rng } from '../core/rng';
 import { DIRS, cellAt, cellsBetween, dist, inLine, inside, keyOf, lineOfSight, pathTo, reachable, same, stepToward, walkable, type Reach } from './board';
 import { hazardPenalty, type Hazard } from './hazards';
-import type { Board, BuffStat, Effect, FightEvent, Pt, SpellDef, Unit } from './types';
+import type { Board, BuffStat, Effect, FightEvent, Pt, SpellDef, Telegraph, Unit } from './types';
 
 /** Damage per push cell that could not be travelled (before the caster's push bonus). */
 export const PUSH_BASE = 5;
@@ -62,6 +62,8 @@ export interface Fight {
   hooks?: FightHooks[];
   /** what lies on the floor (traps, medkits…): see terrain.ts; cloneFight copies it */
   hazards?: Hazard[];
+  /** big attacks bosses announced, going off at their next turn: see bosses.ts; cloneFight copies it */
+  telegraphs?: Telegraph[];
 }
 
 // ---------- queries ----------
@@ -504,6 +506,7 @@ export function createFight(board: Board, units: Unit[], rng: Rng, spawn?: Spawn
 export function cloneFight(f: Fight, rng: Rng = () => 0.5): Fight {
   return {
     ...f, rng, order: [...f.order], hazards: f.hazards?.map(h => ({ ...h })),
+    telegraphs: f.telegraphs?.map(t => ({ ...t, cells: t.cells.map(p => ({ ...p })) })),
     units: f.units.map(u => ({ ...u, cd: { ...u.cd }, casts: { ...u.casts }, buffs: u.buffs.map(b => ({ ...b })), bleed: u.bleed.map(b => ({ ...b })), face: { ...u.face }, mem: { ...u.mem } })),
   };
 }
