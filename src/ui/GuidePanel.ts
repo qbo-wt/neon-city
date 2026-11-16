@@ -9,7 +9,7 @@ import { zoneIcon, zoneLabel } from './spellInfo';
 import { BARREL_BLAST, BARREL_HP, COVER_MULT } from '../tactics/terrain';
 import { BOSS_TUNING } from '../tactics/bosses';
 import { hex, title, txt } from './text';
-import { Button, C, Card, T, bold, chip, cutPoly, hints, keycap, pinToCamera, screenFrame } from './kit';
+import { Button, C, Card, T, bold, chip, cutPoly, hints, keycap, markPanelClosed, pinToCamera, screenFrame } from './kit';
 
 /** One piece of a guide page. */
 type Block =
@@ -54,7 +54,7 @@ const CHAPTERS: Chapter[] = [
     { p: 'Approche-toi d\'un meuble, d\'une porte ou d\'un voisin : une invite [E] apparaît. Les voisins se souviennent de ta dernière run et racontent leur histoire, une réplique par run.' },
     { h: 'Dans la rue' },
     { p: 'Hors combat, tu cliques sur une case pour y marcher. Pour quitter un secteur, marche jusqu\'à une des sorties : chacune annonce ce qu\'elle rapporte.' },
-    { tip: 'Le bouton « i » (ou la touche I) rappelle les commandes à tout moment.' },
+    { tip: 'Le bouton « i » (ou la touche I) rappelle les commandes à tout moment. Échap, quand rien n\'est ouvert, ouvre les options (son, vitesse des combats, plein écran, effets d\'écran).' },
   ]] },
   { name: 'LE COMBAT', pages: [[
     { h: 'Placement' },
@@ -214,12 +214,12 @@ const CHAPTERS: Chapter[] = [
   ]] },
   { name: 'CONTRÔLES', pages: [[
     { h: 'Immeuble' },
-    { keys: [['ZQSD / WASD / flèches', 'Se déplacer'], ['E', 'Interagir'], ['1 à 4', 'Choisir une option'], ['ÉCHAP', 'Fermer un panneau']] },
+    { keys: [['ZQSD / WASD / flèches', 'Se déplacer'], ['E', 'Interagir'], ['1 à 4', 'Choisir une option'], ['ÉCHAP', 'Fermer un panneau (sinon : options)']] },
     { h: 'Combat' },
     { keys: [
       ['CLIC sur une case', 'Marcher (coût en PM affiché) / choisir une sortie'],
       ['1 à 9 ou clic', 'Choisir un sort, puis clic sur la cible'],
-      ['CLIC DROIT / ÉCHAP', 'Annuler le sort choisi'],
+      ['CLIC DROIT / ÉCHAP', 'Annuler le sort (sinon : options)'],
       ['ESPACE / ENTRÉE', 'Fin du tour (PRÊT au placement)'],
       ['F', 'Neuro-bloqueur'],
       ['MOLETTE / ZQSD', 'Zoomer / déplacer la caméra'],
@@ -269,6 +269,7 @@ export class GuidePanel {
     if (!this.root) return;
     this.root.destroy();
     this.root = undefined;
+    markPanelClosed(this.scene);
     this.onClose?.();
   }
 

@@ -7,6 +7,7 @@ import { RELIC_RARITY_COLORS, RELIC_RARITY_NAMES } from '../core/relics';
 import { title, txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
 import { C, GlitchText, T, bold, drawBar, scanlines, skewPoly, stripes } from '../ui/kit';
+import { camShake } from '../fx/screenFx';
 
 const STRIP = 14;
 
@@ -192,7 +193,7 @@ export class HudScene extends Phaser.Scene {
       this.glitchUntil = time + 90 + Math.random() * 90;
       this.nextGlitchAt = time + (tier === 'glitch' ? 2500 : tier === 'drain' ? 1400 : 700) * (0.5 + Math.random());
       const run = this.scene.get(SCENES.Run);
-      run?.cameras?.main?.shake(80, tier === 'crisis' ? 0.006 : 0.002);
+      camShake(run?.cameras?.main, 80, tier === 'crisis' ? 0.006 : 0.002);
       audio.sfx('glitch', { vol: tier === 'crisis' ? 1 : 0.6 });
     }
     if (time < this.glitchUntil) {

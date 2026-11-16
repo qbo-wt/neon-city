@@ -6,6 +6,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createRng, pick, type Rng } from '../core/rng';
+import { settings } from '../core/settings';
 import type { Board, Pt } from '../tactics/types';
 import { StylePass, stylizeScene, type ScreenFx } from './stylize';
 import { KitLibrary, fitObject } from './street/kit';
@@ -607,10 +608,12 @@ export class World3D {
   /**
    * An anime hit on the 3D picture: `strength` 0..1; at (u, v) in 0..1 screen space (top-left
    * origin). Big hits get a one-frame negative and a white flash, all get a colour split and shake.
+   * With the "reduced screen effects" option: only a faint colour split, no negative, flash or shake.
    */
   impact(strength: number, u = 0.5, v = 0.5, color = 0xffffff) {
     const fx = this.style.fx;
     fx.centre.set(u, 1 - v);
+    if (settings().reduceFx) { fx.aberration = Math.max(fx.aberration, 2 + strength * 3); return; }
     fx.aberration = Math.max(fx.aberration, 4 + strength * 10);
     if (strength >= 0.7) { fx.invert = 1; this.invertHold = 0.05; }
     fx.flash = Math.max(fx.flash, 0.12 + strength * 0.3);
@@ -618,8 +621,8 @@ export class World3D {
     this.shake(0.05 + strength * 0.22);
   }
 
-  /** Camera shake (metres at zoom 1), decays quickly. */
-  shake(amp: number) { this.shakeAmp = Math.max(this.shakeAmp, amp); }
+  /** Camera shake (metres at zoom 1), decays quickly. Off with the "reduced screen effects" option. */
+  shake(amp: number) { if (!settings().reduceFx) this.shakeAmp = Math.max(this.shakeAmp, amp); }
 
   private invertHold = 0;
   private lastDt = 0;

@@ -96,7 +96,8 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.physics.add.collider(this.npcGroup, this.built.walls);
     this.setup3d();
 
-    this.help = new HelpOverlay(this);
+    // Échap opens the options when no panel of the room is open.
+    this.help = new HelpOverlay(this, undefined, undefined, 'hub', () => !this.leaving && !this.modals.some(m => m.isOpen));
     this.info = roomStrip(this, this.placeName);
     this.prompt = txt(this, 0, 0, '', 7, '#e8e8ff').setOrigin(0.5).setDepth(50).setStroke('#05030f', 3);
     this.refreshInfo();
@@ -199,7 +200,7 @@ export abstract class InteriorScene extends Phaser.Scene {
       if (open) {
         this.onModalTick();
         if (this.controls.escape() || this.controls.interact()) open.close();
-      }
+      } else this.controls.flush();
       return;
     }
     this.player.inputEnabled = !this.leaving;

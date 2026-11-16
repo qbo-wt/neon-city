@@ -499,3 +499,13 @@ export function pips(g: Phaser.GameObjects.Graphics, x: number, y: number, n: nu
   }
   return max * (w + 1.5) - 1.5;
 }
+
+let closedFrame = -1;
+
+/**
+ * Panels that read keys straight from the keyboard (guide, options) mark the frame they closed in,
+ * so another handler of the same key press (Échap opens the options, Entrée starts the game) does
+ * not act on it as if nothing had been open.
+ */
+export function markPanelClosed(scene: Phaser.Scene) { closedFrame = scene.game.loop.frame; }
+export function panelClosedThisFrame(scene: Phaser.Scene) { return scene.game.loop.frame === closedFrame; }

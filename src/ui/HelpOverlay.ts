@@ -1,13 +1,15 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config';
-import { Button, C, T, cutPoly, hints, keycap, panel, pinToCamera } from './kit';
+import { Button, C, T, cutPoly, hints, keycap, panel, panelClosedThisFrame, pinToCamera } from './kit';
 import { GuidePanel } from './GuidePanel';
+import { OptionsPanel } from './OptionsPanel';
 import { title, txt } from './text';
 
 const HUB_KEYS: [string, string][] = [
   ['ZQSD / WASD / flèches', 'Se déplacer'],
   ['E', 'Interagir'],
   ['1 / 2 / 3 / 4', 'Choisir une option'],
+  ['ÉCHAP', 'Fermer un panneau, sinon les options'],
   ['M', 'Couper / remettre le son'],
   ['I', 'Afficher / cacher cette aide'],
 ];
@@ -18,22 +20,30 @@ const RUN_KEYS: [string, string][] = [
   ['CLIC DROIT / ÉCHAP', 'Annuler le sort choisi'],
   ['ESPACE / ENTRÉE', 'Fin du tour (ou PRÊT au placement)'],
   ['F', 'Neuro-bloqueur (2 PA, -30 psychose)'],
+  ['ÉCHAP (aucun sort choisi)', 'Options : son, vitesse des combats…'],
   ['SURVOL', 'Infos d\'une créature, portée et dégâts prévus'],
   ['M', 'Couper / remettre le son'],
   ['I', 'Afficher / cacher cette aide'],
 ];
 
-/** An "i" button in a screen corner; click it (or press I) to toggle the list of controls. */
+/**
+ * An "i" button in a screen corner; click it (or press I) to toggle the list of controls. Also owns
+ * the runner's guide and the options menu: Échap opens the options when `canOpenOptions` says the
+ * scene has nothing else open (a panel, a chosen spell…), and closes the controls list.
+ */
 export class HelpOverlay {
   private panel?: Phaser.GameObjects.Container;
   /** the full runner's guide, opened from this panel */
   readonly guide: GuidePanel;
+  readonly options: OptionsPanel;
 
   private keys: [string, string][];
 
-  constructor(private scene: Phaser.Scene, x = CONFIG.WIDTH - 12, y = CONFIG.HEIGHT - 12, mode: 'hub' | 'run' = 'hub') {
+  constructor(private scene: Phaser.Scene, x = CONFIG.WIDTH - 12, y = CONFIG.HEIGHT - 12, mode: 'hub' | 'run' = 'hub',
+    private canOpenOptions: () => boolean = () => true) {
     this.keys = mode === 'run' ? RUN_KEYS : HUB_KEYS;
     this.guide = new GuidePanel(scene);
+    this.options = new OptionsPanel(scene, { onGuide: () => this.guide.open() });
     const g = scene.add.graphics();
     const draw = (hot: boolean) => {
       g.clear();
@@ -54,11 +64,29 @@ export class HelpOverlay {
       this.toggle();
     });
     const onKey = () => this.toggle();
+    const onEsc = (e: KeyboardEvent) => { if (!e.repeat) this.escape(); };
     scene.input.keyboard!.on('keydown-I', onKey);
-    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.input.keyboard?.off('keydown-I', onKey));
+    scene.input.keyboard!.on('keydown-ESC', onEsc);
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { scene.input.keyboard?.off('keydown-I', onKey); scene.input.keyboard?.off('keydown-ESC', onEsc); });
   }
 
-  get isOpen() { return !!this.panel || this.guide.isOpen; }
+  /** Something of ours is open, or was closed by this very key press (so the scene ignores it). */
+  get isOpen() { return !!this.panel || this.guide.isOpen || this.options.isOpen || panelClosedThisFrame(this.scene); }
+
+  /** Échap: the guide and the options close themselves; else close the controls list, else open the options. */
+  private escape() {
+    if (this.guide.isOpen || this.options.isOpen || panelClosedThisFrame(this.scene)) return;
+    if (this.panel) { this.panel.destroy(); this.panel = undefined; return; }
+    if (this.canOpenOptions()) this.options.open();
+  }
+
+  /** Opens the options menu (closing the controls list). */
+  openOptions() {
+    if (this.guide.isOpen || this.options.isOpen) return;
+    this.panel?.destroy();
+    this.panel = undefined;
+    this.options.open();
+  }
 
   /** Closes this panel and opens the full guide. */
   openGuide() {
@@ -68,6 +96,7 @@ export class HelpOverlay {
   }
 
   toggle() {
+    if (this.options.isOpen) return;
     if (this.guide.isOpen) { this.guide.close(); return; }
     if (this.panel) { this.panel.destroy(); this.panel = undefined; return; }
     const s = this.scene, W = CONFIG.WIDTH, H = CONFIG.HEIGHT, rowH = 13;
@@ -84,6 +113,7 @@ export class HelpOverlay {
       items.push(txt(s, left + 124, y, v, 6, T.text).setOrigin(0, 0.5));
     });
     items.push(new Button(s, left + 12, top + ph - 15, 96, 11, 'GUIDE COMPLET', { accent: C.yellow, solid: true, font: 'ui', size: 5.5, onClick: () => this.openGuide() }));
+    items.push(new Button(s, left + 112, top + ph - 15, 96, 11, 'OPTIONS', { accent: C.cyan, font: 'ui', size: 5.5, key: 'ÉCHAP', onClick: () => this.openOptions() }));
     items.push(hints(s, left + pw - 40, top + ph - 9.5, [['I', 'Fermer']], C.cyan));
     this.panel = s.add.container(0, 0, items).setDepth(2000);
     pinToCamera(this.panel);

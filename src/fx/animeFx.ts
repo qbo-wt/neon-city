@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '../config';
 import { TITLE_FONT } from '../ui/text';
 import type { World3D } from '../three/World3D';
+import { settings } from '../core/settings';
 
 export type ImpactKind = 'hit' | 'crit' | 'kill' | 'boss' | 'blast' | 'hurt';
 
@@ -79,7 +80,8 @@ export class AnimeFx {
     sc.tweens.add({ targets: head, x: W / 2, duration: 200, ease: 'Back.easeOut' });
     sc.tweens.add({ targets: line, x: W / 2, duration: 240, delay: 60, ease: 'Cubic.easeOut' });
     return new Promise(res => {
-      sc.time.delayedCall(1700, () => {
+      // Read at the same pace whatever the fight speed (the scene clock may run faster).
+      sc.time.delayedCall(1700 * sc.time.timeScale, () => {
         sc.tweens.add({ targets: parts, alpha: 0, duration: 300, onComplete: () => parts.forEach(p => p.destroy()) });
         res();
       });
@@ -88,6 +90,8 @@ export class AnimeFx {
 
   /** Wedges from the screen edges toward the impact, quickly gone. */
   private speedLines(x: number, y: number, n: number, tint = 0xffffff) {
+    // Flashing wedges: left out with the "reduced screen effects" option.
+    if (settings().reduceFx) return;
     const W = CONFIG.WIDTH, H = CONFIG.HEIGHT;
     const g = this.scene.add.graphics().setDepth(955).setBlendMode(Phaser.BlendModes.ADD);
     const far = Math.hypot(W, H);

@@ -25,6 +25,7 @@ import { WEAPONS } from '../data/weapons';
 import { audio } from '../audio/audio';
 import { floatText, sparks } from '../fx/effects';
 import { AnimeFx } from '../fx/animeFx';
+import { camFlash, camShake } from '../fx/screenFx';
 import { Controls } from '../input/controls';
 import { getRun, newRun, setRun, type HudData, type RunState } from '../systems/runState';
 import { ImplantChoice } from '../ui/ImplantChoice';
@@ -33,6 +34,7 @@ import { STREET_EVENTS, STREET_EVENT_IDS, eventLine, eventOptions, type EventCtx
 import { contractMet, contractProgress, type SectorTally } from '../core/contract';
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
+import { combatTimeScale } from '../core/settings';
 import { title, txt } from '../ui/text';
 import { hideLoading, showLoading, wipeTo } from '../ui/transition';
 import { DIRS, dist, keyOf, pathTo, reachable, same, walkable } from '../tactics/board';
@@ -180,6 +182,8 @@ export class RunScene extends Phaser.Scene {
 
   create() {
     setupCamera(this, 0).fadeIn(220, 11, 8, 32);
+    this.tweens.timeScale = 1;
+    this.time.timeScale = 1;
     this.room = this.run.rooms[this.run.roomIndex];
     const style = STYLE_BY_TEMPLATE[this.room.template.id] ?? 'avenue';
     const rng = createRng(this.run.seed * 31 + this.run.roomIndex * 7919);
@@ -212,7 +216,8 @@ export class RunScene extends Phaser.Scene {
       endTurn: () => this.onConfirm(),
       hoverSpell: i => { this.hoverSlot = i; this.refreshUi(); },
     });
-    this.help = new HelpOverlay(this, CONFIG.WIDTH - 12, HUD_H + 40, 'run');
+    // Échap opens the options when nothing else would take it (a panel, a chosen spell).
+    this.help = new HelpOverlay(this, CONFIG.WIDTH - 12, HUD_H + 40, 'run', () => this.ready && !this.ending && !this.choice && !this.panel && this.selected === null);
 
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => this.onPointerMove(p));
     this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => {
@@ -315,7 +320,7 @@ export class RunScene extends Phaser.Scene {
       spend: n => { this.run.creditsEarned = Math.max(0, this.run.creditsEarned - n); audio.sfx('buy'); },
       gain: n => { this.run.creditsEarned += n; audio.sfx('credit'); },
       hp: () => this.hero.hp,
-      hurt: n => { this.hero.hp = this.run.hp = Math.max(1, this.hero.hp - n); audio.sfx('hurt'); this.cameras.main.flash(120, 255, 40, 40); },
+      hurt: n => { this.hero.hp = this.run.hp = Math.max(1, this.hero.hp - n); audio.sfx('hurt'); camFlash(this.cameras.main, 120, 255, 40, 40); },
       healFraction: f => { const g = this.heal(this.stats.maxHp * f); say(`+${Math.round(g)} PV`, '#39ff88'); audio.sfx('heal'); },
       addPsy: n => { this.run.psy = addPsy(this.run.psy, n, this.stats.psyResist); },
       addBlocker: () => { this.run.blockers++; },
@@ -380,7 +385,7 @@ export class RunScene extends Phaser.Scene {
     this.ui.say('Placement : clique une case bleue, puis PRÊT (Espace)', '#00f0ff');
     if (this.room.isBoss) this.time.delayedCall(900, () => {
       const b = this.units.find(u => u.boss);
-      if (b) { audio.sfx('bossRoar'); this.cameras.main.shake(400, 0.005); this.bossSay(bossIntro(b.kind as 'warden' | 'boss', this.meta)); }
+      if (b) { audio.sfx('bossRoar'); camShake(this.cameras.main, 400, 0.005); this.bossSay(bossIntro(b.kind as 'warden' | 'boss', this.meta)); }
     });
   }
 
@@ -562,7 +567,7 @@ export class RunScene extends Phaser.Scene {
         floatText(this, view.x, view.y - 24, `-${e.amount}${e.crit ? ' !' : ''}${e.push ? ' (poussée)' : ''}`, txtCol, e.crit ? 9 : 7);
         if (e.absorbed) floatText(this, view.x + 10, view.y - 16, `-${e.absorbed} bouclier`, '#e8e8ff', 6);
         audio.sfx(e.crit ? 'crit' : e.push ? 'quake' : 'hit', { vol: 0.7 });
-        if (e.crit || e.push) this.cameras.main.shake(80, 0.004);
+        if (e.crit || e.push) camShake(this.cameras.main, 80, 0.004);
         // Anime impact: crits get the full treatment, other blows a short colour split and shake.
         this.fx.hit(view.x, view.y - 12, e.crit ? 'crit' : hurtPlayer ? 'hurt' : 'hit', e.crit ? COLORS.yellow : undefined);
         if (hurtPlayer) { this.registry.set('hurtAt', this.game.loop.time); this.tally.hitsTaken++; audio.sfx('hurt'); }
@@ -589,7 +594,7 @@ export class RunScene extends Phaser.Scene {
         const at = view ? { x: view.x, y: view.y } : u ? this.centre(u) : undefined;
         if (at) sparks(this, at.x, at.y - 6, COLORS.yellow, 16, 34);
         this.world.flashCells(e.cells, 0xff8c2a, 500);
-        audio.sfx('explode'); this.cameras.main.shake(200, 0.008);
+        audio.sfx('explode'); camShake(this.cameras.main, 200, 0.008);
         if (at) this.fx.hit(at.x, at.y - 8, 'blast', 0xff8c2a);
         if (at && u && isBarrel(u)) {
           // Barrel: a white core flash, then hot shards flying out.
@@ -632,7 +637,7 @@ export class RunScene extends Phaser.Scene {
         const l = BOSS_LINES[u.kind], ph = BOSS_PHASES[u.kind][Math.min(2, e.phase)];
         this.bossSay(e.phase >= 2 ? l.frenzy : l.enraged);
         audio.sfx('bossRoar');
-        this.cameras.main.shake(300, 0.006);
+        camShake(this.cameras.main, 300, 0.006);
         view?.setAura(ph.color);
         await this.fx.banner(`PHASE ${e.phase + 1} — ${ph.title}`, ph.sub, ph.color);
         break;
@@ -660,7 +665,7 @@ export class RunScene extends Phaser.Scene {
         const mid = this.centre(e.cells[Math.floor(e.cells.length / 2)] ?? (u ?? { x: 0, y: 0 }));
         this.fx.hit(mid.x, mid.y - 8, 'blast', col);
         audio.sfx(e.kind === 'mortar' ? 'explode' : 'stun');
-        this.cameras.main.shake(260, 0.01);
+        camShake(this.cameras.main, 260, 0.01);
         await wait(this, 280);
         break;
       }
@@ -794,8 +799,8 @@ export class RunScene extends Phaser.Scene {
       if (view) this.fx.hit(view.x, view.y - 12, u.boss ? 'boss' : 'kill', COLORS.magenta);
       if (u.boss) {
         this.bossSay(BOSS_LINES[u.kind as 'warden' | 'boss'].death);
-        this.cameras.main.flash(300, 255, 42, 109);
-        this.cameras.main.shake(400, 0.01);
+        camFlash(this.cameras.main, 300, 255, 42, 109);
+        camShake(this.cameras.main, 400, 0.01);
         for (let i = 0; i < 3; i++) this.loot(view?.x ?? 0, view?.y ?? 0);
       }
     }
@@ -862,10 +867,10 @@ export class RunScene extends Phaser.Scene {
     this.refreshBuild();
     // Found mid-fight (a crate): its fight effects start right away.
     if (this.fight) this.fight.hooks = this.fightHooks();
-    this.cameras.main.flash(250, 255, 59, 59);
+    camFlash(this.cameras.main, 250, 255, 59, 59);
     audio.sfx('relic');
     const t = this.screenText(`★ RELIQUE ${RELIC_RARITY_NAMES[relic.rarity]} — ${relic.name.toUpperCase()} ★\n${relic.description}`, 9, relic.rarity === 'cursed' ? '#39ff88' : '#ff3b3b', 80);
-    this.tweens.add({ targets: t, alpha: 0, delay: 2600, duration: 500, onComplete: () => t.destroy() });
+    this.tweens.add({ targets: t, alpha: 0, delay: 2600 * this.tweens.timeScale, duration: 500 * this.tweens.timeScale, onComplete: () => t.destroy() });
   }
 
   /** Boss and elite rewards: pick one relic among a few (Échap: none). */
@@ -1052,8 +1057,8 @@ export class RunScene extends Phaser.Scene {
     if (this.ending) return;
     this.ending = true;
     if (!victory) { audio.sfx('kill', { pitch: 0.5 }); audio.setMusic('off'); }
-    this.cameras.main.shake(300, 0.01);
-    this.cameras.main.flash(300, 255, 0, 40);
+    camShake(this.cameras.main, 300, 0.01);
+    camFlash(this.cameras.main, 300, 255, 0, 40);
     this.screenText('SIGNAL VITAL PERDU', 16, '#ff2a6d');
     this.time.delayedCall(1400, () => this.finish(victory));
   }
@@ -1101,7 +1106,7 @@ export class RunScene extends Phaser.Scene {
     const t = this.screenText(`« ${line} »`, 8, '#ff2a6d', 58);
     this.bossLine = t;
     audio.sfx('talk', { pitch: 0.55 });
-    this.tweens.add({ targets: t, alpha: 0, delay: 2600, duration: 500, onComplete: () => { t.destroy(); if (this.bossLine === t) this.bossLine = undefined; } });
+    this.tweens.add({ targets: t, alpha: 0, delay: 2600 * this.tweens.timeScale, duration: 500 * this.tweens.timeScale, onComplete: () => { t.destroy(); if (this.bossLine === t) this.bossLine = undefined; } });
   }
 
   // ---------- input ----------
@@ -1255,7 +1260,11 @@ export class RunScene extends Phaser.Scene {
   update(_time: number, delta: number) {
     const real = Math.min(delta, CONFIG.MAX_DT_MS);
     for (const l of [this.overlay, this.hoverG, this.markLayer]) if (l.dirty) { this.world.setOverlay(l.name, l.cells, l.order); l.dirty = false; }
-    this.views.forEach(v => v.update(real / 1000));
+    // Fight speed option: tweens, timers and the 3D body animations all run on the same clock.
+    const speed = this.fight ? combatTimeScale() : 1;
+    this.tweens.timeScale = speed;
+    this.time.timeScale = speed;
+    this.views.forEach(v => v.update(real * speed / 1000));
     // Boss intents follow their boss.
     for (const [uid, t] of this.intents) { const v = this.views.get(uid); if (v) t.setPosition(v.x, v.top - 6); }
     if (this.ready) this.moveCamera(real);
@@ -1271,7 +1280,7 @@ export class RunScene extends Phaser.Scene {
     if (this.panel) { this.panel.tick(); this.publishHud(); return; }
     this.run.timeMs += real;
     // Help or guide open: the fight keeps running but takes no keys (Espace, numbers…).
-    if (this.help?.isOpen) { this.publishHud(); return; }
+    if (this.help?.isOpen) { this.controls.flush(); this.publishHud(); return; }
     if (this.controls.confirm()) this.onConfirm();
     if (this.controls.escape()) { this.selected = null; this.refreshUi(); }
     const n = this.controls.numberPressed();

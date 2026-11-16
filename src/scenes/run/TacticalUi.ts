@@ -267,9 +267,11 @@ export class TacticalUi {
   say(m: string, color = '#f5e663') {
     this.msgTween?.stop();
     this.msg.setText(m).setColor(color).setAlpha(1).setScale(1.12);
+    // Shown as long at any fight speed (the scene's tweens may run faster).
+    const k = this.scene.tweens.timeScale;
     this.msgTween = this.scene.tweens.chain({
       targets: this.msg,
-      tweens: [{ scale: 1, duration: 140, ease: 'Back.easeOut' }, { alpha: 0, delay: 1160, duration: 400 }],
+      tweens: [{ scale: 1, duration: 140, ease: 'Back.easeOut' }, { alpha: 0, delay: 1160 * k, duration: 400 * k }],
     });
   }
 

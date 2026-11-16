@@ -6,6 +6,7 @@ import type { SkillNode } from '../core/types';
 import { BRANCH_NAMES, SKILL_NODES } from '../data/skillNodes';
 import { title, txt } from './text';
 import { C, T, bold, cutPoly, drawPanel, halftone, hints, pinToCamera, scanlines, skewPoly, tabTitle } from './kit';
+import { camFlash } from '../fx/screenFx';
 
 export interface ShopTheme {
   title: string;
@@ -148,7 +149,7 @@ export class SkillTreePanel {
         const r = buyNode(n.id, cur.ownedNodes, cur.credits);
         this.persist({ ...cur, ownedNodes: r.owned, credits: r.credits });
         const c = Phaser.Display.Color.IntegerToRGB(th.frame);
-        this.scene.cameras.main.flash(140, c.r, c.g, c.b);
+        camFlash(this.scene.cameras.main, 140, c.r, c.g, c.b);
         this.render();
       });
     });

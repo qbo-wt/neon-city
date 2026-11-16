@@ -89,12 +89,13 @@ export class MenuScene extends Phaser.Scene {
     txt(this, 30, 121, 'Plus de chrome. Moins d\'humain.', 9, T.yellow).setOrigin(0, 0.5);
 
     this.play = new Button(this, 30, 148, 150, 22, 'JOUER', { accent: C.yellow, solid: true, key: 'ENTRÉE', size: 14, hoverSfx: true, onClick: () => this.start() });
-    const help = new HelpOverlay(this);
+    const help = new HelpOverlay(this, undefined, undefined, 'hub', () => !this.started);
     new Button(this, 30, 176, 150, 16, 'COMMANDES', { accent: C.cyan, key: 'I', size: 9, hoverSfx: true, onClick: () => help.toggle() });
     new Button(this, 30, 196, 150, 16, 'GUIDE DU RUNNER', { accent: C.magenta, size: 9, hoverSfx: true, onClick: () => help.openGuide() });
+    new Button(this, 30, 216, 150, 16, 'OPTIONS', { accent: C.cyan, key: 'ÉCHAP', size: 9, hoverSfx: true, onClick: () => help.openOptions() });
     this.help = help;
     this.input.keyboard!.on('keydown-ENTER', () => this.start());
-    hints(this, 0, H - 14, [['ENTRÉE', 'Jouer'], ['I', 'Commandes'], ['M', 'Son']], C.yellow).setX(30);
+    hints(this, 0, H - 14, [['ENTRÉE', 'Jouer'], ['I', 'Commandes'], ['ÉCHAP', 'Options'], ['M', 'Son']], C.yellow).setX(30);
     txt(this, W - 26, H - 14, 'Avatars VIPE Heroes (CC-BY) · décors Kenney & KayKit (CC0)', 5, T.off).setOrigin(1, 0.5);
 
     audio.setMusic('hub');

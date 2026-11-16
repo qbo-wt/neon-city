@@ -46,6 +46,8 @@ export class Controls {
   tab() { return this.took('TAB'); }
   blocker() { return this.took('F'); }
   escape() { return this.took('ESC'); }
+  /** Drops every buffered press (a panel had the keys: nothing should fire once it closes). */
+  flush() { this.pressed.clear(); }
   numberPressed(): number {
     if (this.took('ONE')) return 1;
     if (this.took('TWO')) return 2;

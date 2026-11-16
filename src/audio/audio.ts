@@ -6,6 +6,8 @@
  * Browsers only allow audio after a user gesture: the context is created on the first click / key.
  */
 
+import { VOLUME_STEPS, onSettingsChange, settings, updateSettings } from '../core/settings';
+
 type Wave = OscillatorType | 'noise';
 interface Voice {
   wave: Wave; f0: number; f1?: number; dur: number; vol: number;
@@ -182,14 +184,17 @@ class AudioEngine {
   private ctx?: AudioContext;
   private master?: GainNode;
   private sfxBus?: GainNode;
+  private musicBus?: GainNode;
   private noise?: AudioBuffer;
   private music?: Music;
   private last = new Map<SfxId, number>();
   private pendingMode: MusicMode = 'off';
-  muted = false;
+
+  /** Everything silent: the M key and the options menu share this setting. */
+  get muted() { return settings().muted; }
 
   constructor() {
-    try { this.muted = localStorage.getItem('neon-city-muted') === '1'; } catch { /* storage blocked */ }
+    onSettingsChange(() => this.applyVolumes(0.05));
     if (typeof window !== 'undefined') {
       const unlock = () => this.unlock();
       window.addEventListener('pointerdown', unlock);
@@ -205,7 +210,7 @@ class AudioEngine {
       if (!AC) return;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 0.8;
+      this.master.gain.value = 0;
       // Gentle limiter so stacked hits never clip.
       const comp = this.ctx.createDynamicsCompressor();
       comp.threshold.value = -14; comp.ratio.value = 6;
@@ -213,9 +218,9 @@ class AudioEngine {
       this.sfxBus = this.ctx.createGain();
       this.sfxBus.connect(this.master);
       const musicBus = this.ctx.createGain();
-      // Recorded tracks are mastered loud: keep them under the effects.
-      musicBus.gain.value = 0.35;
       musicBus.connect(this.master);
+      this.musicBus = musicBus;
+      this.applyVolumes(0);
       this.noise = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
       const d = this.noise.getChannelData(0);
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -227,10 +232,19 @@ class AudioEngine {
   }
 
   toggleMute() {
-    this.muted = !this.muted;
-    try { localStorage.setItem('neon-city-muted', this.muted ? '1' : '0'); } catch { /* storage blocked */ }
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.muted ? 0 : 0.8, this.ctx.currentTime, 0.05);
-    return this.muted;
+    return updateSettings({ muted: !this.muted }).muted;
+  }
+
+  /** Master (mute), effects and music levels from the options; `tc`: smoothing time constant (s). */
+  private applyVolumes(tc: number) {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.sfxBus || !this.musicBus) return;
+    const s = settings(), t = ctx.currentTime;
+    const set = (g: GainNode, v: number) => { if (tc > 0) g.gain.setTargetAtTime(v, t, tc); else g.gain.value = v; };
+    set(this.master, s.muted ? 0 : 0.8);
+    set(this.sfxBus, s.sfx / VOLUME_STEPS);
+    // Recorded tracks are mastered loud: at 100 % they sit at 0.35, under the effects.
+    set(this.musicBus, 0.35 * s.music / VOLUME_STEPS);
   }
 
   setMusic(mode: MusicMode) {
