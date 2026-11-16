@@ -4,6 +4,7 @@ import { audio } from '../audio/audio';
 import {
   COMBAT_SPEEDS, SPEED_LABEL, VOLUME_STEPS, defaultSettings, onSettingsChange, settings, updateSettings, type Settings,
 } from '../core/settings';
+import { resetTutorial } from '../core/tutorial';
 import { txt } from './text';
 import { Button, C, Card, T, backdrop, bold, drawBar, hints, markPanelClosed, panel, pinToCamera, skewPoly } from './kit';
 
@@ -34,7 +35,7 @@ const CTRL_X = 128, CTRL_END = PW - 20 - 14;
 
 /**
  * The options menu: music and effects volumes, mute, fight animation speed, fullscreen, reduced
- * screen effects, back to defaults. Mouse, or keys: ↑ ↓ choose, ← → adjust, Entrée toggles or
+ * screen effects, replay the tutorial, back to defaults. Mouse, or keys: ↑ ↓ choose, ← → adjust, Entrée toggles or
  * presses, Échap closes. Opened from the main menu, and in game with Échap (see HelpOverlay).
  */
 export class OptionsPanel {
@@ -182,6 +183,14 @@ export class OptionsPanel {
     this.paintFocus();
   }
 
+  /** The guided tutorial starts over: its bubbles come back, from the apartment and the first fight. */
+  private replayTutorial() {
+    resetTutorial();
+    audio.sfx('ui');
+    this.note = 'Tutoriel réinitialisé : ses bulles reviennent (appart, couloir, premier combat) et les rappels aussi.';
+    this.paintFocus();
+  }
+
   // ---------- drawing ----------
 
   private render() {
@@ -219,9 +228,10 @@ export class OptionsPanel {
 
     const items: [string, () => void, number][] = [];
     if (this.opts.onGuide) items.push(['GUIDE DU RUNNER', () => { this.close(); this.opts.onGuide!(); }, C.magenta]);
+    items.push(['REJOUER LE TUTO', () => this.replayTutorial(), C.green]);
     items.push(['PAR DÉFAUT', () => this.reset(), C.cyan]);
     items.push(['FERMER', () => this.close(), C.yellow]);
-    const bw = 92, gap = 6, total = items.length * bw + (items.length - 1) * gap;
+    const bw = items.length > 3 ? 66 : 92, gap = 6, total = items.length * bw + (items.length - 1) * gap;
     items.forEach(([label, run, accent], i) => {
       const b = new Button(s, left + (PW - total) / 2 + i * (bw + gap), top + PH - 32, bw, 12, label, {
         accent, font: 'ui', size: 5.5, solid: label === 'FERMER', onClick: run,

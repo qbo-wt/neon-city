@@ -10,7 +10,8 @@ import { buildRoom, type BuiltRoom, type RoomOptions } from '../systems/roomBuil
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
 import { txt } from '../ui/text';
-import { hideLoading, showLoading, wipeTo } from '../ui/transition';
+import { hideLoading, isCovered, showLoading, wipeTo } from '../ui/transition';
+import { TutorialOverlay, worldPoint } from '../ui/Tutorial';
 import { roomStrip } from '../ui/roomStrip';
 import { audio } from '../audio/audio';
 import { nextLine } from '../core/story';
@@ -33,6 +34,8 @@ export interface Interaction {
   action: () => void;
   /** Moving target (NPC): its live position is used instead of x/y. */
   follow?: { x: number; y: number };
+  /** tutorial events sent when it is used (src/data/tutorial.ts) */
+  tut?: string[];
 }
 
 export interface Modal { isOpen: boolean; close(): void }
@@ -54,6 +57,10 @@ export abstract class InteriorScene extends Phaser.Scene {
   private prompt!: Phaser.GameObjects.Text;
   private info!: ReturnType<typeof roomStrip>;
   private help!: HelpOverlay;
+  protected tutorial!: TutorialOverlay;
+  /** distance walked since the room opened (the tutorial's first step) */
+  private walked = 0;
+  private lastPos = { x: 0, y: 0 };
 
   protected abstract readonly grid: RoomTemplate;
   protected abstract readonly roomOptions: RoomOptions;
@@ -67,6 +74,10 @@ export abstract class InteriorScene extends Phaser.Scene {
   protected abstract layout(data: Record<string, unknown>): void;
   /** Where the player appears, depending on where they came from. */
   protected abstract spawnPoint(data: Record<string, unknown>): { x: number; y: number };
+  /** The place's name for the tutorial (src/data/tutorial.ts). */
+  protected abstract readonly tutorialPlace: string;
+  /** What the tutorial can point at in this room, in world coordinates. */
+  protected tutorialAnchors(): Record<string, { x: number; y: number }> { return {}; }
   /** Extra per-frame handling while a modal is open (e.g. tab keys). */
   protected onModalTick(): void {}
 
@@ -101,6 +112,19 @@ export abstract class InteriorScene extends Phaser.Scene {
     this.info = roomStrip(this, this.placeName);
     this.prompt = txt(this, 0, 0, '', 7, '#e8e8ff').setOrigin(0.5).setDepth(50).setStroke('#05030f', 3);
     this.refreshInfo();
+    this.walked = 0;
+    this.lastPos = { x: p.x, y: p.y };
+    const anchors = this.tutorialAnchors();
+    this.tutorial = new TutorialOverlay(this, {
+      place: this.tutorialPlace,
+      enterAcks: true,
+      top: HUD_H + 2,
+      anchor: name => {
+        const a = name === 'player' ? this.player : anchors[name];
+        return a ? worldPoint(this.cameras.main, a.x, a.y) : undefined;
+      },
+      blocked: () => this.leaving || this.modals.some(m => m.isOpen) || this.help.isOpen || isCovered(),
+    });
   }
 
   protected refreshInfo() {
@@ -172,7 +196,7 @@ export abstract class InteriorScene extends Phaser.Scene {
     const n = new Npc(this, x, y, look, activity, opts.bounds ?? new Phaser.Geom.Rectangle(48, 96, 384, 100), opts);
     this.npcGroup.add(n);
     this.npcs.push(n);
-    if (opts.name) this.interactions.push({ x, y, r: 26, follow: n, label: `Parler à ${opts.name}`, action: () => n.speak() });
+    if (opts.name) this.interactions.push({ x, y, r: 26, follow: n, label: `Parler à ${opts.name}`, action: () => n.speak(), tut: ['hub:talk'] });
     return n;
   }
 
@@ -205,6 +229,11 @@ export abstract class InteriorScene extends Phaser.Scene {
     }
     this.player.inputEnabled = !this.leaving;
     this.player.tick(time);
+    if (this.walked < 48) {
+      this.walked += Phaser.Math.Distance.Between(this.lastPos.x, this.lastPos.y, this.player.x, this.player.y);
+      this.lastPos = { x: this.player.x, y: this.player.y };
+      if (this.walked >= 48) this.tutorial.event('hub:moved');
+    }
 
     const near = this.interactions
       .map(i => ({ i, d: Phaser.Math.Distance.Between(this.player.x, this.player.y, i.follow?.x ?? i.x, i.follow?.y ?? i.y) }))
@@ -212,7 +241,11 @@ export abstract class InteriorScene extends Phaser.Scene {
       .sort((a, b) => a.d - b.d)[0]?.i;
     if (near) {
       this.prompt.setText(`[E] ${near.label}`).setPosition(Phaser.Math.Clamp(this.player.x, 60, CONFIG.WIDTH - 60), this.player.y + 1 - HEAD_PX);
-      if (this.controls.interact() && !this.leaving) { audio.sfx('ui'); near.action(); }
+      if (this.controls.interact() && !this.leaving) {
+        audio.sfx('ui');
+        for (const e of ['hub:interact', ...(near.tut ?? [])]) this.tutorial.event(e);
+        near.action();
+      }
     } else {
       this.prompt.setText('');
     }

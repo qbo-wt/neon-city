@@ -10,6 +10,7 @@ import { CLINIC, buildClinic } from '../three/interior/clinic';
 /** Back-room clinic: chair, surgical arm, chrome limbs on the wall. Sells the BODY branches. */
 export class RipperdocScene extends InteriorScene {
   protected readonly placeName = 'CLINIQUE DU DOC KESSLER';
+  protected readonly tutorialPlace = 'clinic';
   protected readonly style3d = 'clinic' as const;
   protected readonly grid: RoomTemplate = { id: 'clinic', grid: CLINIC.grid };
   protected readonly roomOptions = { floorKey: null, wallKey: null, streetLights: false };
@@ -20,6 +21,8 @@ export class RipperdocScene extends InteriorScene {
 
   protected spawnPoint() { return CLINIC.spawn; }
 
+  protected tutorialAnchors() { return { doc: CLINIC.doc }; }
+
   protected layout() {
     for (const [x, y, w, h] of CLINIC.blockers) this.block(x, y, w, h);
     const doc = this.npc('npc-doc', CLINIC.doc.x, CLINIC.doc.y, 'idle', { flip: true, name: 'Doc Kessler', lines: SPECIAL_LINES.doc, talk: this.storyTalk('doc', SPECIAL_LINES.doc) });
@@ -29,8 +32,8 @@ export class RipperdocScene extends InteriorScene {
     this.interactions = this.interactions.filter(i => i.follow !== doc);
     this.time.delayedCall(500, () => floatText(this, doc.x, doc.y + 4 - HEAD_PX, 'Assieds-toi. On va te recâbler.', '#ff3b3b', 7));
     this.interactions.push(
-      { ...CLINIC.doc, r: 34, label: 'Parler au Doc Kessler — améliorations', action: () => { doc.speak(); shop.open(); } },
-      { ...CLINIC.chair, r: 26, label: 'S\'installer sur le fauteuil', action: () => shop.open() },
+      { ...CLINIC.doc, r: 34, label: 'Parler au Doc Kessler — améliorations', action: () => { doc.speak(); shop.open(); }, tut: ['hub:talk', 'hub:shop:doc'] },
+      { ...CLINIC.chair, r: 26, label: 'S\'installer sur le fauteuil', action: () => shop.open(), tut: ['hub:shop:doc'] },
       { ...CLINIC.exit, r: 30, label: 'Retourner dans le couloir', action: () => this.go(SCENES.Building, { from: 'doc' }) },
     );
   }

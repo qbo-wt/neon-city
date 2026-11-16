@@ -10,6 +10,7 @@ import { DEN, buildDen } from '../three/interior/den';
 /** Dark den full of servers and cables. Sells the MIND branches (psychosis resistance, implant load, network). */
 export class NetrunnerScene extends InteriorScene {
   protected readonly placeName = 'REPAIRE DE NYX';
+  protected readonly tutorialPlace = 'den';
   protected readonly style3d = 'den' as const;
   protected readonly grid: RoomTemplate = { id: 'den', grid: DEN.grid };
   protected readonly roomOptions = { floorKey: null, wallKey: null, streetLights: false };
@@ -20,6 +21,8 @@ export class NetrunnerScene extends InteriorScene {
 
   protected spawnPoint() { return DEN.spawn; }
 
+  protected tutorialAnchors() { return { nyx: DEN.nyx }; }
+
   protected layout() {
     for (const [x, y, w, h] of DEN.blockers) this.block(x, y, w, h);
     // Nyx sits jacked in at her screens, back to the room; she turns to talk.
@@ -29,7 +32,7 @@ export class NetrunnerScene extends InteriorScene {
     this.interactions = this.interactions.filter(i => i.follow !== nyx);
     this.time.delayedCall(500, () => floatText(this, nyx.x, nyx.y + 4 - HEAD_PX, 'Ton cerveau grésille. Branche-toi.', '#39ff88', 7));
     this.interactions.push(
-      { ...DEN.talk, r: 34, label: 'Parler à Nyx — calibrage neural', action: () => { nyx.speak(); shop.open(); } },
+      { ...DEN.talk, r: 34, label: 'Parler à Nyx — calibrage neural', action: () => { nyx.speak(); shop.open(); }, tut: ['hub:talk', 'hub:shop:nyx'] },
       { ...DEN.exit, r: 30, label: 'Retourner dans le couloir', action: () => this.go(SCENES.Building, { from: 'net' }) },
     );
   }

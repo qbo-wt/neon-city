@@ -16,6 +16,7 @@ import { HALL, buildCorridor } from '../three/interior/corridor';
  */
 export class BuildingScene extends InteriorScene {
   protected readonly placeName = 'IMMEUBLE H-12, ÉTAGE 37';
+  protected readonly tutorialPlace = 'building';
   protected readonly style3d = 'corridor' as const;
   protected readonly grid: RoomTemplate = { id: 'building', grid: HALL.grid };
   protected readonly roomOptions = { floorKey: null, wallKey: null, streetLights: false };
@@ -25,6 +26,8 @@ export class BuildingScene extends InteriorScene {
   constructor() { super(SCENES.Building); }
 
   protected set3d(v: Interior3D) { return buildCorridor(v); }
+
+  protected tutorialAnchors() { return { lo: HALL.lo, clinic: HALL.clinic, den: HALL.den, elevator: HALL.elevator }; }
 
   protected onModalTick() {
     const n = this.controls.numberPressed();
@@ -72,13 +75,13 @@ export class BuildingScene extends InteriorScene {
     const lo = this.npc('npc-lo', HALL.lo.x, HALL.lo.y, 'cook', { name: 'Mamie Lo', lines: SPECIAL_LINES.lo, talk: this.storyTalk('lo', SPECIAL_LINES.lo) });
     // Lo stands behind her counter: a longer reach than the default.
     this.interactions = this.interactions.filter(i => i.follow !== lo);
-    this.interactions.push({ x: HALL.lo.x, y: HALL.lo.y + 22, r: 30, label: 'Parler à Mamie Lo', action: () => lo.speak() });
+    this.interactions.push({ x: HALL.lo.x, y: HALL.lo.y + 22, r: 30, label: 'Parler à Mamie Lo', action: () => lo.speak(), tut: ['hub:talk'] });
 
     this.interactions.push(
       { ...HALL.home, r: 26, label: 'Rentrer à l\'appart', action: () => this.go(SCENES.Hideout, { from: 'building' }) },
       { ...HALL.clinic, r: 28, label: 'Clinique du Doc Kessler (corps)', action: () => this.go(SCENES.Ripperdoc) },
       { ...HALL.den, r: 28, label: 'Repaire de Nyx, netrunneuse (esprit)', action: () => this.go(SCENES.Netrunner) },
-      { ...HALL.elevator, r: 34, label: 'Ascenseur — descendre dans la rue', action: () => this.descent.open() },
+      { ...HALL.elevator, r: 34, label: 'Ascenseur — descendre dans la rue', action: () => this.descent.open(), tut: ['hub:elevator'] },
     );
   }
 }
