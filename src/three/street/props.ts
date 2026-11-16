@@ -29,7 +29,30 @@ export async function makeProp(ctx: StreetCtx, kind: string, CELL: number, at = 
       if (rng() < 0.6) { const b2 = await fit(`${K}cars/box`, C * 0.5, C * 0.5); b2.position.y = new THREE.Box3().setFromObject(a).max.y; b2.rotation.y = rng() * 1.5; g.add(b2); }
       return g;
     }
-    case 'barrel': {
+    case 'fuel': {
+      // Explosive barrel: bright red drum, dark ribs, a glowing band of danger signs, hot cap.
+      const g = new THREE.Group(), r = 0.3, h = 0.92;
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 18), plain(0xe0302a, 'fuel'));
+      body.position.y = h / 2; body.castShadow = true; body.receiveShadow = true;
+      g.add(body);
+      for (const y of [0.08, h - 0.08]) {
+        const rib = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.04, r * 1.04, 0.05, 18), plain(0x3a1020, 'rib'));
+        rib.position.y = y; g.add(rib);
+      }
+      const { c, g: cx } = canvas(256, 64);
+      cx.fillStyle = '#140a18'; cx.fillRect(0, 0, 256, 64);
+      for (let i = 0; i < 3; i++) {
+        const x = 42 + i * 85;
+        cx.fillStyle = '#f5e663'; cx.beginPath(); cx.moveTo(x, 8); cx.lineTo(x + 26, 56); cx.lineTo(x - 26, 56); cx.closePath(); cx.fill();
+        cx.fillStyle = '#140a18'; cx.fillRect(x - 3, 22, 6, 20); cx.fillRect(x - 3, 46, 6, 6);
+      }
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.02, r * 1.02, 0.26, 24, 1, true), basic(tex(c), 0xffffff, 1.3));
+      band.position.y = h * 0.55; g.add(reflective(band));
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r * 0.7, 0.03, 16), basic(null, 0xff8c2a, 1.8));
+      cap.position.y = h + 0.015; g.add(reflective(cap));
+      return g;
+    }
+    case 'barrel': case 'drums': {
       const g = new THREE.Group();
       const a = await fit(`${K}station/container-tall`, C * 0.5, C * 0.5, 1.05);
       a.position.set(-0.18, 0, -0.1); g.add(a);
@@ -316,7 +339,7 @@ export function carModel(ctx: StreetCtx) { return `${K}cars/${pick(ctx.rng, ctx.
 
 /** Breakables (units with HP) as street models; ids accepted by World3D.propModel. */
 export const BREAKABLE_PATHS: Record<string, string> = {
-  crate: 'street:crate', barrel: 'street:barrel', trash: 'street:trash', vending: 'street:vending',
+  crate: 'street:crate', barrel: 'street:fuel', trash: 'street:trash', vending: 'street:vending',
 };
 
 /** A street trash bin (breakable). */

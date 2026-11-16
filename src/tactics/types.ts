@@ -1,4 +1,5 @@
 import type { EliteMod } from '../core/runMap';
+import type { HazardKind } from './hazards';
 
 /** A cell of the board. Floor: walk and see. Block: neither. Hole: see across, not walk. Void: off the board. */
 export type Cell = 'floor' | 'block' | 'hole' | 'void';
@@ -190,4 +191,8 @@ export type FightEvent =
   | { t: 'psy'; uid: number; v: number }
   | { t: 'prime'; uid: number }
   | { t: 'explode'; uid: number; cells: Pt[] }
-  | { t: 'phase'; uid: number; phase: number };
+  | { t: 'phase'; uid: number; phase: number }
+  /** a hazard went off on uid (shock, acid, steam, medkit, relay) */
+  | { t: 'trap'; uid: number; kind: HazardKind; at: Pt }
+  /** a hazard appeared on (on) or left (off) a cell */
+  | { t: 'hazard'; kind: HazardKind; at: Pt; on: boolean };

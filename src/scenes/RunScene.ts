@@ -38,10 +38,12 @@ import { hideLoading, showLoading, wipeTo } from '../ui/transition';
 import { DIRS, dist, keyOf, pathTo, reachable, same, walkable } from '../tactics/board';
 import { generateArena, type ArenaStyle, type BreakableKind } from '../tactics/arena';
 import {
-  BLOCKER_PA, addUnits, beginFight, byUid, cast, castError, createFight, current, endTurn, exitTax, moveTo, previewCast,
+  BLOCKER_PA, addUnits, beginFight, byUid, cast, castError, cloneFight, createFight, current, endTurn, exitTax, moveTo, previewCast,
   rangeCells, reachFor, unitAt, zoneCells, type Fight,
 } from '../tactics/fight';
 import { nextAction } from '../tactics/ai';
+import { HAZARD_COLORS, HAZARD_NAMES, hazardAt, hazardText, steamActive, steamIn, type Hazard } from '../tactics/hazards';
+import { BARREL_BLAST, TERRAIN_HOOKS, inCover, isBarrel } from '../tactics/terrain';
 import { makeBreakable, makeEnemy, makePlayer, makeSummon, type EnemyScaling } from '../tactics/units';
 import type { Board, FightEvent, Pt, SpellDef, Unit } from '../tactics/types';
 import { UnitView3D as UnitView } from '../three/UnitView3D';
@@ -123,6 +125,10 @@ export class RunScene extends Phaser.Scene {
   private meta!: SaveData;
   private bossLine?: Phaser.GameObjects.Text;
   private uidSeq = 1000;
+  /** the sector's traps and bonus cells until the fight starts (then the fight owns them) */
+  private hazards: Hazard[] = [];
+  /** the last thing that hurt the player was a trap (for the death screen) */
+  private trapHit = false;
 
   constructor() { super(SCENES.Run); }
 
@@ -156,6 +162,8 @@ export class RunScene extends Phaser.Scene {
     this.turnKills = 0;
     this.meta = loadSave(getStorage());
     this.bossLine = undefined;
+    this.hazards = [];
+    this.trapHit = false;
   }
 
   /** Stats and spell bar of the run: skill nodes, implants, synergies, relics, weapon and aspect, notoriety. */
@@ -172,7 +180,7 @@ export class RunScene extends Phaser.Scene {
     const style = STYLE_BY_TEMPLATE[this.room.template.id] ?? 'avenue';
     const rng = createRng(this.run.seed * 31 + this.run.roomIndex * 7919);
     const event = this.room.kind === 'event';
-    const arena = generateArena(style, rng, this.room.isBoss && !this.room.doorRewards.length ? 0 : this.room.doorRewards.length, this.room.isBoss);
+    const arena = generateArena(style, rng, this.room.isBoss && !this.room.doorRewards.length ? 0 : this.room.doorRewards.length, this.room.isBoss, this.run.roomIndex);
     this.board = arena.board;
     this.build();
     this.controls = new Controls(this);
@@ -230,7 +238,7 @@ export class RunScene extends Phaser.Scene {
       this.time.delayedCall(250, showBanner);
       this.addUnit(this.hero);
       if (event) this.setupEvent(createRng(this.run.seed + this.run.roomIndex));
-      else this.setupFight(arena.breakables, rng);
+      else this.setupFight(arena.breakables, arena.hazards, rng);
       this.ready = true;
       this.refreshUi();
     });
@@ -350,8 +358,17 @@ export class RunScene extends Phaser.Scene {
     return out;
   }
 
-  private setupFight(breakables: { at: Pt; kind: BreakableKind }[], rng: Rng) {
-    for (const b of breakables) { const u = makeBreakable(b.kind, b.at); u.uid = this.uidSeq++; this.addUnit(u); }
+  private setupFight(breakables: { at: Pt; kind: BreakableKind }[], hazards: Hazard[], rng: Rng) {
+    // Traps and barrels hit harder deeper in the city, like the enemies.
+    const k = this.scaling(false).dmgMult;
+    for (const b of breakables) {
+      const u = makeBreakable(b.kind, b.at);
+      u.uid = this.uidSeq++;
+      if (b.kind === 'barrel') u.mem.blast = Math.round(BARREL_BLAST * k);
+      this.addUnit(u);
+    }
+    this.hazards = hazards.map(h => (h.kind === 'medkit' || h.kind === 'relay' ? { ...h } : { ...h, v: Math.round(h.v * k) }));
+    this.syncHazards();
     this.spawnWave(this.room.waves[0], rng, false);
     this.mode = 'placement';
     this.showStarts();
@@ -367,7 +384,9 @@ export class RunScene extends Phaser.Scene {
   private spawnWave(ids: EnemyId[], rng: Rng, reinforce: boolean): Unit[] {
     const sc = this.scaling(this.room.isBoss);
     const starts = this.board.enemyStarts.filter(p => !this.unitOn(p));
-    const back = this.freeCells().filter(p => dist(p, this.hero) >= 5).sort((a, b) => a.x + a.y - (b.x + b.y));
+    // Reinforcements never drop in on a trap or a bonus cell.
+    const onHazard = (p: Pt) => !!hazardAt({ hazards: this.fight?.hazards ?? this.hazards, round: 1 }, p);
+    const back = this.freeCells().filter(p => dist(p, this.hero) >= 5 && !onHazard(p)).sort((a, b) => a.x + a.y - (b.x + b.y));
     const cells = [...starts, ...back];
     const list: Unit[] = [];
     ids.forEach((id, i) => {
@@ -430,7 +449,8 @@ export class RunScene extends Phaser.Scene {
     const f = createFight(this.board, [], Math.random, (kind, team, at, by) => makeSummon(kind, team, at, by));
     f.units = all;
     f.nextUid = this.uidSeq + 100;
-    f.hooks = relicHooks(this.run.relics);
+    f.hooks = this.fightHooks();
+    f.hazards = this.hazards;
     this.fight = f;
     for (const v of this.views.values()) { v.showBar = true; v.drawBar(); }
     audio.setIntensity(1);
@@ -554,13 +574,37 @@ export class RunScene extends Phaser.Scene {
       }
       case 'prime': if (view) { view.setPrimed(true); audio.sfx('windup'); floatText(this, view.x, view.y - 30, 'AMORCÉ !', '#f5e663', 8); } break;
       case 'explode': {
-        if (view) { sparks(this, view.x, view.y - 6, COLORS.yellow, 16, 34); }
+        // A barrel's view is gone by now (its death comes first): blow up from its cell.
+        const at = view ? { x: view.x, y: view.y } : u ? this.centre(u) : undefined;
+        if (at) sparks(this, at.x, at.y - 6, COLORS.yellow, 16, 34);
         this.world.flashCells(e.cells, 0xff8c2a, 500);
         audio.sfx('explode'); this.cameras.main.shake(200, 0.008);
-        if (view) this.fx.hit(view.x, view.y - 8, 'blast', 0xff8c2a);
+        if (at) this.fx.hit(at.x, at.y - 8, 'blast', 0xff8c2a);
+        if (at && u && isBarrel(u)) {
+          // Barrel: a white core flash, then hot shards flying out.
+          this.world.flashCells([u], 0xffffff, 260);
+          for (let i = 0; i < 14; i++) {
+            const d = this.add.rectangle(at.x, at.y - 8, 2 + Math.random() * 2, 1.5, Phaser.Utils.Array.GetRandom([0xff8c2a, 0xf5e663, 0xe0302a, 0xffffff])).setDepth(962).setBlendMode(Phaser.BlendModes.ADD);
+            const a = Math.random() * Math.PI * 2, r = 22 + Math.random() * 26;
+            this.tweens.add({ targets: d, x: at.x + Math.cos(a) * r, y: at.y - 8 + Math.sin(a) * r * 0.6, angle: 360, alpha: 0, duration: 380 + Math.random() * 200, ease: 'Quad.easeOut', onComplete: () => d.destroy() });
+          }
+        }
         await wait(this, 200);
         break;
       }
+      case 'trap': {
+        if (u?.kind === 'player') this.trapHit = e.kind !== 'medkit' && e.kind !== 'relay';
+        const at = view ? { x: view.x, y: view.y } : this.centre(e.at);
+        const col = HAZARD_COLORS[e.kind];
+        this.world.flashCells([e.at], col, 380);
+        const word = ({ shock: 'DÉCHARGE !', acid: 'CORROSION', steam: 'BRÛLURE !', medkit: 'SOIN', relay: 'PIRATÉ ! +PA' })[e.kind];
+        floatText(this, at.x, at.y - 40, word, '#' + col.toString(16).padStart(6, '0'), 8);
+        if (e.kind === 'shock' || e.kind === 'steam') { sparks(this, at.x, at.y - 6, col, 10, 18); audio.sfx(e.kind === 'shock' ? 'stun' : 'quake', { vol: 0.7 }); }
+        else audio.sfx(e.kind === 'acid' ? 'glitch' : e.kind === 'medkit' ? 'heal' : 'hack', { vol: 0.7 });
+        await wait(this, 120);
+        break;
+      }
+      case 'hazard': this.syncHazards(); if (e.on) this.world.flashCells([e.at], HAZARD_COLORS[e.kind], 500); break;
       case 'death': if (u) await this.onDeath(u, e.by); break;
       case 'summon': {
         if (!u) break;
@@ -650,7 +694,7 @@ export class RunScene extends Phaser.Scene {
   private async onDeath(u: Unit, by?: number) {
     const view = this.views.get(u.uid);
     if (u.kind === 'player') {
-      this.run.killer ??= by ? byUid(this.fight!, by)?.kind : this.run.killer;
+      this.run.killer ??= by ? byUid(this.fight!, by)?.kind : this.trapHit ? 'trap' : this.run.killer;
       await view?.die();
       return;
     }
@@ -662,6 +706,8 @@ export class RunScene extends Phaser.Scene {
         this.tweens.add({ targets: d, x: view.x + Math.cos(a) * 18, y: view.y - 6 + Math.sin(a) * 10, angle: 180, alpha: 0, duration: 420, onComplete: () => d.destroy() });
       }
       const x = view?.x ?? 0, y = view?.y ?? 0;
+      // A barrel holds nothing but its blast, which follows at once.
+      if (isBarrel(u)) { void view?.die(); this.views.delete(u.uid); return; }
       await view?.die();
       this.views.delete(u.uid);
       this.loot(x, y);
@@ -694,6 +740,25 @@ export class RunScene extends Phaser.Scene {
     }
     await view?.die();
     this.views.delete(u.uid);
+  }
+
+  /** Fight listeners: the arena's rules (traps, barrels, cover), then the relics. */
+  private fightHooks() { return [TERRAIN_HOOKS, ...relicHooks(this.run.relics)]; }
+
+  /** The hazards on the 3D ground: the fight's (live), the sector's before it, none after it. */
+  private syncHazards() {
+    const list = this.fight ? this.fight.hazards ?? [] : this.hazards;
+    const round = this.fight?.round ?? 1;
+    this.world.setHazards(list.map(h => ({
+      p: { x: h.x, y: h.y }, kind: h.kind,
+      state: h.kind !== 'steam' ? 2 : steamActive(h, round) ? 2 : steamIn(h, round) === 1 ? 1 : 0,
+    })));
+  }
+
+  /** What the hovered cell holds, for the info panel. */
+  private tileInfo(p: Pt) {
+    const h = hazardAt({ hazards: this.fight ? this.fight.hazards : this.hazards, round: this.fight?.round ?? 1 }, p);
+    return h ? { name: HAZARD_NAMES[h.kind], text: hazardText(h, this.fight?.round ?? 1), color: HAZARD_COLORS[h.kind] } : undefined;
   }
 
   /** Relics not found yet in this run that can do something for the current spell bar. */
@@ -732,7 +797,7 @@ export class RunScene extends Phaser.Scene {
     this.run.relics.push(relic);
     this.refreshBuild();
     // Found mid-fight (a crate): its fight effects start right away.
-    if (this.fight) this.fight.hooks = relicHooks(this.run.relics);
+    if (this.fight) this.fight.hooks = this.fightHooks();
     this.cameras.main.flash(250, 255, 59, 59);
     audio.sfx('relic');
     const t = this.screenText(`★ RELIQUE ${RELIC_RARITY_NAMES[relic.rarity]} — ${relic.name.toUpperCase()} ★\n${relic.description}`, 9, relic.rarity === 'cursed' ? '#39ff88' : '#ff3b3b', 80);
@@ -797,6 +862,10 @@ export class RunScene extends Phaser.Scene {
     // Remaining breakables stay where they are; the fight objects go back to the plain board.
     this.units = this.fight!.units.filter(u => !u.dead && u.team !== 1);
     this.fight = undefined;
+    // Traps die down with the fight: walking to an exit is safe.
+    this.hazards = [];
+    this.trapHit = false;
+    this.syncHazards();
     this.ui.setButton(null);
     this.ui.setTimeline(undefined);
     const steps: ((next: () => void) => void)[] = [];
@@ -955,7 +1024,8 @@ export class RunScene extends Phaser.Scene {
     this.scene.stop(SCENES.Hud);
     wipeTo(this, SCENES.Death, {
       victory, creditsEarned: earned, roomReached: sector, heat: pts, recordBonus: record, daily: this.run.daily, dailyBest,
-      killer: killer === 'psychosis' ? 'la cyberpsychose' : killer ? ENEMIES[killer as EnemyId]?.name : undefined,
+      killer: killer === 'psychosis' ? 'la cyberpsychose' : killer === 'barrel' ? 'un baril explosif' : killer === 'trap' ? 'un piège de rue'
+        : killer ? ENEMIES[killer as EnemyId]?.name : undefined,
     });
   }
 
@@ -975,8 +1045,19 @@ export class RunScene extends Phaser.Scene {
     if (this.modal()) return;
     this.hoverCell = this.cellAtPointer(p);
     this.drawHover();
-    const u = this.hoverCell ? this.unitOn(this.hoverCell) : undefined;
-    this.ui.setInfo(u ?? (this.fight ? current(this.fight) : undefined), this.fight);
+    this.showInfo();
+  }
+
+  /** Info panel: the hovered unit or arena element, else whoever is playing. */
+  private showInfo() {
+    const cell = this.hoverCell, f = this.fight;
+    const u = cell ? this.unitOn(cell) : undefined;
+    const tile = cell ? this.tileInfo(cell) : undefined;
+    const notes: string[] = [];
+    // An enemy in cover from where you stand takes less from your ranged spells.
+    if (f && u && u.team === 1 && inCover(f, this.hero, u)) notes.push('à couvert : -25 % de tes dégâts à distance');
+    if (u || tile) this.ui.setInfo(u, f, tile, notes);
+    else this.ui.setInfo(f ? current(f) : undefined, f);
   }
 
   private onPointerDown(p: Phaser.Input.Pointer) {
@@ -1208,10 +1289,17 @@ export class RunScene extends Phaser.Scene {
     }
     const map = reachFor(f, p), path = pathTo(map, cell);
     if (path && path.length) {
-      for (const q of path) this.diamond(g, q, 0x39ff88, 0.4);
+      // Traps on the way: those cells in red, and what the walk would cost in HP.
+      const sim = cloneFight(f), sp = byUid(sim, p.uid)!, before = sp.hp + sp.shield;
+      moveTo(sim, sp, cell);
+      const lost = before - (sp.hp + sp.shield);
+      const dot = (u: Unit) => u.bleed.reduce((s, b) => s + b.v * b.turns, 0);
+      const corroded = dot(sp) > dot(p), bad = lost > 0 || corroded;
+      for (const q of path) this.diamond(g, q, bad && hazardAt(f, q) ? 0xff2a6d : 0x39ff88, 0.4);
       const cost = map.get(keyOf(cell))!.cost;
       const c = this.centre(cell);
-      this.hoverLabels.push(txt(this, c.x, c.y - 4, `${cost} PM${cost > path.length ? ' (tacle)' : ''}`, 6, '#39ff88').setOrigin(0.5).setDepth(990).setStroke('#05030f', 3));
+      const trap = (lost > 0 ? `  -${lost} PV${sp.dead ? ' ✝' : ''}` : lost < 0 ? `  +${-lost} PV` : '') + (corroded ? '  corrosion' : '');
+      this.hoverLabels.push(txt(this, c.x, c.y - 4, `${cost} PM${cost > path.length ? ' (tacle)' : ''}${trap}`, 6, bad ? '#ff2a6d' : '#39ff88').setOrigin(0.5).setDepth(990).setStroke('#05030f', 3));
     }
   }
   private hoverLabels: Phaser.GameObjects.Text[] = [];
@@ -1234,7 +1322,8 @@ export class RunScene extends Phaser.Scene {
     else this.ui.setButton(null);
     this.drawRange();
     this.drawHover();
-    if (!this.hoverCell) this.ui.setInfo(f ? current(f) : undefined, f);
+    this.showInfo();
+    this.syncHazards();
   }
 
   private publishHud() {

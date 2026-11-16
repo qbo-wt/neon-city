@@ -64,5 +64,5 @@ export function makeSummon(kind: string, team: 0 | 1, at: Pt, by: Unit): Unit {
 }
 
 export function makeBreakable(kind: BreakableKind, at: Pt): Unit {
-  return unit({ team: 2, kind, name: kind === 'vending' ? 'Distributeur' : kind === 'barrel' ? 'Baril' : kind === 'trash' ? 'Poubelle' : 'Caisse', x: at.x, y: at.y, maxHp: BREAKABLE_KINDS[kind], st: { ...baseSt(), tackle: 0 } });
+  return unit({ team: 2, kind, name: kind === 'vending' ? 'Distributeur' : kind === 'barrel' ? 'Baril explosif' : kind === 'trash' ? 'Poubelle' : 'Caisse', x: at.x, y: at.y, maxHp: BREAKABLE_KINDS[kind], st: { ...baseSt(), tackle: 0 } });
 }

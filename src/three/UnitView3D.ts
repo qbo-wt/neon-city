@@ -12,7 +12,7 @@ export type PoseKind = 'windup' | 'strike' | 'hurt' | 'charge';
 /** Which body animation a spell plays, from its look. */
 const FX_ANIM: Record<string, AnimName> = { slash: 'slash', blast: 'punch', shot: 'shoot', wire: 'slash', hack: 'cast', buff: 'cast', heal: 'cast', jump: 'jump' };
 /** Breakables: the CC0 prop that stands for each kind. */
-const BREAKABLE_MODEL: Record<string, string> = { crate: 'street:crate', barrel: 'street:barrel', trash: 'street:trash', vending: 'street:vending' };
+const BREAKABLE_MODEL: Record<string, string> = { crate: 'street:crate', barrel: 'street:fuel', trash: 'street:trash', vending: 'street:vending' };
 
 /** A soft additive halo (auras, primed bombs): a sprite, not a light, so no shader recompiles. */
 let glowTex: THREE.Texture | undefined;
@@ -105,6 +105,8 @@ export class UnitView3D {
     }
     this.holder.add(this.rig.root);
     if (unit.elite === 'cloak') this.holder.traverse(o => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m) { m.transparent = true; m.opacity = 0.45; } });
+    // Explosive barrels glow a little, so they read as a danger from across the board.
+    if (unit.kind === 'barrel' && unit.team === 2) { const l = halo(0xff8c2a, 1.5); l.position.y = 0.6; this.holder.add(l); }
     if (unit.elite === 'frenzy' || unit.elite === 'explosive') {
       const l = halo(unit.elite === 'frenzy' ? 0xff3b3b : COLORS.yellow, 2.2);
       l.position.y = 1; this.holder.add(l);

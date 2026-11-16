@@ -1,6 +1,20 @@
 import { dist, lineOfSight, walkDistances } from './board';
 import { byUid, cast, castError, cloneFight, moveTo, occupied, opponents, reachFor, type Fight } from './fight';
+import { hazardAt, hurtsAt } from './hazards';
+import { inCover, isBarrel } from './terrain';
 import type { Pt, SpellDef, Unit } from './types';
+
+/**
+ * Arena sense, for every profile: do not wait on a trap that will go off at the next turn, keep out
+ * of the blast of a barrel, and (shooters) stand behind cover from the target.
+ */
+function terrainScore(f: Fight, u: Unit, at: Pt, target: Unit): number {
+  let v = 0;
+  if (hurtsAt(hazardAt(f, at), f.round + 1)) v -= 10;
+  for (const o of f.units) if (isBarrel(o) && !o.dead && Math.max(Math.abs(o.x - at.x), Math.abs(o.y - at.y)) <= 1) v -= 4;
+  if ((u.ai === 'ranged' || u.ai === 'coward') && inCover(f, target, at)) v += 3;
+  return v;
+}
 
 export type AiAction = { t: 'cast'; spell: SpellDef; cell: Pt } | { t: 'move'; to: Pt };
 
@@ -63,13 +77,14 @@ function placeScore(f: Fight, u: Unit, at: Pt, walk: Int16Array | undefined): nu
   const d = dist(at, target), steps = wd >= 0 ? wd : d + 6;
   const adjacent = foes.filter(o => dist(o, at) === 1).length;
   const sight = lineOfSight(f.board, at, target, p => occupied(f, p) && !(p.x === u.x && p.y === u.y));
+  const ground = u.ai === 'none' || u.ai === 'turret' ? 0 : terrainScore(f, u, at, target);
   switch (u.ai) {
     case 'melee': case 'boss': case 'bomber':
-      return -steps * 3 + (adjacent ? 4 : 0);
+      return -steps * 3 + (adjacent ? 4 : 0) + ground;
     case 'ranged':
-      return -Math.abs(d - 5) * 2 - adjacent * 8 + (sight ? 5 : 0) - Math.max(0, steps - 8);
+      return -Math.abs(d - 5) * 2 - adjacent * 8 + (sight ? 5 : 0) - Math.max(0, steps - 8) + ground;
     case 'coward':
-      return -Math.abs(d - 7) * 1.5 - adjacent * 10 + (sight ? 3 : 0);
+      return -Math.abs(d - 7) * 1.5 - adjacent * 10 + (sight ? 3 : 0) + ground;
     default:
       return 0;
   }
@@ -104,8 +119,10 @@ export function nextAction(f: Fight, u: Unit): AiAction | null {
       if (x === u.x && y === u.y) continue;
       const g = cloneFight(f), gu = byUid(g, u.uid)!;
       moveTo(g, gu, { x, y });
-      const opt = gu.pa > 0 ? castOptions(g, gu)[0] : undefined;
-      const v = (opt?.v ?? 0) * 1.0 + placeScore(g, gu, gu, walk) * (opt ? 0.3 : 1);
+      if (gu.dead) continue;
+      const opt = gu.pa > 0 && !g.over ? castOptions(g, gu)[0] : undefined;
+      // What the walk itself did (a trap crossed, a medkit picked up) counts in full.
+      const v = (opt?.v ?? 0) * 1.0 + placeScore(g, gu, gu, walk) * (opt ? 0.3 : 1) + score(f, g, u);
       if (!bestMove || v > bestMove.v) bestMove = { to: { x, y }, v };
     }
   }

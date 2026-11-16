@@ -1,5 +1,6 @@
 import { randInt, type Rng } from '../core/rng';
 import { DIRS, cellAt, cellsBetween, dist, inLine, inside, keyOf, lineOfSight, pathTo, reachable, same, stepToward, walkable, type Reach } from './board';
+import { hazardPenalty, type Hazard } from './hazards';
 import type { Board, BuffStat, Effect, FightEvent, Pt, SpellDef, Unit } from './types';
 
 /** Damage per push cell that could not be travelled (before the caster's push bonus). */
@@ -34,6 +35,8 @@ export interface FightHooks {
   killed?(f: Fight, t: Unit, by: Unit | undefined, ev: FightEvent[]): void;
   /** t was healed by `gained` HP; `overflow` is what did not fit under its max HP */
   healed?(f: Fight, t: Unit, gained: number, overflow: number, ev: FightEvent[]): void;
+  /** t, pushed by `by`, was stopped by `into` (a unit, neutral objects included) or by a wall (undefined) */
+  bumped?(f: Fight, t: Unit, into: Unit | undefined, by: Unit, ev: FightEvent[]): void;
 }
 
 type Notify = Exclude<keyof FightHooks, 'damageMult' | 'saveFromDeath'>;
@@ -57,6 +60,8 @@ export interface Fight {
   over?: 'win' | 'lose';
   /** listeners on fight events (see FightHooks) */
   hooks?: FightHooks[];
+  /** what lies on the floor (traps, medkits…): see terrain.ts; cloneFight copies it */
+  hazards?: Hazard[];
 }
 
 // ---------- queries ----------
@@ -89,7 +94,7 @@ export function exitTax(f: Fight, u: Unit, p: Pt): number {
 }
 
 export function reachFor(f: Fight, u: Unit): Map<string, Reach> {
-  return reachable(f.board, u, u.pm, p => occupied(f, p), p => exitTax(f, u, p));
+  return reachable(f.board, u, u.pm, p => occupied(f, p), p => exitTax(f, u, p), p => hazardPenalty(f, p));
 }
 
 // ---------- zones and targeting ----------
@@ -326,6 +331,7 @@ function applyEffect(f: Fight, u: Unit, s: SpellDef, e: Effect, cell: Pt, origin
           const dmg = r.left * (PUSH_BASE + u.st.pushDmg + buffSum(u, 'pushDmg'));
           hurt(f, t, dmg, ev, u, { push: true });
           if (r.hit && r.hit.team !== 2) hurt(f, r.hit, Math.round(dmg / 2), ev, u, { push: true });
+          emit(f, 'bumped', f, t, r.hit, u, ev);
         }
       }
       break;
@@ -497,7 +503,7 @@ export function createFight(board: Board, units: Unit[], rng: Rng, spawn?: Spawn
 /** A copy deep enough to simulate actions on without touching the real fight. */
 export function cloneFight(f: Fight, rng: Rng = () => 0.5): Fight {
   return {
-    ...f, rng, order: [...f.order],
+    ...f, rng, order: [...f.order], hazards: f.hazards?.map(h => ({ ...h })),
     units: f.units.map(u => ({ ...u, cd: { ...u.cd }, casts: { ...u.casts }, buffs: u.buffs.map(b => ({ ...b })), bleed: u.bleed.map(b => ({ ...b })), face: { ...u.face }, mem: { ...u.mem } })),
   };
 }

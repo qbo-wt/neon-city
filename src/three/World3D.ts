@@ -16,6 +16,7 @@ import { fontsReady, glowTexture } from './street/paint';
 import { paintGround, paintOuter } from './street/ground';
 import { RANGE, buildCables, buildCity, buildPools, planCity, reflective, type StreetCtx } from './street/city';
 import { carModel, dressStreet, makeHole, makeProp, trashBin } from './street/props';
+import { HazardDecals, type HazardView } from './street/hazards';
 
 /** One board cell in metres: characters are ~1.8 m tall, props keep their real size. */
 export const CELL = 1.5;
@@ -246,6 +247,7 @@ export class World3D {
     this.rain = undefined;
     this.splash = undefined;
     this.life = undefined;
+    this.hazards = undefined;
     this.reflection.enabled = false;
     this.style.setInk(0.85, 0.7);
     return this.boardGroup;
@@ -505,6 +507,14 @@ export class World3D {
     }
   }
 
+  /** Arena hazards (traps, medkits…) drawn on the current board. */
+  private hazards?: HazardDecals;
+  setHazards(list: HazardView[]) {
+    if (!this.hazards && !list.length) return;
+    this.hazards ??= new HazardDecals(this.boardGroup, (p, y) => this.cellPos(p, y), CELL);
+    this.hazards.sync(list);
+  }
+
   private layers = new Map<string, THREE.InstancedMesh>();
   private layerGeo = new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92).rotateX(-Math.PI / 2);
   private layerMat = new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: true });
@@ -622,6 +632,7 @@ export class World3D {
     this.lastDt = dt;
     this.tickRain(dt);
     this.life?.tick(dt);
+    this.hazards?.tick(dt);
     this.decayFx(dt);
     this.onFrame?.(dt);
     stylizeScene(this.scene);

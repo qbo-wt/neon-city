@@ -49,25 +49,28 @@ export function lineOfSight(b: Board, a: Pt, to: Pt, occupied: (p: Pt) => boolea
 /** Unit step from a toward b along each axis (-1, 0 or 1). */
 export const stepToward = (a: Pt, b: Pt): Pt => ({ x: Math.sign(b.x - a.x), y: Math.sign(b.y - a.y) });
 
-export interface Reach { cost: number; prev?: string }
+export interface Reach { cost: number; prev?: string; /** tie-break: `avoid` cells entered on the way (traps) */ pen?: number }
 
 /**
  * Every cell reachable with `pm` movement points: Dijkstra on the 4-neighbour grid. Leaving a cell
  * costs 1 plus `exitTax(cell)` (the tackle of the enemies around it). Occupied cells cannot be crossed.
+ * Among paths of the same cost, the one entering the fewest `avoid` cells wins (walks around traps).
  */
-export function reachable(b: Board, from: Pt, pm: number, blocked: (p: Pt) => boolean, exitTax: (p: Pt) => number): Map<string, Reach> {
-  const out = new Map<string, Reach>([[keyOf(from), { cost: 0 }]]);
-  const open: { p: Pt; cost: number }[] = [{ p: from, cost: 0 }];
+export function reachable(b: Board, from: Pt, pm: number, blocked: (p: Pt) => boolean, exitTax: (p: Pt) => number, avoid?: (p: Pt) => number): Map<string, Reach> {
+  const out = new Map<string, Reach>([[keyOf(from), { cost: 0, pen: 0 }]]);
+  const open: { p: Pt; cost: number; pen: number }[] = [{ p: from, cost: 0, pen: 0 }];
+  const worse = (c: number, pen: number, r?: Reach) => !!r && (c > r.cost || (c === r.cost && pen >= (r.pen ?? 0)));
   while (open.length) {
-    open.sort((a, c) => a.cost - c.cost);
-    const { p, cost } = open.shift()!;
-    if (cost > (out.get(keyOf(p))?.cost ?? Infinity)) continue;
+    open.sort((a, c) => a.cost - c.cost || a.pen - c.pen);
+    const { p, cost, pen } = open.shift()!;
+    const here = out.get(keyOf(p))!;
+    if (cost > here.cost || (cost === here.cost && pen > (here.pen ?? 0))) continue;
     const step = 1 + exitTax(p);
     for (const d of DIRS) {
       const n = { x: p.x + d.x, y: p.y + d.y }, c = cost + step;
       if (c > pm || !walkable(b, n) || blocked(n)) continue;
-      const k = keyOf(n);
-      if (c < (out.get(k)?.cost ?? Infinity)) { out.set(k, { cost: c, prev: keyOf(p) }); open.push({ p: n, cost: c }); }
+      const k = keyOf(n), np = pen + (avoid ? avoid(n) : 0);
+      if (!worse(c, np, out.get(k))) { out.set(k, { cost: c, prev: keyOf(p), pen: np }); open.push({ p: n, cost: c, pen: np }); }
     }
   }
   return out;

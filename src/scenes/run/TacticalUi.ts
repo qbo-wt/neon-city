@@ -273,11 +273,26 @@ export class TacticalUi {
     });
   }
 
-  /** Hovered unit (or the active one) in the top-left corner. */
-  setInfo(u: Unit | undefined, f?: Fight) {
+  /**
+   * Hovered unit (or the active one) in the top-left corner. `tile`: the arena element on the hovered
+   * cell (trap, medkit…), shown alone on an empty cell; `notes`: extra lines about the unit (cover).
+   */
+  setInfo(u: Unit | undefined, f?: Fight, tile?: { name: string; text: string; color: number }, notes: string[] = []) {
     this.info.removeAll(true);
-    if (!u || u.dead) return;
     const sc = this.scene;
+    if ((!u || u.dead) && tile) {
+      const name = title(sc, 0, 0, tile.name.toUpperCase(), 10, hex(tile.color)).setFontStyle('600');
+      const body = txt(sc, 0, 0, tile.text, 5, T.text).setWordWrapWidth(160);
+      const w = Math.max(110, name.width + 14, body.width + 12), h = 19 + body.height;
+      const x = 5, y = 19;
+      const g = drawPanel(sc.add.graphics(), x, y, w, h, { accent: tile.color, cut: 5, alpha: 0.88, marks: false });
+      name.setPosition(x + 6, y + 2.5);
+      body.setPosition(x + 6, y + 15);
+      this.info.add([g, name, body]);
+      pinToCamera(this.info);
+      return;
+    }
+    if (!u || u.dead) return;
     const res = Math.round((u.st.res + u.buffs.reduce((s, b) => s + (b.stat === 'res' ? b.v : 0), 0) / 100) * 100);
     const accent = u.team === 0 ? C.cyan : u.team === 2 ? C.yellow : C.magenta;
     const name = title(sc, 0, 0, `${u.name.toUpperCase()}${u.elite ? ' ★' : ''}`, 10, hex(accent)).setFontStyle('600');
@@ -287,6 +302,9 @@ export class TacticalUi {
     if (u.bleed.length) marks.push('saigne');
     if (u.primed) marks.push('AMORCÉ : explose à son tour !');
     if (u.elite === 'cloak') marks.push('camouflé (cible à 2 cases max)');
+    if (u.kind === 'barrel' && u.team === 2) marks.push('explose (3 x 3) si détruit ou percuté par une poussée');
+    marks.push(...notes);
+    if (tile) marks.push(`sur : ${tile.name}`);
     const stats = txt(sc, 0, 0, lines.join('\n'), 5, T.dim);
     const markT = marks.length ? bold(sc, 0, 0, marks.join(' · '), 5, T.yellow).setWordWrapWidth(170) : undefined;
     const hpT = bold(sc, 0, 0, `${u.hp}/${u.maxHp}${u.shield ? `  +${u.shield}` : ''}`, 5, T.text);

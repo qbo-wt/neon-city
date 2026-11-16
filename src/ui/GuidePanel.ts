@@ -6,6 +6,7 @@ import { RELIC_RARITY_COLORS, RELIC_RARITY_NAMES } from '../core/relics';
 import type { Relic } from '../core/types';
 import { audio } from '../audio/audio';
 import { zoneIcon, zoneLabel } from './spellInfo';
+import { BARREL_BLAST, BARREL_HP, COVER_MULT } from '../tactics/terrain';
 import { hex, title, txt } from './text';
 import { Button, C, Card, T, bold, chip, cutPoly, hints, keycap, pinToCamera, screenFrame } from './kit';
 
@@ -92,8 +93,25 @@ const CHAPTERS: Chapter[] = [
     { h: 'Poussée' },
     { p: `Certains sorts repoussent ou attirent. Une cible poussée contre un mur ou une créature prend ${5} dégâts par case qu'elle n'a pas pu faire (plus tes bonus de poussée). La créature heurtée en prend la moitié.` },
     { h: 'Couverts et objets cassables' },
-    { p: 'Murs, voitures, barrières et créatures bloquent la ligne de vue : mets-les entre toi et les tireurs. Caisses, barils, poubelles et distributeurs se cassent ; ils lâchent souvent des crédits ou des soins, rarement une relique.' },
-    { chips: [['CAISSE 14 PV', C.yellow], ['BARIL 18 PV', C.orange], ['POUBELLE 8 PV', C.green], ['DISTRIBUTEUR 26 PV', C.cyan]] },
+    { p: 'Murs, voitures, barrières et créatures bloquent la ligne de vue : mets-les entre toi et les tireurs. Caisses, poubelles et distributeurs se cassent ; ils lâchent souvent des crédits ou des soins, rarement une relique.' },
+    { chips: [['CAISSE 14 PV', C.yellow], ['POUBELLE 8 PV', C.green], ['DISTRIBUTEUR 26 PV', C.cyan]] },
+  ]] },
+  { name: 'ARÈNES', pages: [[
+    { h: 'Couvert' },
+    { p: `Un obstacle ou un objet collé à une créature, du côté du tireur, la met à couvert : -${Math.round((1 - COVER_MULT) * 100)} % de dégâts des sorts lancés à 2 cases ou plus. Pile derrière l'obstacle, plus de ligne de vue du tout. Vaut pour toi comme pour eux.` },
+    { h: 'Barils explosifs' },
+    { p: `Baril rouge à bande jaune, ${BARREL_HP} PV. Détruit, ou percuté par une créature que tu pousses, il explose sur les 9 cases autour de lui (environ ${BARREL_BLAST} dégâts, alliés compris) et fait sauter les barils voisins.` },
+    { tip: 'Pousse un ennemi dans un baril au milieu de son groupe, ou tire dessus quand ils s\'y collent. L\'aperçu des dégâts compte l\'explosion.' },
+  ], [
+    { h: 'Cases piégées et bonus' },
+    { list: [
+      ['SOL ÉLECTRIFIÉ', 'Câble arraché (cyan) : dégâts en entrant et au début d\'un tour passé dessus.'],
+      ['FLAQUE CHIMIQUE', 'Violet : corrosion, des dégâts pendant 2 tours.'],
+      ['BOUCHE DE VAPEUR', 'Orange : en éruption un round sur trois, elle clignote le round d\'avant. Brûle qui y entre ou y commence son tour pendant l\'éruption.'],
+      ['BORNE DE SOIN', 'Croix verte, usage unique : soigne la première créature qui marche dessus, ennemis compris.'],
+      ['TERMINAL', 'Jaune, usage unique : +2 PA pour toi en passant dessus.'],
+    ] },
+    { p: 'Les pièges valent pour tout le monde, poussées et attractions comprises : envoie les ennemis dessus. Le chemin affiché les contourne quand ça ne coûte rien de plus, et annonce les PV que tu y perdrais. Survole une case pour la décrire. Les ennemis évitent les pièges et les barils.' },
   ]] },
   { name: 'PSYCHOSE', pages: [[
     { h: 'La jauge PSY' },
@@ -273,11 +291,13 @@ export class GuidePanel {
     root.add(screenFrame(s, 'GUIDE DU RUNNER', C.cyan, 'MANUEL DE SURVIE // NEON CITY'));
 
     // Chapter list.
+    // Rows shrink a little when there are many chapters, so the list stays above the key hints.
+    const step = Math.min(17.5, (H - 64) / CHAPTERS.length), ch0 = step - 2;
     CHAPTERS.forEach((c, i) => {
       const sel = i === this.chapter;
-      const card = new Card(s, 14, 24 + i * 17.5, 124, 15.5, { accent: sel ? C.yellow : C.cyan, state: sel ? 'sel' : 'idle', cut: 4, onClick: () => this.go(i) });
-      card.add(title(s, 9, 8.3, String(i + 1).padStart(2, '0'), 10, sel ? T.yellow : T.mute).setFontStyle('600').setOrigin(0, 0.5));
-      card.add(bold(s, 24, 7.8, c.name, 5.5, sel ? T.text : T.dim).setOrigin(0, 0.5));
+      const card = new Card(s, 14, 24 + i * step, 124, ch0, { accent: sel ? C.yellow : C.cyan, state: sel ? 'sel' : 'idle', cut: 4, onClick: () => this.go(i) });
+      card.add(title(s, 9, ch0 / 2 + 0.5, String(i + 1).padStart(2, '0'), 10, sel ? T.yellow : T.mute).setFontStyle('600').setOrigin(0, 0.5));
+      card.add(bold(s, 24, ch0 / 2, c.name, 5.5, sel ? T.text : T.dim).setOrigin(0, 0.5));
       root.add(card);
     });
 
