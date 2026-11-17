@@ -12,6 +12,16 @@ export const COMBAT_SPEEDS: readonly CombatSpeed[] = ['normal', 'fast', 'faster'
 export const SPEED_SCALE: Record<CombatSpeed, number> = { normal: 1, fast: 1.5, faster: 2 };
 export const SPEED_LABEL: Record<CombatSpeed, string> = { normal: 'NORMALE', fast: 'RAPIDE', faster: 'TRÈS RAPIDE' };
 
+/**
+ * 3D picture quality. 'high': everything every frame. 'low': for small GPUs, the wet-street
+ * reflection and the shadow map are redrawn every other frame (one each, in turn), no anti-aliasing
+ * pass, at most one 3D pixel per screen pixel on high-density screens. 'auto' starts high and drops
+ * to low for the session if the first place runs below ~45 fps (see World3D).
+ */
+export type GraphicsQuality = 'auto' | 'high' | 'low';
+export const QUALITIES: readonly GraphicsQuality[] = ['auto', 'high', 'low'];
+export const QUALITY_LABEL: Record<GraphicsQuality, string> = { auto: 'AUTO', high: 'HAUTE', low: 'BASSE' };
+
 /** Volume steps: 0..VOLUME_STEPS, each one is 10 %. */
 export const VOLUME_STEPS = 10;
 
@@ -26,6 +36,7 @@ export interface Settings {
   speed: CombatSpeed;
   /** accessibility: no camera shake, no full-screen flash or negative frame */
   reduceFx: boolean;
+  quality: GraphicsQuality;
 }
 
 export const SETTINGS_KEY = 'neon-city-settings';
@@ -33,7 +44,7 @@ export const SETTINGS_KEY = 'neon-city-settings';
 export const LEGACY_MUTE_KEY = 'neon-city-muted';
 
 export function defaultSettings(): Settings {
-  return { version: 1, music: VOLUME_STEPS, sfx: VOLUME_STEPS, muted: false, speed: 'normal', reduceFx: false };
+  return { version: 1, music: VOLUME_STEPS, sfx: VOLUME_STEPS, muted: false, speed: 'normal', reduceFx: false, quality: 'auto' };
 }
 
 const step = (v: unknown, fallback: number) =>
@@ -54,6 +65,7 @@ export function loadSettings(storage: Pick<Storage, 'getItem'>): Settings {
     if (typeof d.muted === 'boolean') s.muted = d.muted;
     if (typeof d.speed === 'string' && (COMBAT_SPEEDS as readonly string[]).includes(d.speed)) s.speed = d.speed as CombatSpeed;
     if (typeof d.reduceFx === 'boolean') s.reduceFx = d.reduceFx;
+    if (typeof d.quality === 'string' && (QUALITIES as readonly string[]).includes(d.quality)) s.quality = d.quality as GraphicsQuality;
   } catch {
     // Corrupt JSON or blocked storage: defaults (plus the legacy mute, if it could be read).
   }

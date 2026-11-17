@@ -19,6 +19,8 @@ export class GroundReflection {
     uReflStrength: { value: 1 },
   };
   enabled = true;
+  /** Keep last frame's image (low quality redraws it every other frame; the ripples still move). */
+  skip = false;
 
   constructor(private scale = 0.4) {
     this.target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
@@ -30,7 +32,7 @@ export class GroundReflection {
 
   update(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.OrthographicCamera, dt: number) {
     this.uniforms.uReflTime.value += dt;
-    if (!this.enabled) return;
+    if (!this.enabled || this.skip) return;
     const c = this.cam;
     c.left = camera.left; c.right = camera.right; c.top = camera.top; c.bottom = camera.bottom;
     c.near = camera.near; c.far = camera.far; c.zoom = camera.zoom;

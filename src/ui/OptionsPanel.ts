@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CONFIG } from '../config';
 import { audio } from '../audio/audio';
 import {
-  COMBAT_SPEEDS, SPEED_LABEL, VOLUME_STEPS, defaultSettings, onSettingsChange, settings, updateSettings, type Settings,
+  COMBAT_SPEEDS, QUALITIES, QUALITY_LABEL, SPEED_LABEL, VOLUME_STEPS, defaultSettings, onSettingsChange, settings, updateSettings, type Settings,
 } from '../core/settings';
 import { resetTutorial } from '../core/tutorial';
 import { txt } from './text';
@@ -11,15 +11,24 @@ import { Button, C, Card, T, backdrop, bold, drawBar, hints, markPanelClosed, pa
 type Row =
   | { kind: 'slider'; label: string; desc: string; key: 'music' | 'sfx' }
   | { kind: 'toggle'; label: string; desc: string; key: 'muted' | 'reduceFx' | 'fullscreen' }
-  | { kind: 'speed'; label: string; desc: string };
+  | { kind: 'choice'; label: string; desc: string; key: 'speed' | 'quality' };
+
+/** The values of a choice row, in order, and their labels. */
+const CHOICES = {
+  speed: { values: COMBAT_SPEEDS, label: SPEED_LABEL },
+  quality: { values: QUALITIES, label: QUALITY_LABEL },
+} as const;
+const choiceIndex = (key: 'speed' | 'quality') => (CHOICES[key].values as readonly string[]).indexOf(settings()[key]);
+const choicePatch = (key: 'speed' | 'quality', i: number): Partial<Settings> => ({ [key]: CHOICES[key].values[i] });
 
 const ROWS: Row[] = [
   { kind: 'slider', key: 'music', label: 'MUSIQUE', desc: 'Volume des morceaux (appart, rue, boss), par paliers de 10 %.' },
   { kind: 'slider', key: 'sfx', label: 'EFFETS SONORES', desc: 'Volume des coups, des sorts et de l\'interface.' },
   { kind: 'toggle', key: 'muted', label: 'COUPER LE SON', desc: 'Coupe tout le son. La touche M fait la même chose, partout.' },
-  { kind: 'speed', label: 'VITESSE DES COMBATS', desc: 'Accélère les animations des combats (déplacements, coups, tours ennemis). Les menus ne changent pas.' },
+  { kind: 'choice', key: 'speed', label: 'VITESSE DES COMBATS', desc: 'Accélère les animations des combats (déplacements, coups, tours ennemis). Les menus ne changent pas.' },
   { kind: 'toggle', key: 'fullscreen', label: 'PLEIN ÉCRAN', desc: 'Le jeu occupe tout l\'écran. Échap le quitte aussi.' },
   { kind: 'toggle', key: 'reduceFx', label: 'EFFETS D\'ÉCRAN RÉDUITS', desc: 'Accessibilité : plus de tremblements de caméra, de flashs plein écran ni d\'image négative sur les gros coups.' },
+  { kind: 'choice', key: 'quality', label: 'QUALITÉ GRAPHIQUE', desc: 'BASSE pour un PC portable ou une puce graphique intégrée : reflets et ombres redessinés une image sur deux, sans anticrénelage. AUTO passe en BASSE si le jeu rame.' },
 ];
 
 /** Browser fullscreen, either through the Fullscreen API (ours) or the browser's own (F11). */
@@ -29,13 +38,13 @@ function fullscreenState(): 'api' | 'browser' | 'off' {
   return 'off';
 }
 
-const PW = 300, PH = 190, ROW_H = 17, ROW_STEP = 20;
+const PW = 300, PH = 210, ROW_H = 17, ROW_STEP = 20;
 /** Where the value controls sit inside a row (local x). */
 const CTRL_X = 128, CTRL_END = PW - 20 - 14;
 
 /**
  * The options menu: music and effects volumes, mute, fight animation speed, fullscreen, reduced
- * screen effects, replay the tutorial, back to defaults. Mouse, or keys: ↑ ↓ choose, ← → adjust, Entrée toggles or
+ * screen effects, graphics quality, replay the tutorial, back to defaults. Mouse, or keys: ↑ ↓ choose, ← → adjust, Entrée toggles or
  * presses, Échap closes. Opened from the main menu, and in game with Échap (see HelpOverlay).
  */
 export class OptionsPanel {
@@ -128,7 +137,7 @@ export class OptionsPanel {
   private value(r: Row): number | boolean {
     const s = settings();
     if (r.kind === 'slider') return s[r.key];
-    if (r.kind === 'speed') return COMBAT_SPEEDS.indexOf(s.speed);
+    if (r.kind === 'choice') return choiceIndex(r.key);
     return r.key === 'fullscreen' ? fullscreenState() !== 'off' : s[r.key];
   }
 
@@ -143,15 +152,15 @@ export class OptionsPanel {
     if (r.kind === 'slider') {
       const v = Phaser.Math.Clamp(settings()[r.key] + d, 0, VOLUME_STEPS);
       if (v !== settings()[r.key]) this.set(r.key === 'music' ? { music: v } : { sfx: v });
-    } else if (r.kind === 'speed') {
-      const i = Phaser.Math.Clamp(COMBAT_SPEEDS.indexOf(settings().speed) + d, 0, COMBAT_SPEEDS.length - 1);
-      if (COMBAT_SPEEDS[i] !== settings().speed) this.set({ speed: COMBAT_SPEEDS[i] });
+    } else if (r.kind === 'choice') {
+      const i = Phaser.Math.Clamp(choiceIndex(r.key) + d, 0, CHOICES[r.key].values.length - 1);
+      if (i !== choiceIndex(r.key)) this.set(choicePatch(r.key, i));
     } else this.toggle(r.key);
   }
 
   private activate(r: Row) {
     if (r.kind === 'toggle') this.toggle(r.key);
-    else if (r.kind === 'speed') this.set({ speed: COMBAT_SPEEDS[(COMBAT_SPEEDS.indexOf(settings().speed) + 1) % COMBAT_SPEEDS.length] });
+    else if (r.kind === 'choice') this.set(choicePatch(r.key, (choiceIndex(r.key) + 1) % CHOICES[r.key].values.length));
   }
 
   private toggle(key: 'muted' | 'reduceFx' | 'fullscreen') {
@@ -177,7 +186,7 @@ export class OptionsPanel {
 
   private reset() {
     const d = defaultSettings();
-    updateSettings({ music: d.music, sfx: d.sfx, muted: d.muted, speed: d.speed, reduceFx: d.reduceFx });
+    updateSettings({ music: d.music, sfx: d.sfx, muted: d.muted, speed: d.speed, reduceFx: d.reduceFx, quality: d.quality });
     audio.sfx('ui');
     this.note = 'Réglages par défaut rétablis (le plein écran ne change pas).';
     this.paintFocus();
@@ -253,10 +262,10 @@ export class OptionsPanel {
       if (lx < CTRL_X - 3 || lx > CTRL_X + SLIDER_W + 3) return;
       const v = Phaser.Math.Clamp(Math.round((lx - CTRL_X) / SLIDER_W * VOLUME_STEPS), 0, VOLUME_STEPS);
       if (v !== settings()[r.key]) this.set(r.key === 'music' ? { music: v } : { sfx: v });
-    } else if (r.kind === 'speed') {
-      const i = segAt(lx, CTRL_X, CTRL_END, COMBAT_SPEEDS.length);
+    } else if (r.kind === 'choice') {
+      const i = segAt(lx, CTRL_X, CTRL_END, CHOICES[r.key].values.length);
       if (i < 0) this.activate(r);
-      else if (COMBAT_SPEEDS[i] !== settings().speed) this.set({ speed: COMBAT_SPEEDS[i] });
+      else if (i !== choiceIndex(r.key)) this.set(choicePatch(r.key, i));
     } else this.toggle(r.key);
   }
 
@@ -268,8 +277,9 @@ export class OptionsPanel {
       const n = v as number;
       drawBar(g, CTRL_X, ROW_H / 2 - 3, SLIDER_W, 6, n / VOLUME_STEPS, settings().muted ? C.line : C.cyan, { seg: VOLUME_STEPS });
       card.add(bold(s, CTRL_END, ROW_H / 2, `${n * 10} %`, 6, settings().muted ? T.off : T.yellow).setOrigin(1, 0.5));
-    } else if (r.kind === 'speed') {
-      segments(s, card, g, COMBAT_SPEEDS.map(k => SPEED_LABEL[k]), v as number, CTRL_X, CTRL_END, C.yellow);
+    } else if (r.kind === 'choice') {
+      const c = CHOICES[r.key];
+      segments(s, card, g, c.values.map(k => (c.label as Record<string, string>)[k]), v as number, CTRL_X, CTRL_END, C.yellow);
     } else {
       const on = v as boolean;
       segments(s, card, g, ['NON', 'OUI'], on ? 1 : 0, CTRL_END - 62, CTRL_END, on ? C.green : C.magenta);

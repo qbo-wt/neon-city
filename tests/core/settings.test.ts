@@ -8,12 +8,12 @@ function fake(init: Record<string, string> = {}) {
 
 describe('settings', () => {
   it('defaults: full volumes, sound on, normal speed, full screen effects', () => {
-    expect(loadSettings(fake())).toEqual({ version: 1, music: 10, sfx: 10, muted: false, speed: 'normal', reduceFx: false });
+    expect(loadSettings(fake())).toEqual({ version: 1, music: 10, sfx: 10, muted: false, speed: 'normal', reduceFx: false, quality: 'auto' });
   });
 
   it('round-trips', () => {
     const s = fake();
-    const v: Settings = { version: 1, music: 3, sfx: 7, muted: true, speed: 'faster', reduceFx: true };
+    const v: Settings = { version: 1, music: 3, sfx: 7, muted: true, speed: 'faster', reduceFx: true, quality: 'low' };
     writeSettings(s, v);
     expect(loadSettings(s)).toEqual(v);
   });
@@ -29,7 +29,7 @@ describe('settings', () => {
   });
 
   it('fills missing fields and replaces invalid ones with defaults, keeping the valid ones', () => {
-    const s = fake({ [SETTINGS_KEY]: JSON.stringify({ music: 4, sfx: 'loud', speed: 'warp', reduceFx: 1 }) });
+    const s = fake({ [SETTINGS_KEY]: JSON.stringify({ music: 4, sfx: 'loud', speed: 'warp', reduceFx: 1, quality: 'ultra' }) });
     expect(loadSettings(s)).toEqual({ ...defaultSettings(), music: 4 });
   });
 

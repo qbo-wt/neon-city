@@ -6,7 +6,8 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createRng, pick, type Rng } from '../core/rng';
-import { settings } from '../core/settings';
+import { onSettingsChange, settings, type GraphicsQuality } from '../core/settings';
+import { AUTO_SAMPLES, AUTO_SKIP, autoQuality } from './quality';
 import type { Board, Pt } from '../tactics/types';
 import { StylePass, stylizeScene, type ScreenFx } from './stylize';
 import { disposeTree } from './dispose';
@@ -77,16 +78,69 @@ export class World3D {
     this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.55, 0.5, 0.82);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
-    this.composer.addPass(new SMAAPass());
+    this.composer.addPass(this.smaa);
     this.composer.setSize(w, h);
     this.reflection.setSize(w, h);
     this.reflection.enabled = false;
+    this.size = { w, h };
+    this.useQuality(settings().quality);
+    onSettingsChange(st => this.useQuality(st.quality));
   }
 
-  resize(w: number, h: number) {
+  private smaa = new SMAAPass();
+  private size = { w: 1, h: 1 };
+  /** The quality in effect ('auto' resolves to one of them, see quality.ts). */
+  private quality: 'high' | 'low' = 'high';
+  /** What 'auto' decided this session, once measured. */
+  private autoPick?: 'high' | 'low';
+  /** Frame times being sampled for 'auto' (after `skip` frames of loading). */
+  private autoRun?: { skip: number; ms: number[]; last: number };
+  private frameNo = 0;
+  private qualitySet = false;
+
+  private useQuality(q: GraphicsQuality) {
+    if (q !== 'auto') { this.autoRun = undefined; this.setQuality(q); return; }
+    if (!this.autoPick) this.autoRun ??= { skip: AUTO_SKIP, ms: [], last: 0 };
+    this.setQuality(this.autoPick ?? 'high');
+  }
+
+  /**
+   * Low: no anti-aliasing pass, at most one 3D pixel per CSS pixel (high-density screens), and the
+   * wet reflection and the shadow map redrawn in turn, one frame each (see frame()). A lower
+   * resolution was tried: slower on an Intel iGPU (the canvas then gets scaled when composited).
+   */
+  private setQuality(q: 'high' | 'low') {
+    if (q === this.quality && this.qualitySet) return;
+    this.qualitySet = true;
+    this.quality = q;
+    const pr = Math.min(q === 'low' ? 1 : 2, window.devicePixelRatio);
+    this.smaa.enabled = q === 'high';
+    this.renderer.setPixelRatio(pr);
+    this.composer.setPixelRatio(pr);
+    this.resizeTargets(this.size.w, this.size.h);
+  }
+
+  private resizeTargets(w: number, h: number) {
+    this.size = { w, h };
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
     this.reflection.setSize(w, h);
+  }
+
+  /** For 'auto': times frames once the place has settled, then picks the quality for the session. */
+  private sampleAuto() {
+    const a = this.autoRun!, now = performance.now(), dt = now - a.last;
+    a.last = now;
+    if (this.bake || a.skip-- > 0) return;
+    a.ms.push(dt);
+    if (a.ms.length < AUTO_SAMPLES) return;
+    this.autoRun = undefined;
+    this.autoPick = autoQuality(a.ms);
+    if (settings().quality === 'auto') this.setQuality(this.autoPick);
+  }
+
+  resize(w: number, h: number) {
+    this.resizeTargets(w, h);
     this.frame();
   }
 
@@ -255,6 +309,7 @@ export class World3D {
     this.reflection.enabled = false;
     this.style.setInk(0.85, 0.7);
     this.bake = undefined;
+    if (this.autoRun) { this.autoRun.skip = AUTO_SKIP; this.autoRun.ms = []; } // loading is not a frame time
     return this.boardGroup;
   }
 
@@ -756,7 +811,13 @@ export class World3D {
     this.decayFx(dt);
     this.onFrame?.(dt);
     stylizeScene(this.scene);
+    // Low quality: odd frames redraw the shadow map, even ones the wet reflection.
+    const low = this.quality === 'low', odd = (++this.frameNo & 1) === 1;
+    this.reflection.skip = low && odd;
+    this.renderer.shadowMap.autoUpdate = !low;
+    if (low && odd) this.renderer.shadowMap.needsUpdate = true;
     this.composer.render(dt);
+    if (this.autoRun) this.sampleAuto();
     if (this.bake && ++this.bake.frames >= 60) this.finishBake();
   }
 }
