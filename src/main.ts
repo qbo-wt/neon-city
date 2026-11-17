@@ -13,6 +13,7 @@ import { OverlayScene } from './ui/transition';
 import { nextAction } from './tactics/ai';
 import { cast, moveTo } from './tactics/fight';
 import { capsuleDebug } from './ui/VendingTalk';
+import { stage } from './three/stage';
 import '@fontsource/chakra-petch/latin-500.css';
 import '@fontsource/chakra-petch/latin-700.css';
 import '@fontsource/teko/latin-500.css';
@@ -38,4 +39,5 @@ const game = new Phaser.Game({
 
 // Test hook: `?debug` exposes the game instance (and the fight AI, to let tests play the hero) for automated smoke tests,
 // and `capsule`, shortcuts through the corridor vending machine's story (ui/VendingTalk.capsuleDebug).
-if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __NEON__: game, __NEON_AI__: { nextAction, cast, moveTo }, capsule: capsuleDebug(game) });
+// `__NEON3D__()` returns the shared 3D world (renderer stats for the performance scripts).
+if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __NEON__: game, __NEON3D__: () => stage(game.canvas), __NEON_AI__: { nextAction, cast, moveTo }, capsule: capsuleDebug(game) });
