@@ -254,6 +254,7 @@ export class World3D {
     this.warnings = undefined;
     this.reflection.enabled = false;
     this.style.setInk(0.85, 0.7);
+    this.bake = undefined;
     return this.boardGroup;
   }
 
@@ -292,6 +293,7 @@ export class World3D {
     if (theme.rain) this.buildRain(b);
     this.reflection.enabled = true;
     this.reflection.uniforms.uReflStrength.value = 0.9 + theme.wet * 0.5;
+    this.bakeShadows();
   }
 
   private theme?: Theme;
@@ -643,6 +645,86 @@ export class World3D {
     }
   }
 
+  /**
+   * Static shadow casters of the place just built, waiting to be merged (see `bakeShadows`).
+   * `list` holds each candidate with its world matrix at the start of the watch.
+   */
+  private bake?: { group: THREE.Group; frames: number; list: { mesh: THREE.Mesh; m: THREE.Matrix4 }[] };
+
+  /**
+   * Called once a place is built. The shadow map was redrawn piece by piece every frame (800 draws
+   * for a street, ~10 µs each on an integrated GPU): its static casters become one depth-only mesh,
+   * drawn in the shadow pass only. Pieces still moving after a second of watching (swaying cables,
+   * fans, bobbing drones) and anything added later (characters, units, hazards) keep their own
+   * shadow. Only plain opaque depth is merged (no alpha-tested cut-outs, skinning or instancing).
+   */
+  bakeShadows() {
+    const g = this.boardGroup;
+    g.updateMatrixWorld(true);
+    const list: { mesh: THREE.Mesh; m: THREE.Matrix4 }[] = [];
+    g.traverse(o => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.castShadow || (mesh as THREE.SkinnedMesh).isSkinnedMesh || (mesh as THREE.InstancedMesh).isInstancedMesh) return;
+      if (mesh.customDepthMaterial || Object.keys(mesh.geometry.morphAttributes).length || !mesh.geometry.attributes.position) return;
+      const r = mesh.geometry.drawRange;
+      if (r.start !== 0 || r.count !== Infinity) return;
+      if (shadowSideOf(mesh) === undefined) return;
+      list.push({ mesh, m: mesh.matrixWorld.clone() });
+    });
+    this.bake = { group: g, frames: 0, list };
+  }
+
+  private finishBake() {
+    const b = this.bake!;
+    this.bake = undefined;
+    const g = b.group;
+    if (g !== this.boardGroup) return;
+    const shown = (o: THREE.Object3D) => { for (let p: THREE.Object3D | null = o; p && p !== g; p = p.parent) if (!p.visible) return false; return true; };
+    const inside = (o: THREE.Object3D) => { let p = o.parent; while (p && p !== g) p = p.parent; return p === g; };
+    const bySide = new Map<THREE.Side, THREE.Mesh[]>();
+    for (const { mesh, m } of b.list) {
+      if (!mesh.castShadow || !inside(mesh) || !shown(mesh) || !mesh.matrixWorld.equals(m)) continue;
+      const side = shadowSideOf(mesh)!;
+      let a = bySide.get(side);
+      if (!a) bySide.set(side, (a = []));
+      a.push(mesh);
+    }
+    const toLocal = g.matrixWorld.clone().invert(), mx = new THREE.Matrix4(), v = new THREE.Vector3();
+    for (const [side, meshes] of bySide) {
+      if (meshes.length < 2) continue;
+      let nv = 0, ni = 0;
+      for (const m of meshes) { const geo = m.geometry; nv += geo.attributes.position.count; ni += geo.index ? geo.index.count : geo.attributes.position.count; }
+      const pos = new Float32Array(nv * 3), idx = new Uint32Array(ni);
+      let ov = 0, oi = 0;
+      for (const m of meshes) {
+        const geo = m.geometry, p = geo.attributes.position, index = geo.index;
+        mx.multiplyMatrices(toLocal, m.matrixWorld);
+        for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(mx); pos[(ov + i) * 3] = v.x; pos[(ov + i) * 3 + 1] = v.y; pos[(ov + i) * 3 + 2] = v.z; }
+        // A mirrored piece turns its triangles over: swap two corners to keep the faces the same way out.
+        const flip = mx.determinant() < 0, n = index ? index.count : p.count;
+        for (let i = 0; i < n; i += 3) {
+          const a = index ? index.getX(i) : i, b2 = index ? index.getX(i + 1) : i + 1, c = index ? index.getX(i + 2) : i + 2;
+          idx[oi + i] = ov + a; idx[oi + i + 1] = ov + (flip ? c : b2); idx[oi + i + 2] = ov + (flip ? b2 : c);
+        }
+        ov += p.count; oi += n;
+        m.castShadow = false;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      geo.computeBoundingSphere();
+      const proxy = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, shadowSide: side }));
+      proxy.name = 'shadow-proxy';
+      proxy.castShadow = true;
+      proxy.frustumCulled = false;
+      proxy.matrixAutoUpdate = false;
+      // Drawn by the shadow pass only: the main pass gets an empty range.
+      proxy.onBeforeShadow = () => { geo.drawRange.count = Infinity; };
+      proxy.onBeforeRender = () => { geo.drawRange.count = 0; };
+      g.add(proxy);
+    }
+  }
+
   frame() {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.lastDt = dt;
@@ -654,7 +736,25 @@ export class World3D {
     this.onFrame?.(dt);
     stylizeScene(this.scene);
     this.composer.render(dt);
+    if (this.bake && ++this.bake.frames >= 60) this.finishBake();
   }
 }
 
+const DEPTH_SIDE: Record<THREE.Side, THREE.Side> = { [THREE.FrontSide]: THREE.BackSide, [THREE.BackSide]: THREE.FrontSide, [THREE.DoubleSide]: THREE.DoubleSide };
 
+/**
+ * The face side a mesh draws into the shadow map (as WebGLShadowMap picks it), or undefined if its
+ * shadow is more than plain depth (cut-outs, displacement, clipping, hidden or mixed materials).
+ */
+function shadowSideOf(mesh: THREE.Mesh): THREE.Side | undefined {
+  const all = Array.isArray(mesh.material) ? mesh.geometry.groups.map(gr => (mesh.material as THREE.Material[])[gr.materialIndex ?? 0]) : [mesh.material];
+  let side: THREE.Side | undefined;
+  for (const m of all) {
+    const x = m as THREE.MeshStandardMaterial;
+    if (!x || !x.visible || x.wireframe || x.alphaTest > 0 || x.alphaToCoverage || (x.displacementMap && x.displacementScale !== 0) || x.clippingPlanes?.length) return undefined;
+    const s = x.shadowSide ?? DEPTH_SIDE[x.side];
+    if (side !== undefined && s !== side) return undefined;
+    side = s;
+  }
+  return side;
+}

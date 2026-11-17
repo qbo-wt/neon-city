@@ -161,6 +161,7 @@ export class Interior3D {
     this.add(key); this.add(key.target);
     this.framePhaser();
     if (set) await set(this);
+    if (this.group === w.boardGroup) w.bakeShadows();
   }
 
   /** Orthographic camera covering exactly what the Phaser camera shows (x 0-480, y -14-256). */
