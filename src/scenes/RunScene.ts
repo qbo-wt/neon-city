@@ -19,7 +19,7 @@ import { ASPECT_BY_ID, aspectRank, defaultAspect, equip } from '../data/aspects'
 import { heatCreditMult, heatEffects, heatRecordBonus } from '../data/heat';
 import { dailySeed, dateKey, recordDaily } from '../core/daily';
 import { bossIntro } from '../core/story';
-import { CROWBAR_RELIC, GIFTS, ZERO_CREDITS, afterRun, takeGifts, type GiftId } from '../core/vending';
+import { CROWBAR_RELIC, GIFTS, ZERO_CREDITS, afterRun, streetTip, takeGifts, type GiftId } from '../core/vending';
 import { BOSS_LINES } from '../data/story';
 import { spell } from '../data/spells';
 import { WEAPONS } from '../data/weapons';
@@ -159,6 +159,8 @@ export class RunScene extends Phaser.Scene {
         // Capsule's drinks (the corridor's vending machine) act now, once.
         const taken = takeGifts(sv);
         if (taken.gifts.length) { applyGifts(run, taken.gifts); writeSave(getStorage(), taken.save); }
+        const tip = streetTip(sv.story.vending);
+        if (tip) run.capsuleTip = tip;
         setRun(this.registry, run);
       }
     }
@@ -816,7 +818,13 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     if (u.team === 2) {
       audio.sfx('break', { vol: 0.7 });
       // Capsule's quest counts the street machines you break.
-      if (u.kind === 'vending') this.run.vending = (this.run.vending ?? 0) + 1;
+      if (u.kind === 'vending') {
+        this.run.vending = (this.run.vending ?? 0) + 1;
+        // Gone into the network, it leaves change in its cousins for you.
+        const tip = this.run.capsuleTip ?? 0;
+        if (tip) this.run.creditsEarned += tip;
+        if (tip && view) { floatText(this, view.x, view.y - 26, `+${tip}¢ CAPSULE`, '#ff6fb0', 7); }
+      }
       if (view) for (let i = 0; i < 8; i++) {
         const d = this.add.rectangle(view.x, view.y - 6, 3, 3, Phaser.Utils.Array.GetRandom([0x8a6a4a, 0x3a3550, 0x39a85a, 0xff8c2a])).setDepth(960);
         const a = Math.random() * Math.PI * 2;

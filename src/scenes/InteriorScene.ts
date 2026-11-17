@@ -139,11 +139,14 @@ export abstract class InteriorScene extends Phaser.Scene {
 
   /**
    * Dialogue for an NPC that remembers you: a reaction to your last run, then their story one beat
-   * per run (the last beat gives credits), then their usual lines.
+   * per run (the last beat gives credits), then their usual lines. `extra` may take the place of a
+   * usual line (e.g. Lo's word on Capsule, once per run).
    */
-  protected storyTalk(npc: StoryNpc, ambient: string[]): () => string {
+  protected storyTalk(npc: StoryNpc, ambient: string[], extra?: (s: SaveData) => { line: string; save: SaveData } | undefined): () => string {
     return () => {
       const r = nextLine(npc, this.save, ambient, Math.random, id => ENEMIES[id as EnemyId]?.name);
+      const x = r.kind === 'ambient' ? extra?.(this.save) : undefined;
+      if (x) { this.persistSave(x.save); return x.line; }
       if (r.save !== this.save) this.persistSave(r.save);
       if (r.gift) {
         floatText(this, this.player.x, this.player.y - HEAD_PX, `+${r.gift}¢`, '#f5e663', 9);

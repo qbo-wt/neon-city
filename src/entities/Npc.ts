@@ -97,14 +97,20 @@ export class Npc extends Phaser.Physics.Arcade.Sprite {
 
   /** Shows the next line in a speech bubble. */
   speak() {
+    this.say(this.talk?.() ?? this.lines[this.lineIndex++ % this.lines.length]);
+  }
+
+  /** A line in a speech bubble for `ms` (the corridor's little scenes time their exchanges with it). */
+  say(line: string, ms = 2800 + line.length * 40) {
     this.bubble?.destroy();
-    const line = this.talk?.() ?? this.lines[this.lineIndex++ % this.lines.length];
     audio.sfx('talk');
     const t = txt(this.scene, 0, 0, line, 6, '#e8e8ff').setOrigin(0.5).setWordWrapWidth(150).setAlign('center');
     const bg = this.scene.add.rectangle(0, 0, t.width + 8, t.height + 6, 0x05030f, 0.92).setStrokeStyle(1, 0x8a86b0);
     const name = txt(this.scene, -bg.width / 2 + 2, -bg.height / 2 - 7, this.name, 5, '#f5e663');
-    this.bubble = this.scene.add.container(this.x, this.y + 2 - HEAD_PX - t.height / 2, [bg, t, name]).setDepth(60);
-    this.scene.time.delayedCall(2800 + line.length * 40, () => { this.bubble?.destroy(); this.bubble = undefined; });
+    const bubble = this.scene.add.container(this.x, this.y + 2 - HEAD_PX - t.height / 2, [bg, t, name]).setDepth(60);
+    this.bubble = bubble;
+    // Only this bubble: a newer one has its own timer.
+    this.scene.time.delayedCall(ms, () => { bubble.destroy(); if (this.bubble === bubble) this.bubble = undefined; });
     // (The 3D view turns them toward the player while the bubble is up.)
     if (this.activity !== 'wander') this.idleFrame();
   }

@@ -4,7 +4,7 @@ import { arcadeGame, flicker, ticker } from './fx';
 import { canvasTex, FONT_TITLE, rng } from './paint';
 import { cans, carton, halo, plant, wallPoster } from './props';
 import { preloadKit } from './kit';
-import { drawVendingFace, vendingLive } from '../../gfx/vendingFace';
+import { drawStandScreen, drawVendingFace, vendingLive } from '../../gfx/vendingFace';
 
 /**
  * Floor 37 of the H-12 megabuilding: a long hall that runs off both sides of the screen. Every
@@ -37,6 +37,8 @@ export const HALL = {
    * to 386) and the den's (left edge ~419): clear of the ramen stand's awning and lanterns.
    */
   vending: { x: 403, y: 104 },
+  /** The till on the right end of Lo's counter (where Capsule lives if its chip is grafted there). */
+  till: { x: 251, y: 100 },
   /** Where the player comes out of each door. */
   spawn: { apartment: { x: 148, y: 106 }, doc: { x: 46, y: 106 }, net: { x: 438, y: 106 } },
   blockers: [
@@ -226,6 +228,8 @@ async function ramenStand(v: Interior3D) {
     v.steam(x + dx, cy - 6, 1.35, { rate: 6, rise: 0.45, size: 0.22, opacity: 0.35, color: 0xfff0e0 });
   }
   cans(v, x + 12, cy - 4, 1.06, 2, 3);
+  // The till at the right end of the counter: her menu, or Capsule's face once its chip lives there.
+  v.screen(at(HALL.till.x, cy - 1, 1.2), 0.34, 0.17, (c, t, w, h) => drawStandScreen(c, w, h, t), { fps: 12, res: 96, bezel: 0x15101e, k: 1.3, tilt: -0.15 });
   // Stools.
   for (const dx of [-30, -10, 10, 30]) {
     v.cyl(at(x + dx, cy + 0.6 * MY), 0.04, 0.06, 0.62, v.mat(0x2a2440, { metal: 0.5 }));

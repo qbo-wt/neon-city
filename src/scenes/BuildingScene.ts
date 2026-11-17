@@ -9,6 +9,7 @@ import { DescentPanel } from '../ui/DescentPanel';
 import type { Interior3D } from '../three/Interior3D';
 import { HALL, buildCorridor } from '../three/interior/corridor';
 import { VendingTalk } from '../ui/VendingTalk';
+import { loAboutCapsule } from '../data/vending';
 
 /**
  * Floor 37 of the megabuilding: home, the clinic, Nyx's den and the elevator down to the street,
@@ -49,7 +50,7 @@ export class BuildingScene extends InteriorScene {
     this.descent = new DescentPanel(this, () => this.save, s => this.persistSave(s), daily =>
       this.go(SCENES.Run, daily ? { seed: 0, daily: true } : { seed: Date.now() >>> 0 }, daily ? '▼ RUN DU JOUR — NEON CITY' : '▼ REZ-DE-CHAUSSÉE — NEON CITY'));
     this.modals.push(this.descent);
-    this.vending = new VendingTalk(this, () => this.controls, HALL.vending, () => this.save, s => this.persistSave(s), () => this.player, () => this.tutorial.event('see:vending'));
+    this.vending = new VendingTalk(this, () => this.controls, { machine: HALL.vending, till: HALL.till }, () => this.save, s => this.persistSave(s), () => this.player, () => this.tutorial.event('see:vending'));
     this.modals.push(this.vending);
     for (const [x, y, w, h] of HALL.blockers) this.block(x, y, w, h);
 
@@ -63,36 +64,42 @@ export class BuildingScene extends InteriorScene {
         name: NAMES[i % NAMES.length], ...extra, lines, talk: this.storyTalk('resident', lines),
       });
     };
+    // (Capsule's little scenes, in data/vending, call some of them by name: the names follow the order below.)
     res(120, 130, 'wander', { bounds: lane });
     res(300, 160, 'wander', { bounds: lane });
-    res(380, 126, 'wander', { bounds: lane });
+    const babs = res(380, 126, 'wander', { bounds: lane });
     res(185, 108, 'eat', { faceUp: true, seat: 0.66 });
     res(225, 108, 'eat', { faceUp: true, seat: 0.66 });
-    res(293, 113, 'play', { faceUp: true, lines: SPECIAL_LINES.gamer });
+    const rook = res(293, 113, 'play', { faceUp: true, lines: SPECIAL_LINES.gamer });
     res(386, 203, 'play', { faceUp: true });
     res(431, 203, 'play', { faceUp: true });
     res(116, 92, 'phone', { flip: true });
     // Leaning on the wall between the ramen stand and the arcade (the vending machine took his old spot).
     res(268, 96, 'lean', { flip: true });
-    res(76, 205, 'sit', { seat: 0.42 });
+    const vik = res(76, 205, 'sit', { seat: 0.42 });
     res(166, 199, 'sit', { seat: 0.46 });
     res(302, 199, 'talk', { flip: true, seat: 0.46 });
     res(278, 199, 'talk', { seat: 0.46 });
     res(160, 150, 'talk');
     res(176, 150, 'talk', { flip: true });
-    res(452, 160, 'smoke', { flip: true });
+    const nadia = res(452, 160, 'smoke', { flip: true });
     res(60, 162, 'dance', { lines: SPECIAL_LINES.dancer });
-    const lo = this.npc('npc-lo', HALL.lo.x, HALL.lo.y, 'cook', { name: 'Mamie Lo', lines: SPECIAL_LINES.lo, talk: this.storyTalk('lo', SPECIAL_LINES.lo) });
+    // Lo: her story first, then, once per run, a word about Capsule.
+    const lo = this.npc('npc-lo', HALL.lo.x, HALL.lo.y, 'cook', { name: 'Mamie Lo', lines: SPECIAL_LINES.lo, talk: this.storyTalk('lo', SPECIAL_LINES.lo, loAboutCapsule) });
+    this.vending.setCast({ lo, babs, rook, vik, nadia });
     // Lo stands behind her counter: a longer reach than the default.
     this.interactions = this.interactions.filter(i => i.follow !== lo);
     this.interactions.push({ x: HALL.lo.x, y: HALL.lo.y + 22, r: 30, label: 'Parler à Mamie Lo', action: () => lo.speak(), tut: ['hub:talk'] });
 
+    const vending = this.vending;
     this.interactions.push(
       { ...HALL.home, r: 26, label: 'Rentrer à l\'appart', action: () => this.go(SCENES.Hideout, { from: 'building' }) },
       { ...HALL.clinic, r: 28, label: 'Clinique du Doc Kessler (corps)', action: () => this.go(SCENES.Ripperdoc) },
       { ...HALL.den, r: 28, label: 'Repaire de Nyx, netrunneuse (esprit)', action: () => this.go(SCENES.Netrunner) },
       { ...HALL.elevator, r: 34, label: 'Ascenseur — descendre dans la rue', action: () => this.descent.open(), tut: ['hub:elevator'] },
-      { ...HALL.vending, r: 24, label: 'Parler au distributeur', action: () => this.vending.open(), tut: ['hub:talk'] },
+      { ...HALL.vending, r: 24, get label() { return vending.machineLabel; }, action: () => vending.open('machine'), tut: ['hub:talk'] },
+      // Lo's till: only once Capsule's chip lives there (it can happen during this visit).
+      { x: HALL.till.x, y: HALL.till.y + 22, get r() { return vending.fate === 'lo' ? 18 : 0; }, label: 'Parler à Capsule (caisse de Lo)', action: () => vending.open('till') },
     );
   }
 

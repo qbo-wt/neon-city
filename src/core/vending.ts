@@ -11,7 +11,43 @@ import type { Rng } from './rng';
  * run starts (RunScene.init, before anything else is loaded).
  */
 
-export type VendingMood = 'neutral' | 'happy' | 'sad' | 'angry' | 'glitch' | 'love';
+/**
+ * Its faces. The last five belong to the end of its arc: `alarm` (the recall notice), `dot` (hidden and
+ * mute: one blinking LED), `corp` (the Psy-Sec machine that replaced it), `off` (the empty shell),
+ * `drift` (leaving for the network, falling apart into pixels).
+ */
+export type VendingMood = 'neutral' | 'happy' | 'sad' | 'angry' | 'glitch' | 'love' | 'alarm' | 'dot' | 'corp' | 'off' | 'drift';
+
+/**
+ * How its arc ends, chosen once in the dilemma (Psy-Sec's recall notice): `mute` hidden in the
+ * corridor but silent for good, `net` sent by Nyx into the city's vending network (a Psy-Sec machine
+ * takes its place), `lo` its chip grafted by the Doc into the till of Lo's ramen stand.
+ */
+export type Fate = 'mute' | 'net' | 'lo';
+export const FATES: readonly Fate[] = ['mute', 'net', 'lo'];
+
+/**
+ * Its story, one chapter per return to the corridor (one per run played), each behind a trust and a
+ * quest step. After the last one and a run more, the dilemma; after the dilemma, two epilogue
+ * chapters that depend on the ending.
+ */
+export const CHAPTERS = [
+  { id: 'coin', trust: -1, stage: 0 },
+  { id: 'dream', trust: 0, stage: 0 },
+  { id: 'census', trust: 0, stage: 1 },
+  { id: 'babs', trust: 1, stage: 1 },
+  { id: 'name', trust: 1, stage: 2 },
+  { id: 'lo', trust: 2, stage: 3 },
+  { id: 'forgot', trust: 2, stage: 4 },
+  { id: 'signal', trust: 3, stage: 4 },
+] as const;
+export type MainChapter = typeof CHAPTERS[number]['id'];
+export type ChapterId = MainChapter | `${Fate}${1 | 2}`;
+export const EPILOGUE = 2;
+/** Trust needed for the recall notice to come (after the last chapter). */
+export const DILEMMA_TRUST = 3;
+/** Credits it slips into each street machine you break, once it lives in the network. */
+export const NET_TIP = 10;
 
 /**
  * Quest steps: 0 not taken yet, 1 break street vending machines, 2 beat the Lieutenant, 3 pay for a
@@ -64,13 +100,32 @@ export interface VendingState {
   greeted: number;
   /** told you who gave it feelings */
   secret: boolean;
+  /** chapters of its story told (CHAPTERS, then the epilogue) */
+  chapter: number;
+  /** save.runs when the last chapter was told (or when you met): one chapter per run */
+  chapterRun: number;
+  /** what you answered to its questions, by chapter key: it brings them up later */
+  memory: Record<string, string>;
+  /** how its arc ended; absent until the dilemma */
+  fate?: Fate;
+  /** save.runs when Lo last talked about it (once per run) */
+  loRun: number;
 }
 
 export function defaultVending(): VendingState {
-  return { met: false, named: false, trust: 0, threats: 0, stage: 0, smashed: 0, warden: false, gifts: [], giftRun: 0, greeted: 0, secret: false };
+  return { met: false, named: false, trust: 0, threats: 0, stage: 0, smashed: 0, warden: false, gifts: [], giftRun: 0, greeted: 0, secret: false, chapter: 0, chapterRun: 0, memory: {}, loRun: 0 };
 }
 
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
+const WORD = /^[a-z]{1,12}$/;
+const MEMORY_CAP = 16;
+
+function parseMemory(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+  for (const [k, val] of Object.entries(raw).slice(0, MEMORY_CAP)) if (WORD.test(k) && typeof val === 'string' && WORD.test(val)) out[k] = val;
+  return out;
+}
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 /** Never throws; anything missing or broken falls back to the defaults. */
@@ -78,6 +133,9 @@ export function parseVending(raw: unknown): VendingState | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
   const o = raw as Record<string, unknown>, d = defaultVending();
   const stage = isCount(o.stage) && o.stage <= 4 ? (Math.floor(o.stage) as VendingStage) : d.stage;
+  // An ending only exists once the quest is done.
+  const fate = FATES.includes(o.fate as Fate) && stage === 4 ? (o.fate as Fate) : undefined;
+  const chapter = isCount(o.chapter) ? Math.floor(o.chapter) : 0;
   return {
     met: o.met === true,
     named: o.named === true,
@@ -90,6 +148,12 @@ export function parseVending(raw: unknown): VendingState | undefined {
     giftRun: isCount(o.giftRun) ? Math.floor(o.giftRun) : 0,
     greeted: isCount(o.greeted) ? Math.floor(o.greeted) : 0,
     secret: o.secret === true,
+    // Saves from before the chapters simply start at the first one; an ending implies every main chapter.
+    chapter: fate ? Math.min(CHAPTERS.length + EPILOGUE, Math.max(CHAPTERS.length, chapter)) : Math.min(CHAPTERS.length, chapter),
+    chapterRun: isCount(o.chapterRun) ? Math.floor(o.chapterRun) : 0,
+    memory: parseMemory(o.memory),
+    ...(fate ? { fate } : {}),
+    loRun: isCount(o.loRun) ? Math.floor(o.loRun) : 0,
   };
 }
 
@@ -107,8 +171,12 @@ export function applyTone(v: VendingState, tone: 'kind' | 'snark' | 'threat' | u
   return v;
 }
 
-/** The face on its screen when nobody is talking to it. */
-export function idleMood(v: VendingState): VendingMood {
+/** The face on the corridor machine's screen when nobody is talking to it (with `runs`: the recall notice shows). */
+export function idleMood(v: VendingState, runs?: number): VendingMood {
+  if (v.fate === 'mute') return 'dot';
+  if (v.fate === 'net') return 'corp';
+  if (v.fate === 'lo') return 'off';
+  if (runs !== undefined && dilemmaReady(v, runs)) return 'alarm';
   if (v.trust <= -2) return 'angry';
   if (v.stage === 4 && v.trust >= 2) return 'love';
   if (v.trust >= 3) return 'happy';
@@ -153,10 +221,10 @@ export function payModule(save: SaveData): SaveData {
   return withVending(save, { ...v, stage: 4, giftRun: Math.max(0, save.runs - 1), trust: Math.min(TRUST_MAX, v.trust + 1) }, save.credits - MODULE_PRICE);
 }
 
-/** Once the quest is done, one free drink per run played. */
+/** Once the quest is done, one free drink per run played (while it still lives in its machine). */
 export function loyaltyReady(save: SaveData): boolean {
   const v = vendingOf(save);
-  return v.stage === 4 && save.runs > v.giftRun;
+  return v.stage === 4 && save.runs > v.giftRun && (!v.fate || v.fate === 'mute');
 }
 
 export function loyaltyDrink(save: SaveData, rng: Rng): { save: SaveData; gift?: GiftId } {
@@ -171,4 +239,72 @@ export function takeGifts(save: SaveData): { save: SaveData; gifts: GiftId[] } {
   const v = save.story.vending;
   if (!v?.gifts.length) return { save, gifts: [] };
   return { save: withVending(save, { ...v, gifts: [] }), gifts: v.gifts };
+}
+
+/** Its face on the screen of Lo's till, once its chip lives there. */
+export function standMood(v: VendingState): VendingMood | null {
+  return v.fate === 'lo' ? (v.trust >= 4 ? 'love' : 'happy') : null;
+}
+
+/**
+ * The chapter it has to tell now, if any: one per run played since the last one (or since you met),
+ * the main ones behind their trust and quest gates, then the two of its ending.
+ */
+export function nextChapter(v: VendingState, runs: number): ChapterId | undefined {
+  if (!v.met || runs <= v.chapterRun) return undefined;
+  if (v.fate) {
+    const k = v.chapter - CHAPTERS.length;
+    return k >= 0 && k < EPILOGUE ? (`${v.fate}${k + 1}` as ChapterId) : undefined;
+  }
+  const c = CHAPTERS[v.chapter];
+  return c && v.trust >= c.trust && v.stage >= c.stage ? c.id : undefined;
+}
+
+/** A chapter is due but it does not trust you enough to tell it (the quest gates just wait). */
+export function chapterWithheld(v: VendingState, runs: number): boolean {
+  const c = CHAPTERS[v.chapter];
+  return !v.fate && v.met && runs > v.chapterRun && !!c && v.stage >= c.stage && v.trust < c.trust;
+}
+
+/** The chapter is told: the next one waits for another run; your answer (key, value) is remembered. */
+export function tellChapter(v: VendingState, runs: number, answer?: [string, string]): VendingState {
+  return { ...v, chapter: v.chapter + 1, chapterRun: runs, memory: answer ? { ...v.memory, [answer[0]]: answer[1] } : v.memory };
+}
+
+/** The recall notice: every main chapter told, the quest done, enough trust, and a run since the last chapter. */
+export function dilemmaReady(v: VendingState, runs: number): boolean {
+  return !v.fate && v.stage === 4 && v.chapter >= CHAPTERS.length && v.trust >= DILEMMA_TRUST && runs > v.chapterRun;
+}
+
+/**
+ * The choice of the dilemma, once and for good; its epilogue starts after the next run. Grafted into
+ * Lo's till, it hands over the last stock of its machine (three drinks at once, and no more after).
+ */
+export function chooseFate(save: SaveData, fate: Fate): SaveData {
+  const v = vendingOf(save);
+  if (!dilemmaReady(v, save.runs)) return save;
+  let next: VendingState = { ...v, fate, chapterRun: save.runs };
+  if (fate === 'lo') for (const g of DRINKS) next = give(next, g);
+  return withVending(save, next);
+}
+
+/** Credits it leaves in each street machine you break, from the network (0 otherwise). */
+export const streetTip = (v: VendingState | undefined): number => (v?.fate === 'net' ? NET_TIP : 0);
+
+/** Lo talks about it at most once per run. */
+export const loTalked = (v: VendingState, runs: number): VendingState => ({ ...v, loRun: runs });
+
+/**
+ * Debug jumps (`?debug` console): straight to the recall notice, or to one of the endings. The rest
+ * of the save is kept; the quest is marked done and a few answers are filled in if missing.
+ */
+export function debugCapsule(save: SaveData, to: 'dilemma' | Fate): SaveData {
+  const { fate: _old, ...v } = vendingOf(save);
+  const base: VendingState = {
+    ...v, met: true, named: true, stage: 4, trust: Math.max(DILEMMA_TRUST + 1, v.trust), warden: true, smashed: SMASH_GOAL, secret: true,
+    chapter: CHAPTERS.length, chapterRun: Math.max(0, save.runs - 1),
+    memory: { coin: 'kept', dream: 'sea', guard: 'hide', call: 'pal', lo: 'tell', remember: 'yes', ...v.memory },
+  };
+  const s = withVending({ ...save, runs: Math.max(1, save.runs) }, base);
+  return to === 'dilemma' ? s : chooseFate(s, to);
 }

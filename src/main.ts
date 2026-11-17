@@ -12,6 +12,7 @@ import { NetrunnerScene } from './scenes/NetrunnerScene';
 import { OverlayScene } from './ui/transition';
 import { nextAction } from './tactics/ai';
 import { cast, moveTo } from './tactics/fight';
+import { capsuleDebug } from './ui/VendingTalk';
 import '@fontsource/chakra-petch/latin-500.css';
 import '@fontsource/chakra-petch/latin-700.css';
 import '@fontsource/teko/latin-500.css';
@@ -35,5 +36,6 @@ const game = new Phaser.Game({
   scene: [BootScene, MenuScene, HideoutScene, BuildingScene, RipperdocScene, NetrunnerScene, RunScene, HudScene, DeathScene, OverlayScene],
 });
 
-// Test hook: `?debug` exposes the game instance (and the fight AI, to let tests play the hero) for automated smoke tests.
-if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __NEON__: game, __NEON_AI__: { nextAction, cast, moveTo } });
+// Test hook: `?debug` exposes the game instance (and the fight AI, to let tests play the hero) for automated smoke tests,
+// and `capsule`, shortcuts through the corridor vending machine's story (ui/VendingTalk.capsuleDebug).
+if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { __NEON__: game, __NEON_AI__: { nextAction, cast, moveTo }, capsule: capsuleDebug(game) });

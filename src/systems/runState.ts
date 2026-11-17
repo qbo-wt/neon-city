@@ -42,6 +42,8 @@ export interface RunState {
   gentle?: boolean;
   /** street vending machines broken (Capsule's quest, core/vending) */
   vending?: number;
+  /** credits Capsule slips into each street machine you break, from the city network (its `net` ending) */
+  capsuleTip?: number;
   /** Capsule's drinks applied at the start of the run, by name: shown once on the first sector */
   gifts?: string[];
 }
