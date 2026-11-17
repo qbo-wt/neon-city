@@ -3,6 +3,7 @@ import { WEAPON_IDS, isWeaponId, type WeaponId } from '../data/weapons';
 import { HEAT_PACTS, type HeatRanks } from '../data/heat';
 import { HISTORY_CAP, isRunRecord, type RunRecord } from './history';
 import { ASPECT_BY_ID, MAX_ASPECT_RANK, aspectRank } from '../data/aspects';
+import { parseVending, type VendingState } from './vending';
 
 /** Best result of the daily run for one date (YYYY-MM-DD). */
 export interface DailyRecord { date: string; sector: number; victory: boolean; timeMs: number; kills: number }
@@ -14,6 +15,8 @@ export interface StoryState {
   talks: Record<string, number>;
   /** one-off events already seen (gifts, milestones) */
   flags: string[];
+  /** Capsule, the corridor's talking vending machine (src/core/vending.ts); absent until you meet it */
+  vending?: VendingState;
 }
 
 export interface SaveData {
@@ -78,6 +81,8 @@ function story(v: unknown): StoryState {
   if (isObj(l) && typeof l.victory === 'boolean' && isCount(l.sector) && typeof l.weapon === 'string' && isCount(l.heat)) {
     s.lastRun = { victory: l.victory, sector: l.sector, weapon: l.weapon, heat: l.heat, killer: typeof l.killer === 'string' ? l.killer : undefined };
   }
+  const vending = parseVending(v.vending);
+  if (vending) s.vending = vending;
   return s;
 }
 

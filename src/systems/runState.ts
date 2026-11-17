@@ -40,6 +40,10 @@ export interface RunState {
   killer?: string;
   /** the player's first run with the fight tutorial: its first sector is an easier fight */
   gentle?: boolean;
+  /** street vending machines broken (Capsule's quest, core/vending) */
+  vending?: number;
+  /** Capsule's drinks applied at the start of the run, by name: shown once on the first sector */
+  gifts?: string[];
 }
 
 /** Live values the HUD draws each frame. */

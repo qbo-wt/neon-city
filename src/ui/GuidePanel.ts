@@ -40,7 +40,7 @@ const CHAPTERS: Chapter[] = [
     { p: 'Neon City est un rogue-lite tactique au tour par tour. Tu vis dans un appart au 37e étage ; la rue, en bas, est un enchaînement de combats.' },
     { list: [
       ['APPART', 'Râtelier d\'armes, terminal (historique), serveur (bestiaire), ce guide.'],
-      ['COULOIR', 'Le Doc Kessler (améliorations du corps), Nyx (améliorations de l\'esprit) et l\'ascenseur.'],
+      ['COULOIR', 'Le Doc Kessler (améliorations du corps), Nyx (améliorations de l\'esprit), Capsule, le distributeur qui parle (des services contre des boissons), et l\'ascenseur.'],
       ['ASCENSEUR', 'Lance une run normale, la run du jour ou règle ta notoriété.'],
       ['LA RUN', `${CONFIG.ROOMS_PER_RUN} secteurs à traverser. Un boss tous les ${CONFIG.BOSS_EVERY} secteurs, le dernier ferme le contrat.`],
     ] },

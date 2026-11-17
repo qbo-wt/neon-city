@@ -20,9 +20,9 @@ export interface TutorialCtx {
  * - run: `run:placed`, `run:ready`, `run:moved`, `run:select`, `run:cast`, `run:endturn`, `run:turn`
  *   (your turn begins), `run:exit`
  * - tip triggers: `see:trap`, `see:barrel`, `see:bonus`, `see:cover`, `see:boss`, `see:telegraph`,
- *   `got:relic`, `got:implant`, `psy:high`
+ *   `got:relic`, `got:implant`, `psy:high`; hub: `see:vending` (walked up to Capsule's machine)
  *
- * Anchors (`point`): hub — player, datapad, door, lo, clinic, den, elevator, doc, nyx; run — start,
+ * Anchors (`point`): hub — player, datapad, door, lo, clinic, den, elevator, vending, doc, nyx; run — start,
  * end, papm, slot0, hero, foe, timeline, exit, trap, barrel, bonus, cover, boss, telegraph, psy, relics, implants.
  */
 type Step = TutorialStep<TutorialCtx>;
@@ -84,6 +84,8 @@ const FIGHT: Step[] = [
 ];
 
 const TIPS: Step[] = [
+  { id: 't-vending', track: 'tip', place: 'building', point: 'vending', trigger: 'see:vending', ack: true,
+    text: 'Ce distributeur a une IA, et il s\'ennuie. Parle-lui (E) : il a des services à te demander, payés en boissons pour le run suivant.' },
   { id: 't-trap', track: 'tip', place: 'run', point: 'trap', trigger: 'see:trap', ack: true, when: fight,
     text: 'Piège ! Décharge, acide ou vapeur blessent qui marche dessus, toi compris. Un chemin qui en traverse passe au rouge.' },
   { id: 't-barrel', track: 'tip', place: 'run', point: 'barrel', trigger: 'see:barrel', ack: true, when: fight,

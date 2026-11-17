@@ -19,6 +19,7 @@ import { ASPECT_BY_ID, aspectRank, defaultAspect, equip } from '../data/aspects'
 import { heatCreditMult, heatEffects, heatRecordBonus } from '../data/heat';
 import { dailySeed, dateKey, recordDaily } from '../core/daily';
 import { bossIntro } from '../core/story';
+import { CROWBAR_RELIC, GIFTS, ZERO_CREDITS, afterRun, takeGifts, type GiftId } from '../core/vending';
 import { BOSS_LINES } from '../data/story';
 import { spell } from '../data/spells';
 import { WEAPONS } from '../data/weapons';
@@ -155,6 +156,9 @@ export class RunScene extends Phaser.Scene {
         const run = newRun(data.seed, sv.ownedNodes, sv.weapon, { heat: sv.heat, aspect, aspectRank: aspectRank(sv.aspects, aspect) });
         // Still learning the fights (no sector cleared with the tutorial on): the first one is easier.
         run.gentle = tutorialStepOpen('f-exit');
+        // Capsule's drinks (the corridor's vending machine) act now, once.
+        const taken = takeGifts(sv);
+        if (taken.gifts.length) { applyGifts(run, taken.gifts); writeSave(getStorage(), taken.save); }
         setRun(this.registry, run);
       }
     }
@@ -271,6 +275,16 @@ export class RunScene extends Phaser.Scene {
       this.world.frameBoard(CONFIG.WIDTH * CONFIG.ZOOM, CONFIG.HEIGHT * CONFIG.ZOOM, 1.5, (BAR_H - HUD_H) / 2 / CONFIG.HEIGHT);
       hideLoading();
       this.time.delayedCall(250, showBanner);
+      const gifts = this.run.gifts;
+      if (gifts?.length) {
+        this.run.gifts = undefined;
+        this.time.delayedCall(2300, () => {
+          const t = this.screenText(`NEON COLA — OFFERT PAR CAPSULE
+${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
+          audio.sfx('relic');
+          this.tweens.add({ targets: t, alpha: 0, delay: 2600 * this.tweens.timeScale, duration: 500 * this.tweens.timeScale, onComplete: () => t.destroy() });
+        });
+      }
       this.addUnit(this.hero);
       if (event) this.setupEvent(createRng(this.run.seed + this.run.roomIndex));
       else this.setupFight(arena.breakables, hazards, rng);
@@ -801,6 +815,8 @@ export class RunScene extends Phaser.Scene {
     }
     if (u.team === 2) {
       audio.sfx('break', { vol: 0.7 });
+      // Capsule's quest counts the street machines you break.
+      if (u.kind === 'vending') this.run.vending = (this.run.vending ?? 0) + 1;
       if (view) for (let i = 0; i < 8; i++) {
         const d = this.add.rectangle(view.x, view.y - 6, 3, 3, Phaser.Utils.Array.GetRandom([0x8a6a4a, 0x3a3550, 0x39a85a, 0xff8c2a])).setDepth(960);
         const a = Math.random() * Math.PI * 2;
@@ -1118,6 +1134,8 @@ export class RunScene extends Phaser.Scene {
     const killer = victory ? undefined : this.run.killer ?? 'psychosis';
     if (killer) save.deaths[killer] = (save.deaths[killer] ?? 0) + 1;
     save.story.lastRun = { victory, sector, killer, weapon: this.run.weapon, heat: pts };
+    const vending = afterRun(save.story.vending, { smashed: this.run.vending ?? 0, wardenDown: (this.run.killsByType.warden ?? 0) > 0 });
+    if (vending) save.story.vending = vending;
     let dailyBest = false;
     if (this.run.daily) {
       const r = recordDaily(save.daily, { date: this.run.daily, sector, victory, timeMs: Math.round(this.run.timeMs), kills: this.run.kills });
@@ -1511,3 +1529,18 @@ function psyBonusLabel(psy: number) {
   return m > 1 ? `+${Math.round((m - 1) * 100)} % DÉG` : '';
 }
 
+
+/** Capsule's gifts on a new run: a neuro-blocker, starting credits, a relic. */
+function applyGifts(run: RunState, gifts: GiftId[]) {
+  for (const g of gifts) {
+    if (g === 'cherry') run.blockers += 1;
+    else if (g === 'zero') run.creditsEarned += ZERO_CREDITS;
+    else {
+      const free = RELICS.filter(r => !run.relics.some(o => o.id === r.id));
+      const relic = g === 'crowbar' ? free.find(r => r.id === CROWBAR_RELIC)
+        : pick(Math.random, free.filter(r => r.rarity === 'common' && !r.fits));
+      if (relic) run.relics.push(relic);
+    }
+  }
+  run.gifts = gifts.map(g => GIFTS[g].name);
+}

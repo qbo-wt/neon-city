@@ -4,6 +4,7 @@ import { arcadeGame, flicker, ticker } from './fx';
 import { canvasTex, FONT_TITLE, rng } from './paint';
 import { cans, carton, halo, plant, wallPoster } from './props';
 import { preloadKit } from './kit';
+import { drawVendingFace, vendingLive } from '../../gfx/vendingFace';
 
 /**
  * Floor 37 of the H-12 megabuilding: a long hall that runs off both sides of the screen. Every
@@ -234,7 +235,7 @@ async function ramenStand(v: Interior3D) {
   v.light(x, cy + 8, 1.8, 0xff8c2a, 5, 5);
 }
 
-/** Vending machine, arcade cabinet; the game corner up front; glows. */
+/** Vending machine (Capsule, with a face on its screen), arcade cabinet; the game corner up front; glows. */
 async function games(v: Interior3D) {
   // Vending machine: lit drink rows, logo, coin slot.
   const vx = HALL.vending.x, vy = B + 0.36 * MY;
@@ -246,7 +247,9 @@ async function games(v: Interior3D) {
   });
   const dm = new THREE.MeshBasicMaterial({ map: drinks, toneMapped: false });
   dm.color.setScalar(1.3);
-  v.plane(at(vx - 3, vy + 0.345 * MY, 1.1), 0.5, 1.05, dm);
+  v.plane(at(vx - 3, vy + 0.345 * MY, 0.96), 0.5, 0.72, dm);
+  // Capsule's face, above the drinks: its mood and its mouth come from the corridor scene.
+  v.screen(at(vx, vy + 0.35 * MY, 1.49), 0.62, 0.3, (c, t, w, h) => drawVendingFace(c, w, h, t, vendingLive.mood, performance.now() < vendingLive.talkUntil), { fps: 12, res: 120, bezel: 0x15101e, k: 1.4 });
   v.plane(at(vx, vy + 0.345 * MY, 1.75), 0.72, 0.18, (() => { const m = new THREE.MeshBasicMaterial({ map: canvasTex(128, 32, (c) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, 128, 32); c.fillStyle = '#d8246a'; c.font = `600 30px ${FONT_TITLE}`; c.textAlign = 'center'; c.fillText('NEON COLA', 64, 28); }), toneMapped: false }); m.color.setScalar(1.4); return m; })());
   v.box(at(vx + 11, vy + 0.33 * MY, 1.0), 0.14, 0.3, 0.02, v.mat(0x2a1020));
   v.box(at(vx, vy + 0.33 * MY, 0.3), 0.6, 0.16, 0.02, v.mat(0x0a0614));

@@ -8,10 +8,12 @@ import { RESIDENTS } from '../gfx/npcArt';
 import { DescentPanel } from '../ui/DescentPanel';
 import type { Interior3D } from '../three/Interior3D';
 import { HALL, buildCorridor } from '../three/interior/corridor';
+import { VendingTalk } from '../ui/VendingTalk';
 
 /**
  * Floor 37 of the megabuilding: home, the clinic, Nyx's den and the elevator down to the street,
- * all on the back wall under their signs; Lo's ramen stand and the residents in between.
+ * all on the back wall under their signs; Lo's ramen stand and the residents in between, and Capsule,
+ * the talking vending machine (ui/VendingTalk, its quest in core/vending).
  * The set is in three/interior/corridor.
  */
 export class BuildingScene extends InteriorScene {
@@ -22,14 +24,17 @@ export class BuildingScene extends InteriorScene {
   protected readonly roomOptions = { floorKey: null, wallKey: null, streetLights: false };
 
   private descent!: DescentPanel;
+  private vending!: VendingTalk;
 
   constructor() { super(SCENES.Building); }
 
   protected set3d(v: Interior3D) { return buildCorridor(v); }
 
-  protected tutorialAnchors() { return { lo: HALL.lo, clinic: HALL.clinic, den: HALL.den, elevator: HALL.elevator }; }
+  protected tutorialAnchors() { return { lo: HALL.lo, clinic: HALL.clinic, den: HALL.den, elevator: HALL.elevator, vending: { x: HALL.vending.x, y: HALL.vending.y - 20 } }; }
 
   protected onModalTick() {
+    // Its panel reads the number keys and Échap itself.
+    if (this.vending.isOpen) { this.vending.panelTick(); return; }
     const n = this.controls.numberPressed();
     if (n && this.descent.isOpen) this.descent.select(n);
   }
@@ -44,6 +49,8 @@ export class BuildingScene extends InteriorScene {
     this.descent = new DescentPanel(this, () => this.save, s => this.persistSave(s), daily =>
       this.go(SCENES.Run, daily ? { seed: 0, daily: true } : { seed: Date.now() >>> 0 }, daily ? '▼ RUN DU JOUR — NEON CITY' : '▼ REZ-DE-CHAUSSÉE — NEON CITY'));
     this.modals.push(this.descent);
+    this.vending = new VendingTalk(this, () => this.controls, HALL.vending, () => this.save, s => this.persistSave(s), () => this.player, () => this.tutorial.event('see:vending'));
+    this.modals.push(this.vending);
     for (const [x, y, w, h] of HALL.blockers) this.block(x, y, w, h);
 
     // Residents: the floor never sleeps. Each one has a name and something to say.
@@ -85,6 +92,12 @@ export class BuildingScene extends InteriorScene {
       { ...HALL.clinic, r: 28, label: 'Clinique du Doc Kessler (corps)', action: () => this.go(SCENES.Ripperdoc) },
       { ...HALL.den, r: 28, label: 'Repaire de Nyx, netrunneuse (esprit)', action: () => this.go(SCENES.Netrunner) },
       { ...HALL.elevator, r: 34, label: 'Ascenseur — descendre dans la rue', action: () => this.descent.open(), tut: ['hub:elevator'] },
+      { ...HALL.vending, r: 24, label: 'Parler au distributeur', action: () => this.vending.open(), tut: ['hub:talk'] },
     );
+  }
+
+  update(time: number, delta = 16) {
+    super.update(time, delta);
+    this.vending.tick(time);
   }
 }
