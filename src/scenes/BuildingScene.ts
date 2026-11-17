@@ -65,7 +65,8 @@ export class BuildingScene extends InteriorScene {
     res(386, 203, 'play', { faceUp: true });
     res(431, 203, 'play', { faceUp: true });
     res(116, 92, 'phone', { flip: true });
-    res(386, 94, 'lean', { flip: true });
+    // Leaning on the wall between the ramen stand and the arcade (the vending machine took his old spot).
+    res(268, 96, 'lean', { flip: true });
     res(76, 205, 'sit', { seat: 0.42 });
     res(166, 199, 'sit', { seat: 0.46 });
     res(302, 199, 'talk', { flip: true, seat: 0.46 });

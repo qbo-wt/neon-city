@@ -8,8 +8,9 @@ import { preloadKit } from './kit';
 /**
  * Floor 37 of the H-12 megabuilding: a long hall that runs off both sides of the screen. Every
  * door is on the back wall under a big lit sign (clinic, home, elevator, den), with Lo's ramen
- * stand in the middle, a vending machine and an arcade cabinet, a game corner and a sagging couch
- * in front, puddles under a leak, a dying ceiling light.
+ * stand in the middle, an arcade cabinet between the stand and the elevator, the NEON COLA vending
+ * machine between the elevator and the den, a game corner and a sagging couch in front, puddles
+ * under a leak, a dying ceiling light.
  */
 /** Floor line of the front-right game corner: machines face the camera, their players stand below. */
 const GY = 186;
@@ -30,12 +31,17 @@ export const HALL = {
   lo: { x: 215, y: 87 },
   elevator: { x: 344, y: 102 },
   den: { x: 440, y: 100 },
+  /**
+   * The NEON COLA machine, in the gap between the elevator's frame (right edge ~380, call buttons
+   * to 386) and the den's (left edge ~419): clear of the ramen stand's awning and lanterns.
+   */
+  vending: { x: 403, y: 104 },
   /** Where the player comes out of each door. */
   spawn: { apartment: { x: 148, y: 106 }, doc: { x: 46, y: 106 }, net: { x: 438, y: 106 } },
   blockers: [
     [173, 92, 84, 18], // ramen counter
     [175, 110, 80, 10], // stools
-    [250, 80, 32, 18], // vending machine
+    [389, 80, 28, 18], // vending machine
     [278, 80, 31, 27], // arcade cabinet
     [56, 188, 62, 30], // couch
     [36, 206, 22, 16], // boxes
@@ -101,8 +107,8 @@ function wallDressing(v: Interior3D) {
   }
   for (let x = 20; x < 480; x += 60) v.box(v.onWall(x, 3.52, 0.05), 0.06, 0.22, 0.12, v.mat(0x15101e));
   // A steaming vent near the elevator.
-  v.box(v.onWall(392, 2.05, 0.03), 0.4, 0.25, 0.06, v.mat(0x2a2440));
-  v.steam(392, B + 2, 2.1, { rate: 2.5, rise: 0.25, size: 0.25, opacity: 0.18, color: 0xb8b0e0 });
+  v.box(v.onWall(392, 2.12, 0.03), 0.4, 0.25, 0.06, v.mat(0x2a2440));
+  v.steam(392, B + 2, 2.18, { rate: 2.5, rise: 0.25, size: 0.25, opacity: 0.18, color: 0xb8b0e0 });
   // Wall lamps between doors.
   for (const x of [72, 124, 382]) {
     v.box(v.onWall(x, 2.05, 0.04), 0.14, 0.16, 0.08, v.mat(0x1a1428));
@@ -112,17 +118,17 @@ function wallDressing(v: Interior3D) {
   // Posters, stickers, a noticeboard.
   wallPoster(v, 72, 1.55, 0.36, 3, 'SYNTH', ['#1a0a2a', '#ff2a6d', '#f5e663'], { tilt: -0.06 });
   wallPoster(v, 124, 1.3, 0.36, 11, 'ROUILLE', ['#0a1420', '#00f0ff', '#ff8c2a'], { tilt: 0.05 });
-  wallPoster(v, 383, 1.3, 0.36, 19, 'GRID', ['#160a1a', '#39ff88', '#b84dff'], { tilt: 0.03 });
+  wallPoster(v, 266, 1.45, 0.36, 19, 'GRID', ['#160a1a', '#39ff88', '#b84dff'], { tilt: 0.03 });
   const notes = canvasTex(128, 96, (c) => {
     const r = rng(4);
     c.fillStyle = '#3a2a22'; c.fillRect(0, 0, 128, 96);
     for (let i = 0; i < 9; i++) { c.fillStyle = ['#e8e4d0', '#f5e663', '#a8c8ff', '#ffb0c8'][i % 4]; c.save(); c.translate(10 + (i % 3) * 40 + r() * 6, 8 + Math.floor(i / 3) * 28 + r() * 4); c.rotate((r() - 0.5) * 0.2); c.fillRect(0, 0, 28, 22); c.fillStyle = '#5a5a6a'; for (let k = 0; k < 3; k++) c.fillRect(3, 5 + k * 5, 20, 1.5); c.restore(); }
   });
   v.plane(v.onWall(124, 2.0, 0.02), 0.4, 0.3, new THREE.MeshStandardMaterial({ map: notes, roughness: 0.9 }));
-  // Advert screen over the vending machine and the arcade.
-  const ad = v.screen(v.onWall(279, 2.22, 0.06), 1.5, 0.3, ticker('BIÈRE NEON — GOÛTE LA NUIT  ★  ASSURANCE TRAUMA PLATINE  ★  RAMEN DE MAMIE LO, 24H/24  ★  ', '#f5e663'), { fps: 20, res: 256, bezel: 0x15101e });
+  // Advert screen over the arcade cabinet (clear of the ramen awning and the elevator frame).
+  const ad = v.screen(v.onWall(285, 2.22, 0.06), 1.2, 0.3, ticker('BIÈRE NEON — GOÛTE LA NUIT  ★  ASSURANCE TRAUMA PLATINE  ★  RAMEN DE MAMIE LO, 24H/24  ★  ', '#f5e663'), { fps: 20, res: 256, bezel: 0x15101e });
   void ad;
-  v.wash(279, 2.2, 2.4, 1.0, 0xf5e663, 0.12);
+  v.wash(285, 2.2, 2.0, 1.0, 0xf5e663, 0.12);
 }
 
 /** A red cross in a lit box, next to the clinic door. */
@@ -231,8 +237,8 @@ async function ramenStand(v: Interior3D) {
 /** Vending machine, arcade cabinet; the game corner up front; glows. */
 async function games(v: Interior3D) {
   // Vending machine: lit drink rows, logo, coin slot.
-  const vx = 266, vy = B + 0.36 * MY;
-  v.box(at(vx, vy), 0.84, 1.9, 0.68, v.mat(0xd8246a, { rough: 0.5, metal: 0.2 }));
+  const vx = HALL.vending.x, vy = B + 0.36 * MY;
+  v.box(at(vx, vy), 0.8, 1.9, 0.68, v.mat(0xd8246a, { rough: 0.5, metal: 0.2 }));
   const drinks = canvasTex(96, 160, (c) => {
     c.fillStyle = '#0a0814'; c.fillRect(0, 0, 96, 160);
     const cols = ['#ff2a6d', '#00f0ff', '#f5e663', '#39ff88', '#ff8c2a', '#e8e8ff'];
@@ -241,7 +247,7 @@ async function games(v: Interior3D) {
   const dm = new THREE.MeshBasicMaterial({ map: drinks, toneMapped: false });
   dm.color.setScalar(1.3);
   v.plane(at(vx - 3, vy + 0.345 * MY, 1.1), 0.5, 1.05, dm);
-  v.plane(at(vx, vy + 0.345 * MY, 1.75), 0.76, 0.18, (() => { const m = new THREE.MeshBasicMaterial({ map: canvasTex(128, 32, (c) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, 128, 32); c.fillStyle = '#d8246a'; c.font = `600 30px ${FONT_TITLE}`; c.textAlign = 'center'; c.fillText('NEON COLA', 64, 28); }), toneMapped: false }); m.color.setScalar(1.4); return m; })());
+  v.plane(at(vx, vy + 0.345 * MY, 1.75), 0.72, 0.18, (() => { const m = new THREE.MeshBasicMaterial({ map: canvasTex(128, 32, (c) => { c.fillStyle = '#ffffff'; c.fillRect(0, 0, 128, 32); c.fillStyle = '#d8246a'; c.font = `600 30px ${FONT_TITLE}`; c.textAlign = 'center'; c.fillText('NEON COLA', 64, 28); }), toneMapped: false }); m.color.setScalar(1.4); return m; })());
   v.box(at(vx + 11, vy + 0.33 * MY, 1.0), 0.14, 0.3, 0.02, v.mat(0x2a1020));
   v.box(at(vx, vy + 0.33 * MY, 0.3), 0.6, 0.16, 0.02, v.mat(0x0a0614));
   v.wash(vx, 1.1, 1.4, 2.2, 0xff2a6d, 0.3);
