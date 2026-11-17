@@ -87,7 +87,11 @@ function palette(src: THREE.Texture, recolor?: string): THREE.Texture | null {
 function load(id: string): Promise<THREE.Group> {
   let p = models.get(id);
   if (!p) {
-    p = loader.loadAsync(url(id)).then(g => g.scene);
+    p = loader.loadAsync(url(id)).then(g => {
+      // Every copy draws these geometries: they outlive the room (see dispose.ts).
+      g.scene.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.userData.shared = true; });
+      return g.scene;
+    });
     models.set(id, p);
   }
   return p;

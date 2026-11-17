@@ -6,6 +6,7 @@ import { CELL, type World3D } from './World3D';
 import { DroneRig, MannequinRig, PropRig, type AnimName, type Rig } from './rigs';
 import { CAST, CharacterRig } from './characters';
 import { REFLECT_LAYER } from './street/reflect';
+import { disposeTree } from './dispose';
 
 export type PoseKind = 'windup' | 'strike' | 'hurt' | 'charge';
 
@@ -113,6 +114,7 @@ export class UnitView3D {
       void real.ready.then(loaded => {
         if (!loaded || this.dead) return;
         this.holder.remove(this.rig.root);
+        disposeTree(this.rig.root);
         this.holder.add(real.root);
         this.rig = real;
         inkCharacter(real.root);
@@ -285,6 +287,7 @@ export class UnitView3D {
 
   destroy() {
     this.world.scene.remove(this.holder);
+    disposeTree(this.holder);
     this.bar.destroy();
     void this.busy;
   }

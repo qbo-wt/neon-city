@@ -844,6 +844,7 @@ export function installCyberware(avatar: string, vrm: VRM): MToonMaterial | null
     const kit = new Kit(new Body(vrm));
     for (const p of parts) (BUILD[p.kind] as (k: Kit, p: Part) => void)(kit, p);
     b = { meshes: kit.build(), hide: [...kit.hide], squeeze: kit.squeeze };
+    for (const m of b.meshes) m.geometry.userData.shared = true; // every copy of the avatar wears these (see dispose.ts)
     built.set(avatar, b);
   }
   // A replaced forearm: the real one shrinks into the elbow joint (its hand goes with it).

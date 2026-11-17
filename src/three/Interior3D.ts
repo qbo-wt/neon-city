@@ -4,6 +4,7 @@ import { CAST, CharacterRig } from './characters';
 import { MannequinRig, type AnimName, type Rig } from './rigs';
 import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm';
 import { kitModel, type ModelOpts } from './interior/kit';
+import { disposeTree } from './dispose';
 import { Animator, dust, flicker, liveCanvas, steam, sway } from './interior/fx';
 import { beam, canvasTex, concreteFloor, linoFloor, neonText, plateText, radial, tileFloor, wallTex, woodFloor } from './interior/paint';
 
@@ -448,7 +449,7 @@ export class Interior3D {
     const c: Char = { rig, holder, src, face, anim, offsetY, blob, seat };
     this.chars.push(c);
     const real = new CharacterRig(model ?? CAST[kind] ?? 'res0');
-    void real.ready.then(loaded => { if (!loaded) return; holder.remove(rig.root); holder.add(real.root); rig = real; c.rig = real; });
+    void real.ready.then(loaded => { if (!loaded) return; holder.remove(rig.root); disposeTree(rig.root); holder.add(real.root); rig = real; c.rig = real; });
   }
 
   /**

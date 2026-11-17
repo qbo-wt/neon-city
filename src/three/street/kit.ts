@@ -42,6 +42,7 @@ export class KitLibrary {
           const mesh = o as THREE.Mesh;
           if (!mesh.isMesh) return;
           mesh.castShadow = true; mesh.receiveShadow = true;
+          mesh.geometry.userData.shared = true; // every copy draws this one (see dispose.ts)
           const fix = (mat: THREE.Material) => {
             const s = mat as THREE.MeshStandardMaterial;
             if (!s.isMeshStandardMaterial) return mat;

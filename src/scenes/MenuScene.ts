@@ -8,6 +8,7 @@ import { wipeTo } from '../ui/transition';
 import { FineRain, Skyline } from '../ui/cityArt';
 import { audio } from '../audio/audio';
 import { environment, showStage, stage, stageOpacity } from '../three/stage';
+import { disposeTree } from '../three/dispose';
 import { generateArena } from '../tactics/arena';
 import { createRng } from '../core/rng';
 import { CharacterRig } from '../three/characters';
@@ -37,7 +38,7 @@ export class MenuScene extends Phaser.Scene {
     const world = stage(this.game.canvas);
     showStage(true, this.game.canvas);
     stageOpacity(0);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { showStage(false); stageOpacity(1); this.rigs.forEach(r => world.scene.remove(r.root)); this.rigs = []; });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { showStage(false); stageOpacity(1); this.rigs.forEach(r => { world.scene.remove(r.root); disposeTree(r.root); }); this.rigs = []; });
     const { board } = generateArena('avenue', createRng(12), 0);
     void environment(world).then(() => (this.scene.isActive() ? world.buildBoard(board, 12) : undefined)).then(() => {
       if (!this.scene.isActive()) return;

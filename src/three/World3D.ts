@@ -9,6 +9,7 @@ import { createRng, pick, type Rng } from '../core/rng';
 import { settings } from '../core/settings';
 import type { Board, Pt } from '../tactics/types';
 import { StylePass, stylizeScene, type ScreenFx } from './stylize';
+import { disposeTree } from './dispose';
 import { KitLibrary, fitObject } from './street/kit';
 import { StreetLife } from './street/life';
 import { GroundReflection, REFLECT_LAYER } from './street/reflect';
@@ -243,6 +244,7 @@ export class World3D {
    */
   resetBoard() {
     this.scene.remove(this.boardGroup);
+    disposeTree(this.boardGroup);
     this.boardGroup = new THREE.Group();
     this.scene.add(this.boardGroup);
     this.rain = undefined;
@@ -302,6 +304,7 @@ export class World3D {
     const mat = new THREE.MeshStandardMaterial({ map: paint.map, roughness: 1, emissiveMap: paint.glow, emissive: paint.glow ? 0xffffff : 0x000000, emissiveIntensity: 1.6 });
     mat.userData.shaderHook = this.reflection.groundHook(paint.wet);
     mat.userData.shaderKey = 'wet';
+    mat.userData.wet = paint.wet;
     const tops: THREE.BufferGeometry[] = [], sides: THREE.BufferGeometry[] = [];
     const bw = b.w * CELL, bh = b.h * CELL;
     for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
@@ -341,7 +344,8 @@ export class World3D {
     const { c: wc } = { c: document.createElement('canvas') };
     wc.width = wc.height = 4;
     const wctx = wc.getContext('2d')!; wctx.fillStyle = `rgb(${Math.round(60 * theme.wet)},0,0)`; wctx.fillRect(0, 0, 4, 4);
-    outMat.userData.shaderHook = this.reflection.groundHook(new THREE.CanvasTexture(wc));
+    outMat.userData.wet = new THREE.CanvasTexture(wc);
+    outMat.userData.shaderHook = this.reflection.groundHook(outMat.userData.wet);
     outMat.userData.shaderKey = 'wet';
     const out = new THREE.Mesh(new THREE.PlaneGeometry(size, size), outMat);
     out.rotation.x = -Math.PI / 2;
