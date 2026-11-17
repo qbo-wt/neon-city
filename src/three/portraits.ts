@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { VRMUtils } from '@pixiv/three-vrm';
 import type Phaser from 'phaser';
 import { CAST, CharacterRig } from './characters';
+import { stripCyberware } from './cyberware';
 import { DroneRig, type Rig } from './rigs';
 
 /**
@@ -52,6 +53,7 @@ async function render(kind: string): Promise<HTMLCanvasElement | null> {
   out.width = out.height = SIZE;
   out.getContext('2d')!.drawImage(r.domElement, 0, 0);
   scene.remove(rig.root);
+  stripCyberware(rig.root);
   VRMUtils.deepDispose(rig.root);
   return out;
 }

@@ -3,6 +3,7 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type MToonMaterial, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
 import type { AnimName, Rig } from './rigs';
+import { installCyberware } from './cyberware';
 
 /**
  * Anime characters: VRM avatars (assets/vrm, VIPE Heroes by Polygonal Mind, CC-BY, see CREDITS.md),
@@ -188,6 +189,8 @@ export class CharacterRig implements Rig {
           mat.outlineLightingMixFactor = 0;
         }
       });
+      // Mechanical arms, visors, implants (see cyberware.ts), fitted while the avatar is at rest.
+      installCyberware(avatar, vrm);
       this.root.add(vrm.scene);
       this.mixer = new THREE.AnimationMixer(vrm.scene);
       for (const [name, m] of mo) {
