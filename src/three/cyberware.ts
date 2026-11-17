@@ -791,7 +791,56 @@ const BUILD: { [K in Part['kind']]: (k: Kit, p: Extract<Part, { kind: K }>) => v
 };
 
 /** Geometry of one avatar's cyberware (built on its first copy, then shared). */
-type Built = { meshes: { bone: VRMHumanBoneName; geometry: THREE.BufferGeometry }[]; hide: VRMHumanBoneName[]; squeeze?: Squeeze };
+type Built = { meshes: { bone: VRMHumanBoneName; geometry: THREE.BufferGeometry }[]; hide: VRMHumanBoneName[]; squeeze?: Squeeze; skin?: Skin };
+/** All of an avatar's pieces in one geometry, rigidly skinned to their bones (see `skinOf`). */
+type Skin = { geometry: THREE.BufferGeometry; bones: VRMHumanBoneName[] };
+
+/**
+ * One skinned geometry for every piece of an avatar: vertices in the avatar's scene space at rest,
+ * each weighted 1 to its bone, grouped by material (metal, neon, ink). A character then draws its
+ * cyberware in 3 calls (and 3 in the shadow map) instead of 3 per bone it is bolted to.
+ */
+function skinOf(vrm: VRM, meshes: Built['meshes']): Skin | undefined {
+  const bones: VRMHumanBoneName[] = [], nodes: THREE.Object3D[] = [];
+  for (const { bone } of meshes) { const n = vrm.humanoid.getNormalizedBoneNode(bone); if (n && !bones.includes(bone)) { bones.push(bone); nodes.push(n); } }
+  if (!bones.length) return undefined;
+  vrm.scene.updateMatrixWorld(true);
+  const toScene = vrm.scene.matrixWorld.clone().invert();
+  const pos: number[] = [], nor: number[] = [], col: number[] = [], idx: number[] = [], groups: { start: number; count: number; slot: number }[] = [];
+  const m = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3();
+  for (let slot = 0; slot < 3; slot++) {
+    const start = pos.length / 3;
+    for (const { bone, geometry: g } of meshes) {
+      const b = bones.indexOf(bone);
+      if (b < 0) continue;
+      m.multiplyMatrices(toScene, nodes[b].matrixWorld);
+      nm.getNormalMatrix(m);
+      const P = g.getAttribute('position'), N = g.getAttribute('normal'), C = g.getAttribute('color');
+      for (const gr of g.groups) {
+        if (gr.materialIndex !== slot) continue;
+        for (let i = gr.start; i < gr.start + gr.count; i++) {
+          v.fromBufferAttribute(P, i).applyMatrix4(m); pos.push(v.x, v.y, v.z);
+          v.fromBufferAttribute(N, i).applyMatrix3(nm).normalize(); nor.push(v.x, v.y, v.z);
+          col.push(C.getX(i), C.getY(i), C.getZ(i));
+          idx.push(b);
+        }
+      }
+    }
+    const count = pos.length / 3 - start;
+    if (count) groups.push({ start, count, slot });
+  }
+  const n = pos.length / 3, si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) { si[i * 4] = idx[i]; sw[i * 4] = 1; }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+  geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+  for (const gr of groups) geometry.addGroup(gr.start, gr.count, gr.slot);
+  geometry.userData.shared = true; // every copy of the avatar wears it (see dispose.ts)
+  return { geometry, bones };
+}
 
 /** The inside of a helmet (world space at rest): a drum from chin to mid, a half-ellipsoid above. */
 type Squeeze = { x: number; cz: number; rx: number; rz: number; chin: number; mid: number; ry: number };
@@ -844,22 +893,23 @@ export function installCyberware(avatar: string, vrm: VRM): MToonMaterial | null
     const kit = new Kit(new Body(vrm));
     for (const p of parts) (BUILD[p.kind] as (k: Kit, p: Part) => void)(kit, p);
     b = { meshes: kit.build(), hide: [...kit.hide], squeeze: kit.squeeze };
-    for (const m of b.meshes) m.geometry.userData.shared = true; // every copy of the avatar wears these (see dispose.ts)
     built.set(avatar, b);
   }
   // A replaced forearm: the real one shrinks into the elbow joint (its hand goes with it).
   for (const n of b.hide) vrm.humanoid.getRawBoneNode(n)?.scale.setScalar(0.05);
   if (b.squeeze) squeezeHead(vrm, b.squeeze);
   const mats = materials();
-  for (const { bone: bn, geometry } of b.meshes) {
-    const node = vrm.humanoid.getNormalizedBoneNode(bn);
-    if (!node) continue;
-    const mesh = new THREE.Mesh(geometry, mats);
-    mesh.name = `cyber-${bn}`;
-    mesh.userData.cyberware = true;
-    mesh.castShadow = true;
-    node.add(mesh);
-  }
+  b.skin ??= skinOf(vrm, b.meshes);
+  if (!b.skin) return mats[0];
+  // The avatar is at rest here: the bones' current world matrices are the bind pose.
+  const mesh = new THREE.SkinnedMesh(b.skin.geometry, mats);
+  mesh.name = 'cyberware';
+  mesh.userData.cyberware = true;
+  mesh.castShadow = true;
+  mesh.frustumCulled = false; // like the avatar's own meshes
+  vrm.scene.add(mesh);
+  vrm.scene.updateMatrixWorld(true);
+  mesh.bind(new THREE.Skeleton(b.skin.bones.map(n => vrm.humanoid.getNormalizedBoneNode(n)!) as THREE.Bone[]));
   return mats[0];
 }
 
@@ -870,6 +920,7 @@ export function stripCyberware(root: THREE.Object3D) {
   for (const o of list) {
     const m = (o as THREE.Mesh).material as THREE.Material[];
     m[0]?.dispose(); // the character's own metal; geometry, neon and ink are shared
+    (o as THREE.SkinnedMesh).skeleton?.dispose();
     o.removeFromParent();
   }
 }
