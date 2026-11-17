@@ -11,6 +11,9 @@ import { preloadKit } from './kit';
  * stand in the middle, a vending machine and an arcade cabinet, a game corner and a sagging couch
  * in front, puddles under a leak, a dying ceiling light.
  */
+/** Floor line of the front-right game corner: machines face the camera, their players stand below. */
+const GY = 186;
+
 export const HALL = {
   grid: [
     '###############',
@@ -36,7 +39,7 @@ export const HALL = {
     [278, 80, 31, 27], // arcade cabinet
     [56, 188, 62, 30], // couch
     [36, 206, 22, 16], // boxes
-    [366, 194, 82, 32], // game corner
+    [366, GY - 18, 82, 28], // game corner (players stand in front)
     [148, 193, 60, 19], // bench
     [260, 193, 60, 19], // bench
     [63, 80, 16, 14], // plant between the clinic and 3710
@@ -250,12 +253,12 @@ async function games(v: Interior3D) {
   v.wash(ax, 1.3, 1.2, 1.6, 0x6a2cff, 0.35);
   v.light(ax, B + 18, 1.4, 0x8a4dff, 3, 3.5);
   // Game corner at the front right: claw machine, slot machine, a second cabinet.
-  await v.model('arcade/claw-machine', 386, 212, { height: 1.6 });
-  halo(v, at(386, 212, 1.4), 1.1, 0xff6fb0, 0.35);
-  await v.model('arcade/arcade-machine', 431, 212, { height: 1.8, stretch: [0.82, 1, 0.8] });
-  v.screen(at(431, 207, 1.38), 0.5, 0.38, arcadeGame(8, 320), { fps: 12, res: 96, tilt: -0.2 });
-  v.light(410, 206, 1.6, 0xff6fb0, 4, 4.5);
-  v.pool(410, 200, 1.8, 0xff2a6d, 0.22);
+  await v.model('arcade/claw-machine', 386, GY, { height: 1.6 });
+  halo(v, at(386, GY, 1.4), 1.1, 0xff6fb0, 0.35);
+  await v.model('arcade/arcade-machine', 431, GY, { height: 1.8, stretch: [0.82, 1, 0.8] });
+  v.screen(at(431, GY - 5, 1.38), 0.5, 0.38, arcadeGame(8, 320), { fps: 12, res: 96, tilt: -0.2 });
+  v.light(410, GY - 6, 1.6, 0xff6fb0, 4, 4.5);
+  v.pool(410, GY + 14, 1.8, 0xff2a6d, 0.22);
 }
 
 /** Front left: a sagging couch, bins, a mop; benches. */
