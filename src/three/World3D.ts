@@ -646,17 +646,22 @@ export class World3D {
   }
 
   /**
-   * Static shadow casters of the place just built, waiting to be merged (see `bakeShadows`).
-   * `list` holds each candidate with its world matrix at the start of the watch.
+   * The pieces of the place just built, watched before they are merged (see `bakeShadows`):
+   * each mesh with its world matrix at the start of the watch.
    */
   private bake?: { group: THREE.Group; frames: number; list: { mesh: THREE.Mesh; m: THREE.Matrix4 }[] };
 
   /**
-   * Called once a place is built. The shadow map was redrawn piece by piece every frame (800 draws
-   * for a street, ~10 µs each on an integrated GPU): its static casters become one depth-only mesh,
-   * drawn in the shadow pass only. Pieces still moving after a second of watching (swaying cables,
-   * fans, bobbing drones) and anything added later (characters, units, hazards) keep their own
-   * shadow. Only plain opaque depth is merged (no alpha-tested cut-outs, skinning or instancing).
+   * Called once a place is built. A street was ~1400 draws a frame (shadow map, wet reflection,
+   * picture), at ~10 µs a draw on an integrated GPU: after a second of watching, the pieces that
+   * never moved are merged.
+   * - Shadow casters become one depth-only mesh drawn in the shadow pass only.
+   * - Pieces sharing a material (and layers, shadow receiving, draw order) become one mesh per
+   *   ~12 m tile of the street, so off-screen tiles are still culled; the originals stay in the
+   *   scene on no layer (never drawn, children untouched).
+   * Pieces still moving (swaying cables, fans, bobbing drones), cut-outs, see-through glass,
+   * multi-material, skinned or instanced meshes, and everything added later (characters, units,
+   * hazards) are left as they are, so the picture does not change.
    */
   bakeShadows() {
     const g = this.boardGroup;
@@ -664,11 +669,9 @@ export class World3D {
     const list: { mesh: THREE.Mesh; m: THREE.Matrix4 }[] = [];
     g.traverse(o => {
       const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh || !mesh.castShadow || (mesh as THREE.SkinnedMesh).isSkinnedMesh || (mesh as THREE.InstancedMesh).isInstancedMesh) return;
-      if (mesh.customDepthMaterial || Object.keys(mesh.geometry.morphAttributes).length || !mesh.geometry.attributes.position) return;
-      const r = mesh.geometry.drawRange;
-      if (r.start !== 0 || r.count !== Infinity) return;
-      if (shadowSideOf(mesh) === undefined) return;
+      if (!mesh.isMesh || (mesh as THREE.SkinnedMesh).isSkinnedMesh || (mesh as THREE.InstancedMesh).isInstancedMesh) return;
+      const geo = mesh.geometry;
+      if (Object.keys(geo.morphAttributes).length || !geo.attributes.position || geo.drawRange.start !== 0 || geo.drawRange.count !== Infinity) return;
       list.push({ mesh, m: mesh.matrixWorld.clone() });
     });
     this.bake = { group: g, frames: 0, list };
@@ -681,38 +684,23 @@ export class World3D {
     if (g !== this.boardGroup) return;
     const shown = (o: THREE.Object3D) => { for (let p: THREE.Object3D | null = o; p && p !== g; p = p.parent) if (!p.visible) return false; return true; };
     const inside = (o: THREE.Object3D) => { let p = o.parent; while (p && p !== g) p = p.parent; return p === g; };
+    const still = b.list.filter(({ mesh, m }) => inside(mesh) && shown(mesh) && mesh.matrixWorld.equals(m)).map(x => x.mesh);
+    const toLocal = g.matrixWorld.clone().invert();
+
+    // Shadow casters: one depth-only mesh per shadow side.
     const bySide = new Map<THREE.Side, THREE.Mesh[]>();
-    for (const { mesh, m } of b.list) {
-      if (!mesh.castShadow || !inside(mesh) || !shown(mesh) || !mesh.matrixWorld.equals(m)) continue;
-      const side = shadowSideOf(mesh)!;
+    for (const mesh of still) {
+      if (!mesh.castShadow || mesh.customDepthMaterial) continue;
+      const side = shadowSideOf(mesh);
+      if (side === undefined) continue;
       let a = bySide.get(side);
       if (!a) bySide.set(side, (a = []));
       a.push(mesh);
     }
-    const toLocal = g.matrixWorld.clone().invert(), mx = new THREE.Matrix4(), v = new THREE.Vector3();
     for (const [side, meshes] of bySide) {
       if (meshes.length < 2) continue;
-      let nv = 0, ni = 0;
-      for (const m of meshes) { const geo = m.geometry; nv += geo.attributes.position.count; ni += geo.index ? geo.index.count : geo.attributes.position.count; }
-      const pos = new Float32Array(nv * 3), idx = new Uint32Array(ni);
-      let ov = 0, oi = 0;
-      for (const m of meshes) {
-        const geo = m.geometry, p = geo.attributes.position, index = geo.index;
-        mx.multiplyMatrices(toLocal, m.matrixWorld);
-        for (let i = 0; i < p.count; i++) { v.fromBufferAttribute(p, i).applyMatrix4(mx); pos[(ov + i) * 3] = v.x; pos[(ov + i) * 3 + 1] = v.y; pos[(ov + i) * 3 + 2] = v.z; }
-        // A mirrored piece turns its triangles over: swap two corners to keep the faces the same way out.
-        const flip = mx.determinant() < 0, n = index ? index.count : p.count;
-        for (let i = 0; i < n; i += 3) {
-          const a = index ? index.getX(i) : i, b2 = index ? index.getX(i + 1) : i + 1, c = index ? index.getX(i + 2) : i + 2;
-          idx[oi + i] = ov + a; idx[oi + i + 1] = ov + (flip ? c : b2); idx[oi + i + 2] = ov + (flip ? b2 : c);
-        }
-        ov += p.count; oi += n;
-        m.castShadow = false;
-      }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      geo.setIndex(new THREE.BufferAttribute(idx, 1));
-      geo.computeBoundingSphere();
+      const geo = bakeGeometry(meshes, toLocal, ['position']);
+      meshes.forEach(m => { m.castShadow = false; });
       const proxy = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, shadowSide: side }));
       proxy.name = 'shadow-proxy';
       proxy.castShadow = true;
@@ -722,6 +710,39 @@ export class World3D {
       proxy.onBeforeShadow = () => { geo.drawRange.count = Infinity; };
       proxy.onBeforeRender = () => { geo.drawRange.count = 0; };
       g.add(proxy);
+    }
+
+    // The picture and the reflection: one mesh per material and tile.
+    const TILE = 12, c = new THREE.Vector3(), batches = new Map<string, THREE.Mesh[]>();
+    for (const mesh of still) {
+      const mat = mesh.material as THREE.Material;
+      if (Array.isArray(mesh.material) || mesh.castShadow || !mat.visible || mesh.layers.mask === 0) continue;
+      if (mat.transparent && mat.blending !== THREE.AdditiveBlending) continue; // see-through panes keep their sorting
+      if (mesh.onBeforeRender !== THREE.Object3D.prototype.onBeforeRender || mesh.geometry.attributes.tangent) continue;
+      const geo = mesh.geometry;
+      if (!geo.boundingSphere) geo.computeBoundingSphere();
+      c.copy(geo.boundingSphere!.center).applyMatrix4(mesh.matrixWorld);
+      const attrs = Object.keys(geo.attributes).sort().map(k => `${k}:${geo.attributes[k].itemSize}`).join(',');
+      const key = `${mat.uuid}|${mesh.layers.mask}|${mesh.receiveShadow}|${mesh.renderOrder}|${attrs}|${Math.floor(c.x / TILE)},${Math.floor(c.z / TILE)}`;
+      let a = batches.get(key);
+      if (!a) batches.set(key, (a = []));
+      a.push(mesh);
+    }
+    for (const meshes of batches.values()) {
+      if (meshes.length < 2) continue;
+      const first = meshes[0];
+      const merged = new THREE.Mesh(bakeGeometry(meshes, toLocal, Object.keys(first.geometry.attributes)), first.material);
+      merged.name = 'batch';
+      merged.layers.mask = first.layers.mask;
+      merged.receiveShadow = first.receiveShadow;
+      merged.renderOrder = first.renderOrder;
+      merged.matrixAutoUpdate = false;
+      merged.userData.parts = meshes;
+      for (const m of meshes) {
+        m.layers.mask = 0;
+        if (!m.geometry.userData.shared) m.geometry.dispose(); // its GPU copy (the CPU one stays for the batch's sake)
+      }
+      g.add(merged);
     }
   }
 
@@ -757,4 +778,44 @@ function shadowSideOf(mesh: THREE.Mesh): THREE.Side | undefined {
     side = s;
   }
   return side;
+}
+
+/**
+ * The meshes' geometries in `toLocal` space, in one indexed geometry with the attributes `names`
+ * (positions and normals transformed, the rest copied; mirrored pieces re-wound).
+ */
+function bakeGeometry(meshes: THREE.Mesh[], toLocal: THREE.Matrix4, names: string[]) {
+  let nv = 0, ni = 0;
+  for (const m of meshes) { const geo = m.geometry; nv += geo.attributes.position.count; ni += geo.index ? geo.index.count : geo.attributes.position.count; }
+  const out = names.map(n => { const size = meshes[0].geometry.attributes[n].itemSize; return { n, size, data: new Float32Array(nv * size) }; });
+  const idx = new Uint32Array(ni), mx = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3();
+  let ov = 0, oi = 0;
+  for (const m of meshes) {
+    const geo = m.geometry, count = geo.attributes.position.count, index = geo.index;
+    mx.multiplyMatrices(toLocal, m.matrixWorld);
+    nm.getNormalMatrix(mx);
+    for (const { n, size, data } of out) {
+      const a = geo.attributes[n];
+      for (let i = 0; i < count; i++) {
+        const o = (ov + i) * size;
+        if (n === 'position' || n === 'normal') {
+          v.fromBufferAttribute(a, i);
+          if (n === 'position') v.applyMatrix4(mx); else v.applyMatrix3(nm).normalize();
+          data[o] = v.x; data[o + 1] = v.y; data[o + 2] = v.z;
+        } else for (let k = 0; k < size; k++) data[o + k] = a.getComponent(i, k);
+      }
+    }
+    // A mirrored piece turns its triangles over: swap two corners to keep the faces the same way out.
+    const flip = mx.determinant() < 0, n = index ? index.count : count;
+    for (let i = 0; i < n; i += 3) {
+      const a = index ? index.getX(i) : i, b = index ? index.getX(i + 1) : i + 1, c = index ? index.getX(i + 2) : i + 2;
+      idx[oi + i] = ov + a; idx[oi + i + 1] = ov + (flip ? c : b); idx[oi + i + 2] = ov + (flip ? b : c);
+    }
+    ov += count; oi += n;
+  }
+  const geo = new THREE.BufferGeometry();
+  for (const { n, size, data } of out) geo.setAttribute(n, new THREE.BufferAttribute(data, size));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  geo.computeBoundingSphere();
+  return geo;
 }
