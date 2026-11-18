@@ -2,9 +2,8 @@
 
 Roguelite tactique cyberpunk au tour par tour (PA/PM, sorts, grille, ligne de vue), Phaser 4 + three.js 0.181 + TypeScript + Vite. Jeu et UI en français ; code, commentaires et messages de commit en anglais.
 
-## Branches
-- `anime` : version active (rendu 3D anime cel-shading). Travailler ici sauf demande contraire.
-- `main` : ancien jeu d'action 2D ; `tactique` / `tactique-3d` : étapes intermédiaires. Ne pas y toucher.
+## Branche
+- Une seule branche : `main`, le jeu final (rendu 3D anime cel-shading). Les anciennes branches (`anime`, `tactique`, `tactique-3d`) ont été fusionnées puis supprimées le 2026-11-18 ; leur historique reste dans `main`.
 
 ## Commandes
 - `npx tsc --noEmit -p .` — doit être propre.
@@ -16,7 +15,7 @@ Roguelite tactique cyberpunk au tour par tour (PA/PM, sorts, grille, ligne de vu
 ## Mode de travail voulu par l'utilisateur
 - Il teste lui-même en jouant : **pas de vérification navigateur ni de captures** sauf si la tâche est visuelle et impossible à faire à l'aveugle (placement 3D) — alors 1 à 3 captures max, scripts et images dans le scratchpad, jamais dans le repo.
 - Économiser les tokens : lire les fichiers ciblés ci-dessous plutôt qu'explorer tout `src/`.
-- Commit + push sur `anime` autorisés. Auteur et committer : `Quentin Bonhoure <q.bonhoure@reply.com>` (`git -c user.name="Quentin Bonhoure" -c user.email="q.bonhoure@reply.com" commit …`). **Jamais** de ligne Co-Authored-By ni de mention de Claude / IA / Anthropic.
+- Commit + push sur `main` autorisés. Auteur et committer : `Quentin Bonhoure <q.bonhoure@reply.com>` (`git -c user.name="Quentin Bonhoure" -c user.email="q.bonhoure@reply.com" commit …`). **Jamais** de ligne Co-Authored-By ni de mention de Claude / IA / Anthropic.
 - Ne jamais lire ni écrire `.env`.
 - Ne jamais copier les persos, quêtes, noms ou répliques d'une œuvre existante : on prend les traits du genre cyberpunk, tout le reste est original.
 
