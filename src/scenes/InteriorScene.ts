@@ -127,7 +127,7 @@ export abstract class InteriorScene extends Phaser.Scene {
   }
 
   protected refreshInfo() {
-    this.info.setInfo(this.save.credits, this.save.runs, this.save.bestRoom);
+    this.info?.setInfo(this.save.credits, this.save.runs, this.save.bestRoom);
   }
 
   protected persistSave(s: SaveData) {
