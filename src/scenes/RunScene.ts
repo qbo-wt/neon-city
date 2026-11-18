@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { CONFIG, COLORS, SCENES } from '../config';
 import { addRecord } from '../core/history';
-import { rollLoot } from '../core/loot';
+import { CHEST_RELIC_CHANCE, chestCredits, doorCredits, rollLoot } from '../core/loot';
+import { clearRunSave, loadRunSave, saveRun } from '../core/runSave';
 import { addPsy, applyBlocker, hpDrainPerTurn, psyDamageMult, psyOnKill, psyOnTurn, psyTier } from '../core/psychosis';
 import { makeElite, makeEvent, type EliteMod, type Reward, type RoomPlan } from '../core/runMap';
 import { createRng, pick, type Rng } from '../core/rng';
@@ -148,7 +149,9 @@ export class RunScene extends Phaser.Scene {
   constructor() { super(SCENES.Run); }
 
   /** `mode`: the elevator's choice; CyberHard falls back to normal while it is locked (core/mode.ts). */
-  init(data: { seed?: number; daily?: boolean; mode?: RunMode }) {
+  init(data: { seed?: number; daily?: boolean; mode?: RunMode; resume?: boolean }) {
+    // Resuming a saved run (core/runSave): the sector it was in restarts from its start.
+    if (data?.resume) { const saved = loadRunSave(getStorage()); if (saved) setRun(this.registry, saved); }
     if (data?.seed !== undefined) {
       const sv = loadSave(getStorage());
       // The daily run is the same city for everyone today: fixed seed, mono-blade, no notoriety, CyberHard rules.
@@ -214,6 +217,8 @@ export class RunScene extends Phaser.Scene {
     this.tweens.timeScale = 1;
     this.time.timeScale = 1;
     this.room = this.run.rooms[this.run.roomIndex];
+    // The run as this sector begins: what a quit or a closed tab resumes from.
+    saveRun(getStorage(), { ...this.run, gifts: undefined });
     const style = STYLE_BY_TEMPLATE[this.room.template.id] ?? 'avenue';
     const rng = createRng(this.run.seed * 31 + this.run.roomIndex * 7919);
     const event = this.room.kind === 'event';
@@ -250,7 +255,7 @@ export class RunScene extends Phaser.Scene {
       hoverSpell: i => { this.hoverSlot = i; this.refreshUi(); },
     });
     // Échap opens the options when nothing else would take it (a panel, a chosen spell).
-    this.help = new HelpOverlay(this, CONFIG.WIDTH - 12, HUD_H + 40, 'run', () => this.ready && !this.ending && !this.choice && !this.panel && this.selected === null);
+    this.help = new HelpOverlay(this, CONFIG.WIDTH - 12, HUD_H + 40, 'run', () => this.ready && !this.ending && !this.choice && !this.panel && this.selected === null, () => this.quitRun());
     this.tut = new TutorialOverlay(this, {
       place: 'run',
       top: HUD_H + 2,
@@ -913,6 +918,8 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     // A boss's announced attack matters more than what lies on the floor.
     const tg = this.fight && telegraphInfo(this.fight, p);
     if (tg) return tg;
+    const door = this.exitsOpen ? this.board.exits.findIndex((e, i) => same(e, p) && this.room.doorRewards[i]) : -1;
+    if (door >= 0) return this.doorInfo(door);
     const h = hazardAt({ hazards: this.fight ? this.fight.hazards : this.hazards, round: this.fight?.round ?? 1 }, p);
     return h ? { name: HAZARD_NAMES[h.kind], text: hazardText(h, this.fight?.round ?? 1), color: HAZARD_COLORS[h.kind] } : undefined;
   }
@@ -1083,6 +1090,35 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     this.refreshUi();
   }
 
+  private doorCreditsFor(ri: number) { return Math.round(doorCredits(ri) * this.stats.creditMult); }
+  private chestCreditsFor(ri: number) { return Math.round(chestCredits(ri) * this.stats.creditMult); }
+
+  /** What a door gives, for its hover tooltip. */
+  private doorInfo(i: number): { name: string; text: string; color: number } | undefined {
+    const reward = this.room.doorRewards[i];
+    if (!reward) return undefined;
+    const ri = this.run.roomIndex;
+    switch (reward) {
+      case 'credits': return { name: 'PORTE CRÉDITS', text: `+${this.doorCreditsFor(ri)}¢ tout de suite. Rien d'autre, rien de risqué.`, color: 0xf5e663 };
+      case 'chest': return { name: 'PORTE COFFRE', text: `+${this.chestCreditsFor(ri)}¢ garantis, ${Math.round(CHEST_RELIC_CHANCE * 100)} % de trouver une relique${this.psyOn ? ', +1 neuro-bloqueur garanti' : ''}.`, color: 0xf5e663 };
+      case 'heal': return { name: 'PORTE SOIN', text: `Rend ${Math.round(CONFIG.HEAL_FRACTION * 100)} % de tes PV max.`, color: 0x39ff88 };
+      case 'implant': return { name: 'PORTE IMPLANT', text: `Tu choisis un implant (ou une amélioration) parmi ceux de la clinique ${FAMILY_NAMES[this.room.doorFamilies[i]]}.`, color: Phaser.Display.Color.HexStringToColor(FAMILY_COLORS[this.room.doorFamilies[i]]).color };
+      case 'event': return { name: 'PORTE RENCONTRE', text: 'Le prochain secteur est une rencontre de rue : pas de combat, un choix à faire.', color: 0xf5e663 };
+      case 'elite': return { name: 'PORTE ÉLITE', text: 'Le prochain secteur est une escouade élite (un ennemi de plus, un modificateur). Butin : un implant, des crédits, une relique une fois sur deux.', color: 0xff2a6d };
+    }
+  }
+
+  /** Quit from the options menu: the run waits in storage (as of this sector's start) and you go back to the building. */
+  private quitRun() {
+    if (this.ending || this.leaving) return;
+    this.ending = true;
+    saveRun(getStorage(), { ...this.run, gifts: undefined });
+    audio.setMusic('off');
+    this.scene.stop(SCENES.Hud);
+    this.registry.remove('run');
+    wipeTo(this, SCENES.Building, {});
+  }
+
   private takeExit(i: number) {
     if (this.leaving) return;
     this.leaving = true;
@@ -1101,20 +1137,27 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       if (options.length) { this.openImplantChoice(options, () => this.nextRoom()); return; }
       reward = 'credits';
     }
-    if (reward === 'credits') this.run.creditsEarned += Math.round((8 + ri * 2) * this.stats.creditMult);
+    if (reward === 'credits') this.run.creditsEarned += this.doorCreditsFor(ri);
     if (reward === 'heal') { const g = this.heal(this.stats.maxHp * CONFIG.HEAL_FRACTION); floatText(this, this.views.get(1)!.x, this.views.get(1)!.y - 24, `+${Math.round(g)} PV`, '#39ff88', 9); audio.sfx('heal'); }
     let relic: Relic | undefined;
     if (reward === 'chest') {
-      this.run.creditsEarned += Math.round((5 + ri * 2) * this.stats.creditMult);
-      if (this.psyOn && Math.random() < 0.5) this.run.blockers++;
-      // Now and then the chest holds a relic.
-      if (Math.random() < 0.15) relic = offerRelics(Math.random, this.relicsLeft())[0];
+      // Rolled from the seed, not Math.random: quitting and resuming cannot re-roll the chest.
+      const rng = createRng(this.run.seed + ri * 43 + 7);
+      const gain = this.chestCreditsFor(ri);
+      this.run.creditsEarned += gain;
+      relic = rng() < CHEST_RELIC_CHANCE ? offerRelics(rng, this.relicsLeft())[0] : undefined;
+      const lines = ['COFFRE OUVERT', `+${gain}¢`];
+      if (this.psyOn) { this.run.blockers++; lines.push('+1 NEURO-BLOQUEUR'); }
+      lines.push(relic ? `RELIQUE : ${relic.name.toUpperCase()}` : 'pas de relique');
+      const t = this.screenText(lines.join('\n'), 8, '#f5e663', 130);
+      audio.sfx('credit');
+      this.tweens.add({ targets: t, alpha: 0, delay: 1900 * this.tweens.timeScale, duration: 400 * this.tweens.timeScale, onComplete: () => t.destroy() });
       if (relic) this.grantRelic(relic);
     }
     const next = this.run.rooms[ri + 1];
     if (next && !next.isBoss && reward === 'event') this.run.rooms[ri + 1] = makeEvent(next);
     if (next && !next.isBoss && reward === 'elite') this.run.rooms[ri + 1] = makeElite(next, createRng(this.run.seed + ri * 37));
-    this.time.delayedCall(relic ? 2200 : reward === 'heal' || this.stats.interest > 0 ? 500 : 0, () => this.nextRoom());
+    this.time.delayedCall(reward === 'chest' ? 2400 : reward === 'heal' || this.stats.interest > 0 ? 500 : 0, () => this.nextRoom());
   }
 
   private openImplantChoice(options: Offer[], then: () => void, title?: string) {
@@ -1188,6 +1231,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     const unlocked = unlockAfterRun(save.unlocks, { mode: this.run.mode, victory, daily: !!this.run.daily });
     save.unlocks = unlocked.unlocks;
     writeSave(storage, save);
+    clearRunSave(storage);
     this.registry.remove('run');
     this.scene.stop(SCENES.Hud);
     wipeTo(this, SCENES.Death, {

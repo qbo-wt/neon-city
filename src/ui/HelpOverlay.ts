@@ -43,10 +43,10 @@ export class HelpOverlay {
   private keys: [string, string][];
 
   constructor(private scene: Phaser.Scene, x = CONFIG.WIDTH - 12, y = CONFIG.HEIGHT - 12, mode: 'hub' | 'run' = 'hub',
-    private canOpenOptions: () => boolean = () => true) {
+    private canOpenOptions: () => boolean = () => true, onQuit?: () => void) {
     this.keys = mode === 'run' ? RUN_KEYS : HUB_KEYS;
     this.guide = new GuidePanel(scene);
-    this.options = new OptionsPanel(scene, { onGuide: () => this.guide.open() });
+    this.options = new OptionsPanel(scene, { onGuide: () => this.guide.open(), onQuit });
     const g = scene.add.graphics();
     const draw = (hot: boolean) => {
       g.clear();

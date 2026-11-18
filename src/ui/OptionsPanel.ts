@@ -67,7 +67,7 @@ export class OptionsPanel {
   private namePanel: NamePanel;
   private onScreenChange = () => { if (this.root) this.render(); };
 
-  constructor(private scene: Phaser.Scene, private opts: { onGuide?: () => void } = {}) {
+  constructor(private scene: Phaser.Scene, private opts: { onGuide?: () => void; onQuit?: () => void } = {}) {
     this.namePanel = new NamePanel(scene, 'ANNULER');
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.detach());
   }
@@ -252,11 +252,14 @@ export class OptionsPanel {
     root.add(this.desc);
 
     const items: [string, () => void, number][] = [];
-    if (this.opts.onGuide) items.push(['GUIDE DU RUNNER', () => { this.close(); this.opts.onGuide!(); }, C.magenta]);
-    items.push(['REJOUER LE TUTO', () => this.replayTutorial(), C.green]);
-    items.push(['PAR DÉFAUT', () => this.reset(), C.cyan]);
+    // With QUITTER (in a run) the labels are shorter so five buttons fit.
+    const quit = !!this.opts.onQuit;
+    if (this.opts.onGuide) items.push([quit ? 'GUIDE' : 'GUIDE DU RUNNER', () => { this.close(); this.opts.onGuide!(); }, C.magenta]);
+    items.push([quit ? 'TUTO' : 'REJOUER LE TUTO', () => this.replayTutorial(), C.green]);
+    items.push([quit ? 'DÉFAUT' : 'PAR DÉFAUT', () => this.reset(), C.cyan]);
+    if (quit) items.push(['QUITTER LA RUN', () => { this.close(); this.opts.onQuit!(); }, C.magenta]);
     items.push(['FERMER', () => this.close(), C.yellow]);
-    const bw = items.length > 3 ? 66 : 92, gap = 6, total = items.length * bw + (items.length - 1) * gap;
+    const bw = quit ? 56 : items.length > 3 ? 66 : 92, gap = 6, total = items.length * bw + (items.length - 1) * gap;
     items.forEach(([label, run, accent], i) => {
       const b = new Button(s, left + (PW - total) / 2 + i * (bw + gap), top + PH - 32, bw, 12, label, {
         accent, font: 'ui', size: 5.5, solid: label === 'FERMER', onClick: run,

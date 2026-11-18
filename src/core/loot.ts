@@ -17,3 +17,10 @@ export function rollLoot(rng: Rng, canRelic: boolean, lucky = false): Loot {
   if (r < 0.66) return { kind: 'heal', amount: 6 + Math.floor(rng() * 7) };
   return { kind: 'nothing' };
 }
+
+/** Credits of the CRÉDITS door at sector index `ri` (before the credit multipliers). */
+export const doorCredits = (ri: number) => 8 + ri * 2;
+
+/** The COFFRE door: a little more credits than the CRÉDITS door, a relic one time in three, a neuro-blocker in CyberHard. */
+export const CHEST_RELIC_CHANCE = 0.35;
+export const chestCredits = (ri: number) => 10 + ri * 2;

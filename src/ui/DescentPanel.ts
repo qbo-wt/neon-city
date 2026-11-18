@@ -6,12 +6,14 @@ import { formatTime } from '../core/history';
 import { HEAT_PACTS, heatCreditMult, heatPoints } from '../data/heat';
 import { WEAPONS } from '../data/weapons';
 import { audio } from '../audio/audio';
-import { CYBERHARD_CREDIT_MULT } from '../core/mode';
+import { CYBERHARD_CREDIT_MULT, MODE_NAMES } from '../core/mode';
+import { clearRunSave, loadRunSave } from '../core/runSave';
+import { getStorage } from '../core/storage';
 import { title, txt } from './text';
 import { C, Card, T, bold, chip, halftone, hints, keycap, pinToCamera, pips, screenFrame, stripes } from './kit';
 
 /** What the elevator starts: a run tier (core/mode.ts) or today's daily run. */
-export type DescentKind = 'normal' | 'cyberhard' | 'daily';
+export type DescentKind = 'normal' | 'cyberhard' | 'daily' | 'resume';
 
 /**
  * Building elevator: the normal run, the CyberHard run (after a first victory), the wanted posters
@@ -20,17 +22,23 @@ export type DescentKind = 'normal' | 'cyberhard' | 'daily';
  */
 export class DescentPanel {
   private root?: Phaser.GameObjects.Container;
-  private view: 'menu' | 'heat' = 'menu';
+  private view: 'menu' | 'heat' | 'resume' = 'menu';
 
   constructor(private scene: Phaser.Scene, private getSave: () => SaveData, private persist: (s: SaveData) => void,
     private start: (kind: DescentKind) => void) {}
 
   get isOpen() { return !!this.root; }
-  open() { this.view = 'menu'; this.render(); audio.sfx('uiOpen'); }
+  /** An unfinished run (core/runSave) is offered first: resume it or abandon it. */
+  open() { this.view = loadRunSave(getStorage()) ? 'resume' : 'menu'; this.render(); audio.sfx('uiOpen'); }
   close() { this.root?.destroy(); this.root = undefined; }
 
   select(n: number) {
     if (!this.root) return;
+    if (this.view === 'resume') {
+      if (n === 1) { this.close(); this.start('resume'); }
+      else if (n === 2) { clearRunSave(getStorage()); this.view = 'menu'; audio.sfx('deny'); this.render(); }
+      return;
+    }
     if (this.view === 'menu') {
       const { cyberhard, wanted } = this.getSave().unlocks;
       if (n === 1) { this.close(); this.start('normal'); }
@@ -59,7 +67,22 @@ export class DescentPanel {
     const root = s.add.container(0, 0).setDepth(200);
     this.root = root;
     const pts = heatPoints(save.heat);
-    if (this.view === 'menu') {
+    if (this.view === 'resume') {
+      const r = loadRunSave(getStorage());
+      root.add(screenFrame(s, 'ASCENSEUR — RUN EN COURS', C.magenta, 'SAUVEGARDE // RUN'));
+      const what = r ? `${r.daily ? 'RUN DU JOUR' : MODE_NAMES[r.mode]} — secteur ${r.roomIndex + 1} / ${CONFIG.ROOMS_PER_RUN}, ${r.hp} PV, ${r.creditsEarned}¢ en poche` : '';
+      const rows: [string, string, number][] = [
+        ['REPRENDRE LA RUN', `${what}. Le secteur en cours repart de son début, avec l'état de ta run à l'entrée du secteur.`, C.green],
+        ['ABANDONNER LA RUN', 'Tu perds la run en cours (implants, relique, crédits non encaissés) et reviens au choix des runs.', C.magenta],
+      ];
+      rows.forEach(([label, desc, col], i) => {
+        const card = new Card(s, 18, 40 + i * 70, W - 36, 62, { accent: col, hoverSfx: true, cut: 8, onClick: () => this.select(i + 1) });
+        card.add(keycap(s, 12, 14, `${i + 1}`, C.yellow, 5));
+        card.add(title(s, 26, 14.5, label, 15, i === 0 ? T.text : T.magenta).setFontStyle('600').setOrigin(0, 0.5));
+        card.add(txt(s, 12, 30, desc, 7, T.dim).setWordWrapWidth(W - 60).setLineSpacing(2));
+        root.add(card);
+      });
+    } else if (this.view === 'menu') {
       root.add(screenFrame(s, 'ASCENSEUR — DESCENTE VERS LA RUE', C.magenta, 'NIVEAU -1 // LA RUE'));
       const today = dateKey(), best = save.daily.find(d => d.date === today);
       const { cyberhard, wanted } = save.unlocks, weapon = WEAPONS[save.weapon].name;
@@ -104,7 +127,7 @@ export class DescentPanel {
         root.add(card);
       });
     }
-    root.add(hints(s, W / 2, H - 12, this.view === 'menu' ? [['1-4', 'Choisir'], ['ÉCHAP', 'Fermer']] : [['1-7', 'Changer un rang'], ['ÉCHAP', 'Fermer']], C.magenta));
+    root.add(hints(s, W / 2, H - 12, this.view === 'resume' ? [['1-2', 'Choisir'], ['ÉCHAP', 'Fermer']] : this.view === 'menu' ? [['1-4', 'Choisir'], ['ÉCHAP', 'Fermer']] : [['1-7', 'Changer un rang'], ['ÉCHAP', 'Fermer']], C.magenta));
     pinToCamera(root);
   }
 }

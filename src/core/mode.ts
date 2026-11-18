@@ -3,7 +3,7 @@ import type { Stats } from './types';
 /**
  * Run tiers, unlocked in order:
  * 1. `normal`: no cyberpsychosis and softer streets (NORMAL_TUNING). The default.
- * 2. `cyberhard`: the original rules (psychosis, neuro-blockers, Surchauffe for psychosis), +25 % credits.
+ * 2. `cyberhard`: the original rules (psychosis, neuro-blockers, Surchauffe for psychosis), +50 % credits.
  *    Unlocked by winning any run.
  * 3. the wanted posters (notoriety, data/heat.ts): CyberHard runs only, unlocked by winning one.
  * The daily run keeps the CyberHard rules without notoriety or credit bonus.
@@ -33,7 +33,7 @@ export const NORMAL_TUNING = {
 };
 
 /** CyberHard pays more: factor on the credits banked at the end of a CyberHard run (not the daily one). */
-export const CYBERHARD_CREDIT_MULT = 1.25;
+export const CYBERHARD_CREDIT_MULT = 1.5;
 
 /** Credits factor at the end of a run of this mode. */
 export const modeCreditMult = (mode: RunMode, daily = false) =>
@@ -63,7 +63,7 @@ export interface Unlocks { cyberhard: boolean; wanted: boolean }
 export type UnlockId = keyof Unlocks;
 export const UNLOCK_TITLES: Record<UnlockId, string> = { cyberhard: 'RUN CYBERHARD DÉBLOQUÉE', wanted: 'AVIS DE RECHERCHE DÉBLOQUÉS' };
 export const UNLOCK_LINES: Record<UnlockId, string> = {
-  cyberhard: 'L\'ascenseur propose la run CyberHard : la cyberpsychose entre en jeu, +25 % de crédits.',
+  cyberhard: 'L\'ascenseur propose la run CyberHard : la cyberpsychose entre en jeu, +50 % de crédits.',
   wanted: 'L\'ascenseur propose les avis de recherche : des handicaps en CyberHard contre plus de crédits.',
 };
 

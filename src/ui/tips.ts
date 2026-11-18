@@ -14,7 +14,7 @@ export const TIPS = [
   'Les crédits rapatriés servent chez le Doc Kessler, chez Nyx et au râtelier.',
   'La run du jour propose la même ville à tout le monde. Compare ton temps.',
   'Une victoire en CyberHard débloque l\'avis de recherche : des handicaps sur tes runs CyberHard contre plus de crédits.',
-  'La run CyberHard rapporte 25 % de crédits en plus que la run normale.',
+  'La run CyberHard rapporte 50 % de crédits en plus que la run normale.',
   'Clic droit ou Échap annule le sort choisi. Molette pour zoomer, ZQSD pour déplacer la caméra.',
   'Le bestiaire du terminal s\'ouvre au fil des éliminations : faiblesses, tactiques, histoire.',
   'Un boss attend tous les 5 secteurs. Le dernier ferme le contrat.',
