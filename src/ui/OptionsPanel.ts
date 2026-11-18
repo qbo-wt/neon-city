@@ -28,7 +28,7 @@ const ROWS: Row[] = [
   { kind: 'choice', key: 'speed', label: 'VITESSE DES COMBATS', desc: 'Accélère les animations des combats (déplacements, coups, tours ennemis). Les menus ne changent pas.' },
   { kind: 'toggle', key: 'fullscreen', label: 'PLEIN ÉCRAN', desc: 'Le jeu occupe tout l\'écran. Échap le quitte aussi.' },
   { kind: 'toggle', key: 'reduceFx', label: 'EFFETS D\'ÉCRAN RÉDUITS', desc: 'Accessibilité : plus de tremblements de caméra, de flashs plein écran ni d\'image négative sur les gros coups.' },
-  { kind: 'choice', key: 'quality', label: 'QUALITÉ GRAPHIQUE', desc: 'BASSE pour un PC portable ou une puce graphique intégrée : reflets et ombres redessinés une image sur deux, sans anticrénelage. AUTO passe en BASSE si le jeu rame.' },
+  { kind: 'choice', key: 'quality', label: 'QUALITÉ GRAPHIQUE', desc: 'BASSE pour un PC portable ou une puce graphique intégrée : reflets et ombres redessinés une image sur deux. AUTO passe en BASSE si le jeu rame.' },
 ];
 
 /** Browser fullscreen, either through the Fullscreen API (ours) or the browser's own (F11). */

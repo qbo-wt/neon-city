@@ -105,7 +105,7 @@ export class World3D {
   }
 
   /**
-   * Low: no anti-aliasing pass, at most one 3D pixel per CSS pixel (high-density screens), and the
+   * Low: at most one 3D pixel per CSS pixel (high-density screens), and the
    * wet reflection and the shadow map redrawn in turn, one frame each (see frame()). A lower
    * resolution was tried: slower on an Intel iGPU (the canvas then gets scaled when composited).
    */
@@ -114,7 +114,7 @@ export class World3D {
     this.qualitySet = true;
     this.quality = q;
     const pr = Math.min(q === 'low' ? 1 : 2, window.devicePixelRatio);
-    this.smaa.enabled = q === 'high';
+    this.smaa.enabled = true; // even in low: without it the ink outlines and hair of the characters turn jagged
     this.renderer.setPixelRatio(pr);
     this.composer.setPixelRatio(pr);
     this.resizeTargets(this.size.w, this.size.h);
