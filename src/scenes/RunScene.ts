@@ -502,14 +502,17 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     const m = this.modal() ? { x: 0, y: 0 } : this.controls.move();
     if (m.x || m.y) this.world.panScreen(m.x * dt * 0.6, m.y * dt * 0.6, CONFIG.WIDTH * CONFIG.ZOOM);
     const cam = this.world.camera, key = `${cam.position.x.toFixed(3)},${cam.position.z.toFixed(3)},${cam.zoom.toFixed(3)}`;
-    if (key === this.camKey) return;
-    this.camKey = key;
+    // Door tags follow the view every frame; the icon's bob is applied here, not by a tween
+    // (a y tween kept the icon at its first screen position when the view moved).
+    const bob = 2 + 2 * Math.sin(this.time.now / 160);
     for (const t of this.tags) {
       const c = this.centre(t.cell);
-      t.icon.setPosition(c.x, c.y - 14 * cam.zoom);
+      t.icon.setPosition(c.x, c.y - (14 + bob) * cam.zoom);
       t.label.setPosition(c.x, c.y - 28 * cam.zoom);
       t.icon.setScale(Math.min(2, cam.zoom));
     }
+    if (key === this.camKey) return;
+    this.camKey = key;
     this.drawHover();
   }
 
@@ -1077,7 +1080,6 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       this.markLayer.add(p, 0x39ff88, 0.45);
       const icon = this.add.image(c.x, c.y - 14, REWARD_ICON[reward]).setDepth(960);
       if (reward === 'implant') icon.setTint(Phaser.Display.Color.HexStringToColor(FAMILY_COLORS[fam]).color);
-      this.tweens.add({ targets: icon, y: c.y - 18, yoyo: true, repeat: -1, duration: 500 });
       const label = reward === 'implant' ? `IMPLANT ${FAMILY_NAMES[fam]}` : DOOR_LABELS[reward];
       const t = txt(this, c.x, c.y - 28, label, 5, reward === 'implant' ? FAMILY_COLORS[fam] : '#e8e8ff').setOrigin(0.5).setDepth(961).setStroke('#05030f', 3);
       this.markers.push(icon, t);
