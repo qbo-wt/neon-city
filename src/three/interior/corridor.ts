@@ -42,7 +42,7 @@ export const HALL = {
   /** Where the player comes out of each door. */
   spawn: { apartment: { x: 148, y: 106 }, doc: { x: 46, y: 106 }, net: { x: 438, y: 106 } },
   blockers: [
-    [173, 92, 84, 18], // ramen counter
+    [173, 70, 84, 40], // ramen counter and the space behind it, where Lo stands (no slipping in to push her)
     [175, 110, 80, 10], // stools
     [389, 80, 28, 18], // vending machine
     [278, 80, 31, 27], // arcade cabinet
