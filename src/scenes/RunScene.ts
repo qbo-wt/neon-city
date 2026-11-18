@@ -1148,18 +1148,22 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       const gain = this.chestCreditsFor(ri);
       this.run.creditsEarned += gain;
       relic = rng() < CHEST_RELIC_CHANCE ? offerRelics(rng, this.relicsLeft())[0] : undefined;
-      const lines = ['COFFRE OUVERT', `+${gain}¢`];
-      if (this.psyOn) { this.run.blockers++; lines.push('+1 NEURO-BLOQUEUR'); }
-      lines.push(relic ? `RELIQUE : ${relic.name.toUpperCase()}` : 'pas de relique');
-      const t = this.screenText(lines.join('\n'), 8, '#f5e663', 130);
+      const lines = [`+${gain}¢ de crédits`];
+      if (this.psyOn) { this.run.blockers++; lines.push('+1 neuro-bloqueur'); }
+      lines.push(relic ? `Relique ${RELIC_RARITY_NAMES[relic.rarity].toLowerCase()} : ${relic.name}\n${relic.description}` : 'Pas de relique cette fois.');
       audio.sfx('credit');
-      this.tweens.add({ targets: t, alpha: 0, delay: 1900 * this.tweens.timeScale, duration: 400 * this.tweens.timeScale, onComplete: () => t.destroy() });
       if (relic) this.grantRelic(relic);
+      this.refreshUi();
+      // A dialog the player closes, so the contents can be read at leisure.
+      this.panel = new ChoicePanel(this, this.controls, 'Coffre ouvert', lines.join('\n'),
+        [{ label: 'CONTINUER', desc: '', pick: () => undefined }],
+        () => { this.panel = undefined; this.nextRoom(); }, 0xf5e663, { code: 'BUTIN // COFFRE' });
+      return;
     }
     const next = this.run.rooms[ri + 1];
     if (next && !next.isBoss && reward === 'event') this.run.rooms[ri + 1] = makeEvent(next);
     if (next && !next.isBoss && reward === 'elite') this.run.rooms[ri + 1] = makeElite(next, createRng(this.run.seed + ri * 37));
-    this.time.delayedCall(reward === 'chest' ? 2400 : reward === 'heal' || this.stats.interest > 0 ? 500 : 0, () => this.nextRoom());
+    this.time.delayedCall(reward === 'heal' || this.stats.interest > 0 ? 500 : 0, () => this.nextRoom());
   }
 
   private openImplantChoice(options: Offer[], then: () => void, title?: string) {
