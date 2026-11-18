@@ -80,5 +80,6 @@ export class HideoutScene extends InteriorScene {
     if (n === 1) this.history.setFilter('recent');
     if (n === 2) this.history.setFilter('best');
     if (n === 3) this.history.setFilter('daily');
+    if (n === 4) this.history.setFilter('board');
   }
 }

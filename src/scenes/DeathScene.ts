@@ -7,16 +7,25 @@ import { Button, C, GlitchText, T, bold, chip, drawPanel, halftone, pips, scanli
 import { wipeTo } from '../ui/transition';
 import { audio } from '../audio/audio';
 import { fadeVisibility, showStage, stage, stageOpacity } from '../three/stage';
+import { canRank, isOptedOut, playerName } from '../core/player';
+import { rankLine, submitScore } from '../core/leaderboard';
+import type { RankMode, Score } from '../core/ranking';
+import { NamePanel } from '../ui/NamePanel';
 import { UNLOCK_LINES, UNLOCK_TITLES, type UnlockId } from '../core/mode';
+
+/** What the leaderboard gets from a finished run. */
+export type RunScore = Score & { mode: RankMode; day?: string };
 
 export class DeathScene extends Phaser.Scene {
   private rain!: Rain;
   private leaving = false;
+  private names!: NamePanel;
+  private rankText?: Phaser.GameObjects.Text;
   constructor() { super(SCENES.Death); }
 
   /** `mode`: the run tier's name (not for the daily run); `unlocked`: elevator tiers this run opened. */
   create(data: { victory: boolean; creditsEarned: number; roomReached: number; heat?: number; recordBonus?: number; daily?: string; dailyBest?: boolean; killer?: string;
-    mode?: string; modeBonus?: number; unlocked?: UnlockId[] }) {
+    mode?: string; modeBonus?: number; unlocked?: UnlockId[]; score?: RunScore }) {
     const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, win = data.victory;
     const accent = win ? C.yellow : C.magenta;
     this.leaving = false;
@@ -80,12 +89,39 @@ export class DeathScene extends Phaser.Scene {
 
     const back = new Button(this, W / 2 - 80, 200, 160, 20, 'REVENIR À LA PLANQUE', { accent: C.cyan, solid: true, size: 12, hoverSfx: true, onClick: () => this.leave() });
     this.tweens.add({ targets: back, alpha: 0.75, yoyo: true, repeat: -1, duration: 700 });
-    txt(this, W / 2, 230, 'Clique n\'importe où pour continuer', 6, T.mute).setOrigin(0.5);
-    this.time.delayedCall(500, () => this.input.once('pointerdown', () => this.leave()));
+    this.rankText = txt(this, W / 2, 227, '', 6.5, T.cyan).setOrigin(0.5);
+    txt(this, W / 2, 241, 'Clique n\'importe où pour continuer', 6, T.mute).setOrigin(0.5);
+    this.time.delayedCall(500, () => this.input.on('pointerdown', () => this.leave()));
+    this.names = new NamePanel(this);
+    if (data.score && !isOptedOut()) this.time.delayedCall(700, () => this.ranked(data.score!));
+  }
+
+  /** Leaderboard: ask for a pseudo the first time, send the run, show the rank. Never blocks, never throws. */
+  private ranked(run: RunScore) {
+    if (!this.sys.isActive()) return;
+    if (canRank()) { this.send(run); return; }
+    this.say('Choisis un pseudo pour entrer au classement des potes.', T.dim);
+    this.names.open(name => {
+      if (name) this.send(run);
+      else this.say('Pas de pseudo : cette run n\'est pas au classement (réglable dans les options).', T.mute);
+    });
+  }
+
+  private say(text: string, color: string) {
+    if (this.rankText?.active) this.rankText.setText(text).setColor(color);
+  }
+
+  private send(run: RunScore) {
+    this.say('Envoi au classement…', T.mute);
+    const { mode, day, ...score } = run;
+    void submitScore({ ...score, player: playerName(), mode, day }).then(r => {
+      if (r) this.say(rankLine(r, mode), r.record ? T.yellow : T.cyan);
+      else this.say('Classement hors ligne : cette run n\'a pas été envoyée.', T.mute);
+    });
   }
 
   private leave() {
-    if (this.leaving) return;
+    if (this.leaving || this.names.isOpen) return;
     this.leaving = true;
     wipeTo(this, SCENES.Hideout);
   }

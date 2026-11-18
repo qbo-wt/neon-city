@@ -32,6 +32,11 @@ Roguelite tactique cyberpunk au tour par tour (PA/PM, sorts, grille, ligne de vu
 | UI | `src/ui/` : `kit.ts` (style des panneaux), `text.ts` (polices), `GuidePanel`, `OptionsPanel`, `Tutorial`, `ChoicePanel`, `VendingTalk`, `HelpOverlay`, `LoadingScreen` ; `src/scenes/run/TacticalUi.ts` (UI de combat) |
 | Effets, son | `src/fx/animeFx.ts`, `src/fx/screenFx.ts`, `src/audio/audio.ts` (`TRACKS`) |
 
+## Classement des potes (backend Vercel)
+- `api/scores.ts` (Vercel Function, Web handlers `GET`/`POST`) + `api/_scoreboard.ts` (logique, stockage injecté pour les tests) : une meilleure run par joueur et par mode (normale, cyberhard, du jour), stockée dans un Redis Upstash. Les imports de `api/` vers `src/` gardent l'extension `.js` (runtime Node ESM).
+- `src/core/ranking.ts` : **ordre de classement unique** (victoire, secteur, notoriété, temps) + validation du payload, importé par le client et par la fonction (aucun import interne, pour rester déployable seul). `src/core/leaderboard.ts` (client, silencieux hors ligne), `src/core/player.ts` (pseudo + « ne pas participer », clé localStorage à part), `src/ui/NamePanel.ts` (saisie du pseudo). Onglet CLASSEMENT dans `HistoryPanel`, envoi dans `DeathScene`.
+- Il faut un **Redis Upstash relié au projet Vercel** (Storage → Marketplace → Upstash Redis → Connect Project, puis redéployer) : variables `KV_REST_API_URL/TOKEN` ou `UPSTASH_REDIS_REST_URL/TOKEN`. Sans lui, l'API répond 503 et le jeu affiche « classement hors ligne ». `vite` en local ne sert pas `/api`.
+
 ## Pièges connus
 - Paliers de run (`src/core/mode.ts`) : run normale (défaut, sans psychose, réglages dans `NORMAL_TUNING`) → CyberHard (débloquée par une victoire) → avis de recherche (victoire en CyberHard, notoriété CyberHard seulement), persistés dans `save.unlocks`. La run du jour garde les règles CyberHard. Tout ce qui touche la psychose passe par `psyOn` (`RunScene`) ou `Fight.noPsy` ; le contenu qui n'a de sens qu'avec elle est marqué `psyOnly` (reliques, implants), `cyberhard` (nœuds de Nyx) ou `calm` (synergie).
 - Les crochets de combat ne gardent **aucun état propre** : l'IA et les aperçus jouent sur des copies (`cloneFight`). État par unité dans `Unit.mem`, état de combat dans `Fight`.

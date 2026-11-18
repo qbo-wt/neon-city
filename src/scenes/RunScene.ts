@@ -1192,6 +1192,8 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     this.scene.stop(SCENES.Hud);
     wipeTo(this, SCENES.Death, {
       victory, creditsEarned: earned, roomReached: sector, heat: pts, recordBonus: record, daily: this.run.daily, dailyBest,
+      score: { mode: this.run.daily ? 'daily' : this.run.mode, day: this.run.daily, victory, sector, heat: this.run.daily || this.run.mode !== 'cyberhard' ? 0 : pts,
+        timeMs: Math.round(this.run.timeMs), credits: Math.min(earned, 1_000_000), weapon: this.run.weapon },
       mode: this.run.daily ? undefined : MODE_NAMES[this.run.mode], modeBonus: modeMult > 1 ? Math.round((modeMult - 1) * 100) : 0, unlocked: unlocked.fresh,
       killer: killer === 'psychosis' ? 'la cyberpsychose' : killer === 'barrel' ? 'un baril explosif' : killer === 'trap' ? 'un piège de rue'
         : killer ? ENEMIES[killer as EnemyId]?.name : undefined,

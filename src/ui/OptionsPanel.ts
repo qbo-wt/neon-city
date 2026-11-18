@@ -5,12 +5,15 @@ import {
   COMBAT_SPEEDS, QUALITIES, QUALITY_LABEL, SPEED_LABEL, VOLUME_STEPS, defaultSettings, onSettingsChange, settings, updateSettings, type Settings,
 } from '../core/settings';
 import { resetTutorial } from '../core/tutorial';
+import { isOptedOut, playerName, setOptOut, typing } from '../core/player';
+import { NamePanel } from './NamePanel';
 import { txt } from './text';
 import { Button, C, Card, T, backdrop, bold, drawBar, hints, markPanelClosed, panel, pinToCamera, skewPoly } from './kit';
 
 type Row =
   | { kind: 'slider'; label: string; desc: string; key: 'music' | 'sfx' }
-  | { kind: 'toggle'; label: string; desc: string; key: 'muted' | 'reduceFx' | 'fullscreen' }
+  | { kind: 'toggle'; label: string; desc: string; key: 'muted' | 'reduceFx' | 'fullscreen' | 'ranked' }
+  | { kind: 'name'; label: string; desc: string }
   | { kind: 'choice'; label: string; desc: string; key: 'speed' | 'quality' };
 
 /** The values of a choice row, in order, and their labels. */
@@ -29,6 +32,8 @@ const ROWS: Row[] = [
   { kind: 'toggle', key: 'fullscreen', label: 'PLEIN ÉCRAN', desc: 'Le jeu occupe tout l\'écran. Échap le quitte aussi.' },
   { kind: 'toggle', key: 'reduceFx', label: 'EFFETS D\'ÉCRAN RÉDUITS', desc: 'Accessibilité : plus de tremblements de caméra, de flashs plein écran ni d\'image négative sur les gros coups.' },
   { kind: 'choice', key: 'quality', label: 'QUALITÉ GRAPHIQUE', desc: 'BASSE pour un PC portable ou une puce graphique intégrée : reflets et ombres redessinés une image sur deux. AUTO passe en BASSE si le jeu rame.' },
+  { kind: 'name', label: 'PSEUDO DU CLASSEMENT', desc: 'Le nom sous lequel ta meilleure run apparaît au classement des potes (terminal de l’appart). Entrée ou clic pour le changer.' },
+  { kind: 'toggle', key: 'ranked', label: 'CLASSEMENT EN LIGNE', desc: 'OUI : tes runs terminées sont envoyées au classement. NON : rien ne part, tu restes hors classement.' },
 ];
 
 /** Browser fullscreen, either through the Fullscreen API (ours) or the browser's own (F11). */
@@ -38,7 +43,7 @@ function fullscreenState(): 'api' | 'browser' | 'off' {
   return 'off';
 }
 
-const PW = 300, PH = 210, ROW_H = 17, ROW_STEP = 20;
+const PW = 300, PH = 250, ROW_H = 17, ROW_STEP = 20;
 /** Where the value controls sit inside a row (local x). */
 const CTRL_X = 128, CTRL_END = PW - 20 - 14;
 
@@ -59,9 +64,11 @@ export class OptionsPanel {
   /** the frame it opened in: the key press that opened it is not read again as a command */
   private openedFrame = -1;
   private unsubscribe?: () => void;
+  private namePanel: NamePanel;
   private onScreenChange = () => { if (this.root) this.render(); };
 
   constructor(private scene: Phaser.Scene, private opts: { onGuide?: () => void } = {}) {
+    this.namePanel = new NamePanel(scene, 'ANNULER');
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.detach());
   }
 
@@ -102,7 +109,7 @@ export class OptionsPanel {
   private get count() { return ROWS.length + this.buttons.length; }
 
   private onKey(e: KeyboardEvent) {
-    if (!this.root || this.scene.game.loop.frame === this.openedFrame) return;
+    if (!this.root || typing.active || this.scene.game.loop.frame === this.openedFrame) return;
     const once = !e.repeat;
     if (e.code === 'Escape') { if (once) this.close(); return; }
     if (e.code === 'ArrowUp') this.setFocus((this.focus - 1 + this.count) % this.count, true);
@@ -138,7 +145,8 @@ export class OptionsPanel {
     const s = settings();
     if (r.kind === 'slider') return s[r.key];
     if (r.kind === 'choice') return choiceIndex(r.key);
-    return r.key === 'fullscreen' ? fullscreenState() !== 'off' : s[r.key];
+    if (r.kind === 'name') return false;
+    return r.key === 'fullscreen' ? fullscreenState() !== 'off' : r.key === 'ranked' ? !isOptedOut() : s[r.key];
   }
 
   private set(patch: Partial<Omit<Settings, 'version'>>) {
@@ -149,6 +157,7 @@ export class OptionsPanel {
   }
 
   private adjust(r: Row, d: number) {
+    if (r.kind === 'name') return;
     if (r.kind === 'slider') {
       const v = Phaser.Math.Clamp(settings()[r.key] + d, 0, VOLUME_STEPS);
       if (v !== settings()[r.key]) this.set(r.key === 'music' ? { music: v } : { sfx: v });
@@ -159,11 +168,18 @@ export class OptionsPanel {
   }
 
   private activate(r: Row) {
-    if (r.kind === 'toggle') this.toggle(r.key);
+    if (r.kind === 'name') this.editName();
+    else if (r.kind === 'toggle') this.toggle(r.key);
     else if (r.kind === 'choice') this.set(choicePatch(r.key, (choiceIndex(r.key) + 1) % CHOICES[r.key].values.length));
   }
 
-  private toggle(key: 'muted' | 'reduceFx' | 'fullscreen') {
+  private editName() {
+    audio.sfx('ui');
+    this.namePanel.open(() => { if (this.root) this.render(); });
+  }
+
+  private toggle(key: 'muted' | 'reduceFx' | 'fullscreen' | 'ranked') {
+    if (key === 'ranked') { setOptOut(!isOptedOut()); audio.sfx('ui'); this.render(); return; }
     if (key === 'muted') { this.set({ muted: !settings().muted }); return; }
     if (key === 'reduceFx') { this.set({ reduceFx: !settings().reduceFx }); return; }
     const st = fullscreenState();
@@ -258,6 +274,7 @@ export class OptionsPanel {
 
   /** A click on a row at local x `lx`: on the gauge sets the volume, on a segment picks it. */
   private click(r: Row, lx: number) {
+    if (r.kind === 'name') { this.editName(); return; }
     if (r.kind === 'slider') {
       if (lx < CTRL_X - 3 || lx > CTRL_X + SLIDER_W + 3) return;
       const v = Phaser.Math.Clamp(Math.round((lx - CTRL_X) / SLIDER_W * VOLUME_STEPS), 0, VOLUME_STEPS);
@@ -273,7 +290,10 @@ export class OptionsPanel {
     const s = this.scene, g = s.add.graphics();
     card.add(g);
     const v = this.value(r);
-    if (r.kind === 'slider') {
+    if (r.kind === 'name') {
+      const n = playerName();
+      card.add(bold(s, CTRL_END, ROW_H / 2, n || 'À CHOISIR', 6, n ? T.yellow : T.magenta).setOrigin(1, 0.5));
+    } else if (r.kind === 'slider') {
       const n = v as number;
       drawBar(g, CTRL_X, ROW_H / 2 - 3, SLIDER_W, 6, n / VOLUME_STEPS, settings().muted ? C.line : C.cyan, { seg: VOLUME_STEPS });
       card.add(bold(s, CTRL_END, ROW_H / 2, `${n * 10} %`, 6, settings().muted ? T.off : T.yellow).setOrigin(1, 0.5));

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { typing } from '../core/player';
 import { CONFIG } from '../config';
 import { audio } from '../audio/audio';
 import { liveStep, skipTutorial, tutorialDone, tutorialEvent, type TutorialStep } from '../core/tutorial';
@@ -46,8 +47,8 @@ export class TutorialOverlay {
     this.root = scene.add.container(0, 0).setDepth(1500).setVisible(false);
     this.ptr = scene.add.graphics().setDepth(1499).setScrollFactor(0);
     const kb = scene.input.keyboard!;
-    const onSkip = (e: KeyboardEvent) => { if (!e.repeat && this.visible) this.skip(); };
-    const onEnter = (e: KeyboardEvent) => { if (!e.repeat && this.visible && this.host.enterAcks && this.step?.ack) this.ack(); };
+    const onSkip = (e: KeyboardEvent) => { if (!e.repeat && this.visible && !typing.active) this.skip(); };
+    const onEnter = (e: KeyboardEvent) => { if (!e.repeat && this.visible && !typing.active && this.host.enterAcks && this.step?.ack) this.ack(); };
     const onUpdate = (_t: number, dt: number) => this.update(dt);
     kb.on('keydown-P', onSkip);
     kb.on('keydown-ENTER', onEnter);

@@ -6,6 +6,7 @@
  * Browsers only allow audio after a user gesture: the context is created on the first click / key.
  */
 
+import { typing } from '../core/player';
 import { VOLUME_STEPS, onSettingsChange, settings, updateSettings } from '../core/settings';
 
 type Wave = OscillatorType | 'noise';
@@ -199,7 +200,7 @@ class AudioEngine {
       const unlock = () => this.unlock();
       window.addEventListener('pointerdown', unlock);
       window.addEventListener('keydown', unlock);
-      window.addEventListener('keydown', e => { if (e.code === 'KeyM' && !e.repeat) this.toggleMute(); });
+      window.addEventListener('keydown', e => { if (e.code === 'KeyM' && !e.repeat && !typing.active) this.toggleMute(); });
     }
   }
 

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config';
 import { Button, C, T, cutPoly, hints, keycap, panel, panelClosedThisFrame, pinToCamera } from './kit';
+import { typing } from '../core/player';
 import { GuidePanel } from './GuidePanel';
 import { OptionsPanel } from './OptionsPanel';
 import { title, txt } from './text';
@@ -65,8 +66,8 @@ export class HelpOverlay {
       e.stopPropagation();
       this.toggle();
     });
-    const onKey = () => this.toggle();
-    const onEsc = (e: KeyboardEvent) => { if (!e.repeat) this.escape(); };
+    const onKey = () => { if (!typing.active) this.toggle(); };
+    const onEsc = (e: KeyboardEvent) => { if (!e.repeat && !typing.active) this.escape(); };
     scene.input.keyboard!.on('keydown-I', onKey);
     scene.input.keyboard!.on('keydown-ESC', onEsc);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { scene.input.keyboard?.off('keydown-I', onKey); scene.input.keyboard?.off('keydown-ESC', onEsc); });
