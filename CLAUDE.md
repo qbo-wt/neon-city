@@ -3,7 +3,7 @@
 Roguelite tactique cyberpunk au tour par tour (PA/PM, sorts, grille, ligne de vue), Phaser 4 + three.js 0.181 + TypeScript + Vite. Jeu et UI en français ; code, commentaires et messages de commit en anglais.
 
 ## Branche
-- Une seule branche : `main`, le jeu final (rendu 3D anime cel-shading). Les anciennes branches (`anime`, `tactique`, `tactique-3d`) ont été fusionnées puis supprimées le 2026-11-18 ; leur historique reste dans `main`.
+- Une seule branche : `main`, le jeu (rendu 3D anime cel-shading). Ne pas créer d'autre branche sans demande.
 
 ## Commandes
 - `npx tsc --noEmit -p .` — doit être propre.
