@@ -257,9 +257,10 @@ export class OptionsPanel {
     if (this.opts.onGuide) items.push([quit ? 'GUIDE' : 'GUIDE DU RUNNER', () => { this.close(); this.opts.onGuide!(); }, C.magenta]);
     items.push([quit ? 'TUTO' : 'REJOUER LE TUTO', () => this.replayTutorial(), C.green]);
     items.push([quit ? 'DÉFAUT' : 'PAR DÉFAUT', () => this.reset(), C.cyan]);
-    if (quit) items.push(['QUITTER LA RUN', () => { this.close(); this.opts.onQuit!(); }, C.magenta]);
+    if (quit) items.push(['QUITTER', () => { this.close(); this.opts.onQuit!(); }, C.magenta]);
     items.push(['FERMER', () => this.close(), C.yellow]);
-    const bw = quit ? 56 : items.length > 3 ? 66 : 92, gap = 6, total = items.length * bw + (items.length - 1) * gap;
+    // Five buttons in a run: 5 x 50 + 4 x 5 = 270, inside the 300 px panel.
+    const bw = quit ? 50 : items.length > 3 ? 66 : 92, gap = quit ? 5 : 6, total = items.length * bw + (items.length - 1) * gap;
     items.forEach(([label, run, accent], i) => {
       const b = new Button(s, left + (PW - total) / 2 + i * (bw + gap), top + PH - 32, bw, 12, label, {
         accent, font: 'ui', size: 5.5, solid: label === 'FERMER', onClick: run,
