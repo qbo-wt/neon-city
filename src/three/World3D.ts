@@ -549,22 +549,40 @@ export class World3D {
   private layers = new Map<string, THREE.InstancedMesh>();
   private layerGeo = new THREE.PlaneGeometry(CELL * 0.92, CELL * 0.92).rotateX(-Math.PI / 2);
   private layerMat = new THREE.MeshBasicMaterial({ transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: true });
+  // A bright frame around each overlay cell, so ranges read against the patterned street tiles.
+  private frames = new Map<string, THREE.InstancedMesh>();
+  private frameGeo = (() => {
+    const o = CELL * 0.46, i = CELL * 0.38;
+    const sh = new THREE.Shape([new THREE.Vector2(-o, -o), new THREE.Vector2(o, -o), new THREE.Vector2(o, o), new THREE.Vector2(-o, o)]);
+    sh.holes.push(new THREE.Path([new THREE.Vector2(-i, -i), new THREE.Vector2(-i, i), new THREE.Vector2(i, i), new THREE.Vector2(i, -i)]));
+    return new THREE.ShapeGeometry(sh).rotateX(-Math.PI / 2);
+  })();
 
   /** Coloured cells on the ground, one named layer each (range, hover, markers, flashes). */
   setOverlay(layer: string, cells: { p: Pt; color: number; alpha: number }[], order = 0) {
     const old = this.layers.get(layer);
     if (old) { this.scene.remove(old); old.dispose(); this.layers.delete(layer); }
+    const oldF = this.frames.get(layer);
+    if (oldF) { this.scene.remove(oldF); oldF.dispose(); this.frames.delete(layer); }
     if (!cells.length) return;
     const m = new THREE.InstancedMesh(this.layerGeo, this.layerMat, cells.length);
+    // Flashes (order 3) fade out on their own and need no frame.
+    const f = order < 3 ? new THREE.InstancedMesh(this.frameGeo, this.layerMat, cells.length) : undefined;
     const mx = new THREE.Matrix4(), col = new THREE.Color();
     cells.forEach((c, i) => {
       mx.makeTranslation(this.cellPos(c.p, 0.025 + order * 0.004));
       m.setMatrixAt(i, mx);
-      m.setColorAt(i, col.setHex(c.color).multiplyScalar(c.alpha * 0.55));
+      m.setColorAt(i, col.setHex(c.color).multiplyScalar(c.alpha * 0.9));
+      if (f) {
+        mx.makeTranslation(this.cellPos(c.p, 0.027 + order * 0.004));
+        f.setMatrixAt(i, mx);
+        f.setColorAt(i, col.setHex(c.color).multiplyScalar(Math.min(1, c.alpha * 3)));
+      }
     });
     m.renderOrder = 2 + order;
     this.scene.add(m);
     this.layers.set(layer, m);
+    if (f) { f.renderOrder = 2 + order; this.scene.add(f); this.frames.set(layer, f); }
   }
 
   /** Cells that light up then fade (blasts, zones of a spell that just went off). */
