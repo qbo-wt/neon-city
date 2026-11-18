@@ -55,6 +55,7 @@ import type { Board, FightEvent, Pt, SpellDef, Unit } from '../tactics/types';
 import { UnitView3D as UnitView } from '../three/UnitView3D';
 import { stage, environment, showStage, stageOpacity, fadeVisibility } from '../three/stage';
 import type { World3D } from '../three/World3D';
+import { relicTexture } from '../three/relicModels';
 import { BAR_H, TacticalUi } from './run/TacticalUi';
 import { TutorialOverlay, type Rect } from '../ui/Tutorial';
 import { tutorialStepOpen } from '../core/tutorial';
@@ -976,7 +977,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     if (!options.length) { then(); return; }
     const before = this.run.relics.length;
     this.panel = new ChoicePanel(this, this.controls, title, 'Une relique te suit jusqu\'à la fin de la run, sans charge psy. Les maudites donnent beaucoup, mais se paient. Échap : aucune.',
-      options.map(r => ({ label: r.name, desc: r.description, cost: RELIC_RARITY_NAMES[r.rarity], pick: () => this.grantRelic(r) })),
+      options.map(r => ({ label: r.name, desc: r.description, cost: RELIC_RARITY_NAMES[r.rarity], icon: () => relicTexture(this, r.id), pick: () => this.grantRelic(r) })),
       // The panel closes before the pick runs: wait a tick, then leave time to read the relic's banner.
       () => { this.panel = undefined; this.time.delayedCall(10, () => this.time.delayedCall(this.run.relics.length > before ? 1500 : 0, then)); }, 0xff3b3b);
   }
@@ -1157,7 +1158,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       // A dialog the player closes, so the contents can be read at leisure.
       this.panel = new ChoicePanel(this, this.controls, 'Coffre ouvert', lines.join('\n'),
         [{ label: 'CONTINUER', desc: '', pick: () => undefined }],
-        () => { this.panel = undefined; this.nextRoom(); }, 0xf5e663, { code: 'BUTIN // COFFRE' });
+        () => { this.panel = undefined; this.nextRoom(); }, 0xf5e663, { code: 'BUTIN // COFFRE', square: relic ? () => relicTexture(this, relic!.id) : undefined });
       return;
     }
     const next = this.run.rooms[ri + 1];
@@ -1606,7 +1607,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       hp: this.hero.hp, maxHp: this.hero.maxHp, psy: this.run.psy, credits: this.run.creditsEarned, blockers: this.run.blockers, psychosis: this.psyOn,
       room: this.run.roomIndex + 1, rooms: CONFIG.ROOMS_PER_RUN,
       implantIds: this.run.implants.map(i => i.id),
-      implants: this.run.implants.map(i => i.name + (i.level && i.level > 1 ? ' ' + ['', 'I', 'II', 'III'][i.level] : '')), relics: this.run.relics.map(r => ({ name: r.name, desc: r.description, rarity: r.rarity })),
+      implants: this.run.implants.map(i => i.name + (i.level && i.level > 1 ? ' ' + ['', 'I', 'II', 'III'][i.level] : '')), relics: this.run.relics.map(r => ({ id: r.id, name: r.name, desc: r.description, rarity: r.rarity })),
       synergies: activeSynergies(this.run.implants, synergyBonus(this.run.relics)).map(a => synergyTier(a.synergy, a.tier, this.psyOn).name),
       psyBonus: this.psyOn ? psyBonusLabel(this.run.psy) : '',
       notice: this.run.contract && this.run.contract.room === this.run.roomIndex ? contractProgress(this.run.contract, this.tally)

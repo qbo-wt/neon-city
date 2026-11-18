@@ -58,7 +58,7 @@ export interface HudData {
   psychosis: boolean;
   room: number; rooms: number; implants: string[]; implantIds: string[];
   /** carried relics, with their effect for the hover list */
-  relics: { name: string; desc: string; rarity: RelicRarity }[];
+  relics: { id: string; name: string; desc: string; rarity: RelicRarity }[];
   synergies: string[];
   /** what the current psychosis tier gives, e.g. "+25 % DÉG" */
   psyBonus: string;

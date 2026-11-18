@@ -10,7 +10,7 @@ import type Phaser from 'phaser';
 export type Shape = 'plate' | 'arm' | 'shield' | 'shell' | 'chip' | 'eye' | 'lens' | 'heart' | 'gland' | 'legs' | 'launcher' | 'bones' | 'brain' | 'spine';
 export interface ModelSpec { shape: Shape; color: number; /** Distinguishing detail, read by the shape builder (0 = base). */ detail: number }
 
-const CY = 0x00f0ff, MG = 0xff2a6d, YL = 0xf5e663, GR = 0x39ff88, VI = 0xb84dff, OR = 0xff8c2a, RD = 0xff3b3b;
+export const CY = 0x00f0ff, MG = 0xff2a6d, YL = 0xf5e663, GR = 0x39ff88, VI = 0xb84dff, OR = 0xff8c2a, RD = 0xff3b3b;
 
 /** One spec per implant id (a test checks every id of `data/implants.ts` is here). Tweak shape, colour or detail here. */
 export const SPECS: Record<string, ModelSpec> = {
@@ -55,14 +55,14 @@ function toonRamp() {
   }
   return ramp;
 }
-const toon = (color: number) => new THREE.MeshToonMaterial({ color, gradientMap: toonRamp() });
+export const toon = (color: number) => new THREE.MeshToonMaterial({ color, gradientMap: toonRamp() });
 const INK = new THREE.MeshBasicMaterial({ color: 0x0b0820, side: THREE.BackSide });
-const METAL = () => toon(0x6a5fb0);
-const DARK = () => toon(0x2a1a5a);
-const NEON = (c: number) => new THREE.MeshBasicMaterial({ color: c });
+export const METAL = () => toon(0x6a5fb0);
+export const DARK = () => toon(0x2a1a5a);
+export const NEON = (c: number) => new THREE.MeshBasicMaterial({ color: c });
 
-type V3 = [number, number, number];
-class Builder {
+export type V3 = [number, number, number];
+export class Builder {
   g = new THREE.Group();
   constructor(readonly c: number) {}
   add(geo: THREE.BufferGeometry, mat: THREE.Material, p: V3 = [0, 0, 0], r: V3 = [0, 0, 0], outline = true) {
@@ -80,7 +80,7 @@ class Builder {
   neonRing(rad: number, tube: number, p: V3, r: V3 = [0, 0, 0]) { return this.add(new THREE.TorusGeometry(rad, tube, 6, 20), NEON(this.c), p, r, false); }
 }
 
-const HALF = Math.PI / 2;
+export const HALF = Math.PI / 2;
 const SHAPES: Record<Shape, (b: Builder, d: number) => void> = {
   plate(b, d) {
     b.box(1.5, 1.0, 0.18, [0, 0, 0]);
@@ -228,19 +228,23 @@ export function buildImplantModel(id: string): THREE.Group | null {
   return root;
 }
 
-function render(id: string): HTMLCanvasElement | null {
-  const model = buildImplantModel(id);
-  if (!model) return null;
+/** Renders any model to a picture, framed on its bounding sphere; `halo` adds a soft coloured disc behind (cursed relics). */
+export function renderModel(model: THREE.Group, rimColor: number, halo?: number): HTMLCanvasElement {
   const scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xd8d0ff, 0x2a1a5a, 1.6));
   const key = new THREE.DirectionalLight(0xffffff, 2.6); key.position.set(-1.5, 2.5, 3);
-  const rim = new THREE.DirectionalLight(SPECS[id].color, 2.2); rim.position.set(2.5, 1, -2);
+  const rim = new THREE.DirectionalLight(rimColor, 2.2); rim.position.set(2.5, 1, -2);
   scene.add(key, rim);
   model.rotation.set(0.25, -0.5, 0);
   scene.add(model);
   model.updateMatrixWorld(true);
   // Frame on the bounding sphere so every shape fills the picture the same way.
   const sphere = new THREE.Box3().setFromObject(model).getBoundingSphere(new THREE.Sphere());
+  if (halo !== undefined) {
+    const h = new THREE.Mesh(new THREE.SphereGeometry(sphere.radius * 0.98, 24, 16), new THREE.MeshBasicMaterial({ color: halo, transparent: true, opacity: 0.3, depthWrite: false }));
+    h.position.copy(sphere.center).z -= sphere.radius * 0.5;
+    scene.add(h);
+  }
   const cam = new THREE.PerspectiveCamera(24, 1, 0.1, 50);
   const dist = sphere.radius / Math.sin(THREE.MathUtils.degToRad(12)) * 1.02;
   cam.position.set(sphere.center.x, sphere.center.y, sphere.center.z + dist);
@@ -250,30 +254,42 @@ function render(id: string): HTMLCanvasElement | null {
   const out = document.createElement('canvas');
   out.width = out.height = SIZE;
   out.getContext('2d')!.drawImage(r.domElement, 0, 0);
-  model.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+  scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
   return out;
 }
 
-/** The picture of an implant, rendered on first request and cached; null if rendering fails. */
-export function implantPicture(id: string): Promise<HTMLCanvasElement | null> {
-  let p = cache.get(id);
+/** Queues a render (one at a time) and caches it under `key`; null if the model is unknown or rendering fails. */
+export function cachedPicture(key: string, make: () => HTMLCanvasElement | null): Promise<HTMLCanvasElement | null> {
+  let p = cache.get(key);
   if (!p) {
-    p = queue.then(() => render(id)).catch(() => null);
+    p = queue.then(make).catch(() => null);
     queue = p;
-    cache.set(id, p);
+    cache.set(key, p);
   }
   return p;
 }
 
-/** Registers `implant-3d-<id>` as a Phaser texture once rendered; resolves with the key, or null on any failure (callers keep their text-only fallback). */
-export async function implantTexture(scene: Phaser.Scene, id: string): Promise<string | null> {
-  const key = `implant-3d-${id}`;
+/** Registers a rendered picture as a Phaser texture; resolves with the key, or null on failure (callers keep their text fallback). */
+export async function registerPicture(scene: Phaser.Scene, key: string, pic: Promise<HTMLCanvasElement | null>): Promise<string | null> {
   if (scene.textures.exists(key)) return key;
-  const c = await implantPicture(id);
+  const c = await pic;
   if (!c || !scene.sys?.textures) return null;
   if (!scene.textures.exists(key)) {
     scene.textures.addCanvas(key, c);
     scene.textures.get(key).setFilter(0);
   }
   return key;
+}
+
+/** The picture of an implant, rendered on first request and cached; null if rendering fails. */
+export function implantPicture(id: string): Promise<HTMLCanvasElement | null> {
+  return cachedPicture('implant:' + id, () => {
+    const model = buildImplantModel(id);
+    return model ? renderModel(model, SPECS[id].color) : null;
+  });
+}
+
+/** Registers `implant-3d-<id>` as a Phaser texture once rendered; resolves with the key, or null on any failure (callers keep their text-only fallback). */
+export function implantTexture(scene: Phaser.Scene, id: string): Promise<string | null> {
+  return registerPicture(scene, `implant-3d-${id}`, implantPicture(id));
 }

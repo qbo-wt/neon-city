@@ -9,6 +9,7 @@ import { setupCamera } from '../ui/camera';
 import { C, GlitchText, T, bold, drawBar, scanlines, skewPoly, stripes } from '../ui/kit';
 import { camShake } from '../fx/screenFx';
 import { implantTexture } from '../three/implantModels';
+import { relicTexture } from '../three/relicModels';
 
 const STRIP = 14;
 
@@ -37,6 +38,9 @@ export class HudScene extends Phaser.Scene {
   private relicText!: Phaser.GameObjects.Text;
   private relicTip?: Phaser.GameObjects.Container;
   private relicKey = '';
+  private relicIconKey = '';
+  private relicIcons: Phaser.GameObjects.Image[] = [];
+  private relicZone?: Phaser.GameObjects.Zone;
   private relics: HudData['relics'] = [];
   private glitchUntil = 0;
   private nextGlitchAt = 0;
@@ -83,6 +87,9 @@ export class HudScene extends Phaser.Scene {
     this.relicText.on('pointerout', () => this.showRelicTip(false));
     this.relicKey = '';
     this.relicTip = undefined;
+    this.relicIcons = [];
+    this.relicZone = undefined;
+    this.relicIconKey = '';
   }
 
   /** The list of carried relics and their effects, above the relic line. */
@@ -101,6 +108,31 @@ export class HudScene extends Phaser.Scene {
     // The weapon line starts after the icons.
     this.implantsText.setX(4 + (this.implantIcons.length ? ids.length * 11 : 0));
     this.implantIcons.forEach(i => i.setVisible(!modal));
+  }
+
+  /** Small 3D pictures of the carried relics on the relic line; the text line stands in until they are drawn (or if a render fails). Hover on the row lists the effects. */
+  private syncRelicIcons(relics: HudData['relics'], modal: boolean) {
+    const key = relics.map(r => r.id).join('|');
+    if (key !== this.relicIconKey) {
+      this.relicIconKey = key;
+      this.relicIcons.forEach(i => i.destroy());
+      this.relicIcons = [];
+      this.relicZone?.destroy();
+      this.relicZone = undefined;
+      relics.forEach((r, n) => relicTexture(this, r.id).then(tex => {
+        if (!tex || key !== this.relicIconKey || !this.sys?.isActive()) return;
+        this.relicIcons.push(this.add.image(8 + n * 11, CONFIG.HEIGHT - 57, tex).setDisplaySize(10, 10));
+        this.relicZone?.destroy();
+        this.relicZone = this.add.zone(3, CONFIG.HEIGHT - 63, 11 * relics.length, 12).setOrigin(0, 0).setInteractive({ useHandCursor: true });
+        this.relicZone.on('pointerover', () => this.showRelicTip(true));
+        this.relicZone.on('pointerout', () => this.showRelicTip(false));
+      }).catch(() => {}));
+    }
+    const all = relics.length > 0 && this.relicIcons.length === relics.length;
+    this.relicIcons.forEach(i => i.setVisible(!modal));
+    this.relicZone?.setActive(!modal);
+    if (modal) this.relicZone?.disableInteractive(); else if (this.relicZone && !this.relicZone.input?.enabled) this.relicZone.setInteractive({ useHandCursor: true });
+    return all;
   }
 
   private showRelicTip(on: boolean) {
@@ -168,7 +200,8 @@ export class HudScene extends Phaser.Scene {
       if (d.relics.length) this.relicText.setInteractive({ useHandCursor: true });
       this.showRelicTip(false);
     }
-    this.relicText.setVisible(!modal && d.relics.length > 0);
+    const iconsOn = this.syncRelicIcons(d.relics, modal);
+    this.relicText.setVisible(!modal && d.relics.length > 0 && !iconsOn);
     if (modal && this.relicTip) this.showRelicTip(false);
     this.synergyText.setVisible(!this.registry.get('modal'));
     this.synergyText.setText(d.synergies.length ? 'SYNERGIES : ' + d.synergies.join(' · ') : '');
