@@ -34,14 +34,11 @@ export class CodexPanel {
       g.lineStyle(0.5, kills ? C.cyan : C.line, kills ? 0.9 : 0.7).strokePoints(cutPoly(14, y + 1, 26, 26, [4, 0, 4, 0]), true);
       if (!kills) stripes(g, 15, y + 2, 24, 24, C.white, 0.05, 3, 1);
       root.add(g);
-      // The anime character's bust; the old pixel sprite stands in until it is rendered.
+      // The anime character's bust (a blank slot until it is rendered).
       const key = `portrait-${id}${kills ? '' : '-dark'}`;
-      const big = id === 'warden' || id === 'boss' || id === 'brute';
-      const img = s.textures.exists(key) ? s.add.image(27, y + 14, key).setDisplaySize(25, 25)
-        : s.add.image(27, y + 14, `en-${id}`, 'd-idle0').setScale(big ? 0.75 : 1);
-      if (!kills && !s.textures.exists(key)) img.setTint(0x000000).setAlpha(0.7);
+      const img = s.add.image(27, y + 14, s.textures.exists(key) ? key : 'body').setDisplaySize(25, 25);
       if (!s.textures.exists(key)) void portraitTexture(s, id, !kills).then(k => {
-        if (k && img.active) img.setTexture(k).setScale(1).setDisplaySize(25, 25).clearTint().setAlpha(1);
+        if (k && img.active) img.setTexture(k).setDisplaySize(25, 25);
       });
       root.add(img);
       const [desc, tip, lore] = CODEX[id];

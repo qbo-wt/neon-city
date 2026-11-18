@@ -19,7 +19,6 @@ export class HideoutScene extends InteriorScene {
   protected readonly placeName = 'APPART';
   protected readonly tutorialPlace = 'hideout';
   protected readonly grid: RoomTemplate = { id: 'hideout', grid: APT.grid };
-  protected readonly roomOptions = { floorKey: null, wallKey: null, streetLights: false };
   private history!: HistoryPanel;
   private weapons!: WeaponPanel;
   private codex!: CodexPanel;

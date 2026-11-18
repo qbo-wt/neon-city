@@ -1,4 +1,4 @@
-/** Pixel-art sprites as character grids. Each char maps to a palette colour; '.' is transparent. */
+/** Pixel icons (map rewards) as character grids. Each char maps to a palette colour; '.' is transparent. */
 export const PALETTE: Record<string, string> = {
   k: '#05030f', // outline
   c: '#00f0ff', C: '#007a8a', // cyan / dark cyan
@@ -55,38 +55,7 @@ export const SPRITES: Record<string, string[]> = {
     '...krrk...',
     '...kkkk...',
   ],
-  blocker: [
-    '..kkkk..',
-    '.kwwwwk.',
-    'kwwwwwwk',
-    'kwwwwwwk',
-    'kkkkkkkk',
-    'keeeeeek',
-    'keeeeeek',
-    '.keeeek.',
-    '..kkkk..',
-  ],
-  bullet: [
-    '.yy.',
-    'ywwy',
-    'ywwy',
-    '.yy.',
-  ],
-  'bullet-player': [
-    '.cc.',
-    'cwwc',
-    'cwwc',
-    '.cc.',
-  ],
   'fx-spark': ['ww', 'ww'],
-  'bullet-hack': [
-    '.eeee.',
-    'eewwee',
-    'ewwwwe',
-    'ewwwwe',
-    'eewwee',
-    '.eeee.',
-  ],
   'icon-event': [
     '.kkkkkkkk.',
     'kwwwwwwwwk',
@@ -110,14 +79,6 @@ export const SPRITES: Record<string, string[]> = {
     '..kmmmmk..',
     '..kmkmkmk.',
     '...kkkkk..',
-  ],
-  // Facing indicator drawn pointing right, rotated at runtime.
-  chevron: [
-    'ww....',
-    '.www..',
-    '..wwww',
-    '.www..',
-    'ww....',
   ],
 };
 

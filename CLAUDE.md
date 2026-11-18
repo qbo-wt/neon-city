@@ -28,6 +28,7 @@ Roguelite tactique cyberpunk au tour par tour (PA/PM, sorts, grille, ligne de vu
 | Run, progression | `src/core/` : `runMap.ts`, `relics.ts`, `psychosis.ts`, `stats.ts`, `loot.ts`, `save.ts`, `story.ts`, `daily.ts`, `skillTree.ts`, `tutorial.ts`, `vending.ts` (Capsule), `settings.ts` ; `src/systems/runState.ts`, `streetEvents.ts` |
 | Données | `src/data/` : `enemies`, `spells`, `weapons`, `implants`, `synergies`, `relics`, `heat`, `aspects`, `story`, `dialogue`, `codex`, `tutorial`, `vending`, `rooms`, `skillNodes` |
 | Rendu 3D | `src/three/` : `stage.ts` (canvas three sous Phaser), `stylize.ts` (`StylePass` : cel, encre, effets), `characters.ts` (VRM `CharacterRig`, `CAST`), `cyberware.ts` (table `CYBER`), `World3D.ts` + `street/*` (rues/combat), `Interior3D.ts` + `interior/*` (une pièce par fichier : `apartment`, `corridor`, `clinic`, `den`), `portraits.ts`, `quality.ts`, `preload.ts` |
+| Textures 2D restantes | `src/gfx/` : `generateTextures.ts` (icônes de la carte, glow, slash, corps physiques invisibles), `sprites.ts`, `vendingFace.ts` (visage de Capsule) |
 | UI | `src/ui/` : `kit.ts` (style des panneaux), `text.ts` (polices), `GuidePanel`, `OptionsPanel`, `Tutorial`, `ChoicePanel`, `VendingTalk`, `HelpOverlay`, `LoadingScreen` ; `src/scenes/run/TacticalUi.ts` (UI de combat) |
 | Effets, son | `src/fx/animeFx.ts`, `src/fx/screenFx.ts`, `src/audio/audio.ts` (`TRACKS`) |
 

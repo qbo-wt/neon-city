@@ -13,7 +13,6 @@ export class NetrunnerScene extends InteriorScene {
   protected readonly tutorialPlace = 'den';
   protected readonly style3d = 'den' as const;
   protected readonly grid: RoomTemplate = { id: 'den', grid: DEN.grid };
-  protected readonly roomOptions = { floorKey: null, wallKey: null, streetLights: false };
 
   constructor() { super(SCENES.Netrunner); }
 

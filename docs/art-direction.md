@@ -1,6 +1,6 @@
-# Neon City — direction artistique (branche `anime`)
+# Neon City — direction artistique 
 
-Le joueur a rejeté le rendu réaliste (scans photo Poly Haven + persos Mixamo) puis le même rendu passé au filtre BD. Ce qu'il veut : **un jeu magnifique, une patte graphique forte**. Sa référence est l'anime cyberpunk en général (il cite *Cyberpunk: Edgerunners* comme exemple du *genre* de rendu). On en prend les traits de genre, **jamais** les persos, logos, plans ou designs précis de la série.
+Le joueur a rejeté un ancien rendu réaliste (scans photo + persos Mixamo) puis le même rendu passé au filtre BD. Ce qu'il veut : **un jeu magnifique, une patte graphique forte**. Sa référence est l'anime cyberpunk en général (il cite *Cyberpunk: Edgerunners* comme exemple du *genre* de rendu). On en prend les traits de genre, **jamais** les persos, logos, plans ou designs précis de la série.
 
 ## Les traits du style
 
@@ -18,7 +18,7 @@ Le joueur a rejeté le rendu réaliste (scans photo Poly Haven + persos Mixamo) 
 
 VRM anime (VIPE Heroes, Polygonal Mind, CC-BY) dans `public/assets/vrm/`, chargés par `src/three/characters.ts` (`CharacterRig`, même API que les anciens rigs : `root`, `height`, `ready`, `play(anim)`, `update(dt)`, `flash(color)`, `setMood`). Distribution : `hero`, `lo` (mamie du stand de ramen), `doc` (Doc Kessler), `nyx` (netrunneuse), ennemis `runner gunner brute bomber hacker warden boss`, passants `res0`…`res9`.
 
-**Cyberware procédural** (`src/three/cyberware.ts`) : chaque perso porte des augmentations en géométrie maison low-poly (métal MToon cel-shadé violet, liserés néon non éclairés, contour d'encre en coque inversée), ajustées sur sa peau mesurée au repos et attachées aux os normalisés VRM pour suivre les animations. Le look de chacun tient dans la table `CYBER` (bras mécanique qui remplace l'avant-bras d'origine, visière, œil, lignes de joue, prises de nuque, câbles, colonne, plaques, casque Psy-Sec qui rentre les cheveux…), reprise de l'identité des sprites pixel art (héros : bras chromé gauche + œil cyan ; brute : bras hydrauliques ; gunner : visière + bras canon, etc.).
+**Cyberware procédural** (`src/three/cyberware.ts`) : chaque perso porte des augmentations en géométrie maison low-poly (métal MToon cel-shadé violet, liserés néon non éclairés, contour d'encre en coque inversée), ajustées sur sa peau mesurée au repos et attachées aux os normalisés VRM pour suivre les animations. Le look de chacun tient dans la table `CYBER` (bras mécanique qui remplace l'avant-bras d'origine, visière, œil, lignes de joue, prises de nuque, câbles, colonne, plaques, casque Psy-Sec qui rentre les cheveux…), reprise de l'identité des anciens sprites pixel art (supprimés) (héros : bras chromé gauche + œil cyan ; brute : bras hydrauliques ; gunner : visière + bras canon, etc.).
 
 ## Assets disponibles (tous CC0 sauf persos)
 
@@ -26,7 +26,6 @@ VRM anime (VIPE Heroes, Polygonal Mind, CC-BY) dans `public/assets/vrm/`, charg�
 - `public/assets/kaykit/furniture/*.gltf` (+ `texture/furniturebits_texture.png`) : lits, canapés, fauteuils, tables, étagères, lampes, tapis, cadres, plantes.
 - **Seuls les modèles référencés dans `src/` sont dans le repo** (`node scripts/prune-kits.mjs --delete` retire les autres ; les noms construits à l'exécution vont dans sa liste `DYNAMIC`). Les kits complets sont dans l'historique git (commit qui précède `perf: lighter first download`) : `git checkout <commit> -- public/assets/kenney/<kit>/<nom>.glb` pour en récupérer un.
 - Les palettes `colormap.png` peuvent être **recolorées** vers la palette néon (copie modifiée, ne pas écraser l'original sans raison). Ces textures-palettes ne doivent **pas** être aplaties par `stylizeScene` (qui réduit les textures photo à une couleur moyenne).
-- Les anciens assets Poly Haven (`public/assets/ph`, hors git) ne doivent plus être utilisés à terme.
 
 ## Contraintes techniques
 

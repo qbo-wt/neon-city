@@ -23,7 +23,6 @@ import { HazardDecals, WarningDecals, type HazardView, type WarningView } from '
 
 /** One board cell in metres: characters are ~1.8 m tall, props keep their real size. */
 export const CELL = 1.5;
-const PH = 'assets/ph/';
 /** Coloured point lights of a street: always this many (a changing light count recompiles every shader). */
 const POINT_LIGHTS = 8;
 /** Distance from the camera to its focus point (the fog starts behind the board). */
@@ -45,8 +44,6 @@ export class World3D {
   /** Glow on bright things: strong in the wet street, softer indoors. */
   bloom: UnrealBloomPass;
   private gltf = new GLTFLoader();
-  private models = new Map<string, Promise<THREE.Group>>();
-  private tex = new THREE.TextureLoader();
   readonly kit = new KitLibrary(this.gltf);
   private reflection = new GroundReflection(0.42);
   /** Everything of the current place (street or interior); replaced when a new one is built. */
@@ -167,43 +164,6 @@ export class World3D {
     this.scene.environmentIntensity = 0.7;
     pm.dispose();
     sky.geometry.dispose(); (sky.material as THREE.Material).dispose();
-  }
-
-  /** A Poly Haven model (interiors) or a kit model ('kenney/…', 'kaykit/…'). */
-  private model(id: string): Promise<THREE.Group> {
-    if (KitLibrary.isKitPath(id)) return this.kit.load(id);
-    let p = this.models.get(id);
-    if (!p) {
-      p = this.gltf.loadAsync(`${PH}${id}/${id}.gltf`).then(g => {
-        g.scene.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-        return g.scene;
-      });
-      this.models.set(id, p);
-    }
-    return p;
-  }
-
-  /** A copy of one node of a model (or the whole model), with its own transform cleared. */
-  async piece(id: string, node?: string): Promise<THREE.Object3D> {
-    const root = await this.model(id);
-    const src = node ? root.getObjectByName(node) : root;
-    if (!src) throw new Error(`${id}: no node ${node}`);
-    const c = src.clone(true);
-    if (node) { c.position.set(0, 0, 0); c.rotation.set(0, 0, 0); }
-    return c;
-  }
-
-  /** A photo-textured material (interiors; flattened to paint by the style). */
-  pbr(id: string, repeat: number, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
-    const load = (k: string, srgb = false) => {
-      const t = this.tex.load(`${PH}tex/${id}/${k}.jpg`);
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.repeat.set(repeat, repeat);
-      t.anisotropy = 8;
-      if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-      return t;
-    };
-    return new THREE.MeshStandardMaterial({ map: load('diff', true), normalMap: load('nor'), roughnessMap: load('rough'), ...opts });
   }
 
   /** Centre of a cell on the ground, in world metres. */
@@ -626,7 +586,7 @@ export class World3D {
 
   /**
    * A prop model centred on the origin with its base on y = 0, at most `maxSize` wide: a kit path
-   * ('kenney/…'), a street build ('street:crate', 'street:trash'…) or a Poly Haven id (interiors).
+   * ('kenney/…'), or a street build ('street:crate', 'street:trash'…).
    */
   async propModel(id: string, maxSize = CELL * 0.8): Promise<THREE.Object3D> {
     let o: THREE.Object3D;
@@ -634,7 +594,7 @@ export class World3D {
       const kind = id.slice(7);
       const ctx: StreetCtx = { group: this.boardGroup, theme: this.theme ?? themeOf('avenue'), rng: createRng(Math.floor(Math.random() * 1e9)), kit: this.kit, life: this.life ?? new StreetLife(this.boardGroup), CELL, glows: [], pools: [] };
       o = kind === 'trash' ? trashBin(CELL) : (await makeProp(ctx, kind, CELL)) ?? trashBin(CELL);
-    } else o = await this.piece(id);
+    } else o = await this.kit.clone(id);
     o.updateMatrixWorld(true);
     const bb = new THREE.Box3().setFromObject(o), size = bb.getSize(new THREE.Vector3());
     o.scale.multiplyScalar(Math.min(1, maxSize / Math.max(size.x, size.z)));

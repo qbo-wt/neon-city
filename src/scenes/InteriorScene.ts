@@ -6,7 +6,7 @@ import type { RoomTemplate } from '../data/rooms';
 import { Npc, type NpcActivity, type NpcOpts } from '../entities/Npc';
 import { Player } from '../entities/Player';
 import { Controls } from '../input/controls';
-import { buildRoom, type BuiltRoom, type RoomOptions } from '../systems/roomBuilder';
+import { buildRoom, type BuiltRoom } from '../systems/roomBuilder';
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
 import { txt } from '../ui/text';
@@ -63,7 +63,6 @@ export abstract class InteriorScene extends Phaser.Scene {
   private lastPos = { x: 0, y: 0 };
 
   protected abstract readonly grid: RoomTemplate;
-  protected abstract readonly roomOptions: RoomOptions;
   protected abstract readonly placeName: string;
   /** Materials and lighting of the 3D version of the room. */
   protected readonly style3d: InteriorStyle = 'home';
@@ -92,7 +91,7 @@ export abstract class InteriorScene extends Phaser.Scene {
     // Covered until the 3D set is built, so nothing pops in after the wipe.
     showLoading(this, this.placeName);
 
-    this.built = buildRoom(this, this.grid, 0, this.roomOptions);
+    this.built = buildRoom(this, this.grid, 0);
     this.npcGroup = this.physics.add.group({ immovable: true });
     // The 3D back wall stands half a tile into the first floor row.
     const top = this.grid.grid.findIndex(r => /[.oP]/.test(r)) * 32;

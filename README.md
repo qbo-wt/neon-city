@@ -1,20 +1,17 @@
 # Neon City
 
-Rogue-lite tactique au tour par tour, dans le navigateur. Cyberpunk en 3D réaliste vue de trois quarts : décors et textures scannés (Poly Haven, CC0), persos animés Mixamo, éclairage de nuit, pluie, sol mouillé. Bruitages et musique générés par le code.
-
-> Branche `tactique-3d` : la version 3D réaliste du jeu tactique. `tactique` garde la version pixel art, `main` la version action en temps réel.
+Rogue-lite tactique au tour par tour, dans le navigateur. Cyberpunk en 3D anime (cel-shading, traits d'encre) vue de trois quarts : décors en kits low-poly (Kenney, KayKit), personnages VRM animés par retarget d'animations Mixamo, néons, pluie, sol mouillé. Bruitages et musique générés par le code.
 
 ## Lancer
 
 ```bash
 npm install
-npm run assets     # télécharge les décors 3D Poly Haven (CC0, ~185 Mo, hors git)
 npm run dev        # http://localhost:5173
 npm test           # tests de la logique de jeu (Vitest)
 npm run build      # vérification des types + build statique dans dist/
 ```
 
-Les persos viennent de Mixamo : les GLB compacts sont dans `public/assets/mixamo/glb`, les animations dans `public/assets/mixamo/anims`. Pour en changer un, déposer le FBX Mixamo dans `public/assets/mixamo/characters/` puis lancer `npm run convert-mixamo` (serveur de dev lancé).
+Les personnages sont des VRM dans `public/assets/vrm` (passer un nouveau par `scripts/slim-vrm.mjs` puis `scripts/compress-vrm.mjs`) ; les animations Mixamo (FBX sans skin) sont dans `public/assets/mixamo/anims`. Voir `CLAUDE.md` et `docs/art-direction.md`.
 
 ## Contrôles
 
@@ -63,7 +60,7 @@ Appart → couloir de l'immeuble → ascenseur → run de 10 secteurs → mort o
 - **Implants** : 29 implants, 4 familles, 3 raretés plus le marché noir. Ils donnent des PA, PM, portée, résistance, dégâts de poussée, vol de vie… et certains ajoutent un sort (Court-circuit, Tourelle, Grenade, Stimulant, Bouclier cinétique, Tir réflexe). Retrouver un implant l'améliore. 2 et 3 implants d'une famille débloquent une synergie.
 - **Route** : chaque sortie annonce sa récompense, une rencontre (fixer et ses contrats, charcudoc de rue, netrunner, marchande) ou un secteur d'élite (boucliers, explosifs, camouflés, enragés).
 - **Contrats du fixer** : gagner sans perdre un PV, gagner en 3 rounds, éliminer 2 ennemis dans le même tour.
-- **Notoriété**, run du jour, récit des voisins et bestiaire comme sur `main`.
+- **Notoriété**, run du jour, récit des voisins et bestiaire .
 
 ## Structure
 
@@ -72,9 +69,9 @@ src/
   tactics/         moteur de combat pur et testé : plateau, ligne de vue, chemins, sorts, tours, IA, arènes
   data/            contenu : sorts, ennemis, armes, aspects, implants, synergies, notoriété, récit, bestiaire
   core/            logique pure de la méta (stats, psychose, offres, contrats, sauvegarde, run du jour)
-  scenes/          Boot, Menu, Hideout, Building, Ripperdoc, Netrunner, Run (+ run/ : vue des unités, interface), Hud, Death
-  three/           rendu 3D : rues (World3D), intérieurs (Interior3D), unités, persos Mixamo
-  gfx/             art 2D restant (icônes, interface)
+  scenes/          Boot, Menu, Hideout, Building, Ripperdoc, Netrunner, Run (+ run/ : interface de combat), Hud, Death
+  three/           rendu 3D : rues (World3D), intérieurs (Interior3D), unités, personnages VRM
+  gfx/             textures 2D restantes (icônes de la carte, effets, visage de Capsule)
   audio/ entities/ systems/ ui/ fx/ input/
 tests/             tests Vitest (core et tactics)
 docs/              conception

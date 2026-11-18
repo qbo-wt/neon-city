@@ -9,7 +9,7 @@ import { preloadAll } from '../three/preload';
 /** Shortest time the loading screen stays up, so it never just flashes. */
 const MIN_MS = 1600;
 
-/** Loading screen: draws the 2D art, fetches every 3D file and the anime avatars, then the menu. */
+/** Loading screen: draws the few 2D textures, fetches every 3D file and the anime avatars, then the menu. */
 export class BootScene extends Phaser.Scene {
   private screen?: LoadingScreen;
 

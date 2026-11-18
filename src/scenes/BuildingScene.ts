@@ -4,12 +4,14 @@ import type { RoomTemplate } from '../data/rooms';
 import { InteriorScene } from './InteriorScene';
 import type { NpcActivity, NpcOpts } from '../entities/Npc';
 import { NAMES, RUMORS, SPECIAL_LINES } from '../data/dialogue';
-import { RESIDENTS } from '../gfx/npcArt';
 import { DescentPanel } from '../ui/DescentPanel';
 import type { Interior3D } from '../three/Interior3D';
 import { HALL, buildCorridor } from '../three/interior/corridor';
 import { VendingTalk } from '../ui/VendingTalk';
 import { loAboutCapsule } from '../data/vending';
+
+/** Distinct resident looks (res-0 … res-23); the 3D models are picked from it in InteriorScene. */
+const RESIDENTS = 24;
 
 /**
  * Floor 37 of the megabuilding: home, the clinic, Nyx's den and the elevator down to the street,
@@ -22,7 +24,6 @@ export class BuildingScene extends InteriorScene {
   protected readonly tutorialPlace = 'building';
   protected readonly style3d = 'corridor' as const;
   protected readonly grid: RoomTemplate = { id: 'building', grid: HALL.grid };
-  protected readonly roomOptions = { floorKey: null, wallKey: null, streetLights: false };
 
   private descent!: DescentPanel;
   private vending!: VendingTalk;

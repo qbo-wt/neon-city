@@ -13,7 +13,6 @@ export class RipperdocScene extends InteriorScene {
   protected readonly tutorialPlace = 'clinic';
   protected readonly style3d = 'clinic' as const;
   protected readonly grid: RoomTemplate = { id: 'clinic', grid: CLINIC.grid };
-  protected readonly roomOptions = { floorKey: null, wallKey: null, streetLights: false };
 
   constructor() { super(SCENES.Ripperdoc); }
 

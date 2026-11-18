@@ -6,8 +6,6 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "assets": "node scripts/fetch-polyhaven.mjs",
-    "convert-mixamo": "node scripts/convert-mixamo.mjs",
     "manifest": "node scripts/asset-manifest.mjs"
   },
   "keywords": [],

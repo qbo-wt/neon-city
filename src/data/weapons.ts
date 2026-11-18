@@ -1,5 +1,4 @@
 import type { Stats } from '../core/types';
-import type { WeaponArt } from '../gfx/playerArt';
 
 export type WeaponId = 'blade' | 'mantis' | 'gorilla' | 'wire' | 'pistol';
 
@@ -10,7 +9,6 @@ export interface Weapon {
   description: string;
   /** credits to unlock at the apartment rack (0 = owned from the start) */
   cost: number;
-  art: WeaponArt;
   /** the four spells this weapon gives (its "class") */
   spells: [string, string, string, string];
   /** weapon-specific stat tweaks */
@@ -20,23 +18,23 @@ export interface Weapon {
 /** Five ways to fight: each weapon is a class with four spells. */
 export const WEAPONS: Record<WeaponId, Weapon> = {
   blade: {
-    id: 'blade', name: 'Lame-mono', description: 'Équilibrée : bons coups au contact, une ruée qui tranche au passage.', cost: 0, art: 'blade',
+    id: 'blade', name: 'Lame-mono', description: 'Équilibrée : bons coups au contact, une ruée qui tranche au passage.', cost: 0,
     spells: ['cut', 'thrust', 'windcut', 'guard'],
   },
   mantis: {
-    id: 'mantis', name: 'Lames mantes', description: 'Agile : beaucoup de petits coups, des critiques, des saignements et des bonds.', cost: 150, art: 'mantis',
+    id: 'mantis', name: 'Lames mantes', description: 'Agile : beaucoup de petits coups, des critiques, des saignements et des bonds.', cost: 150,
     spells: ['rend', 'bleed', 'leap', 'evade'], modify: s => ({ ...s, critChance: s.critChance + 0.05, dodge: s.dodge + 1 }),
   },
   gorilla: {
-    id: 'gorilla', name: 'Poings Titan', description: 'Lourd : repousse les ennemis contre les murs et les uns sur les autres.', cost: 250, art: 'fist',
+    id: 'gorilla', name: 'Poings Titan', description: 'Lourd : repousse les ennemis contre les murs et les uns sur les autres.', cost: 250,
     spells: ['uppercut', 'jab', 'shockwave', 'tackle'], modify: s => ({ ...s, tackle: s.tackle + 1, pushDamage: s.pushDamage + 2 }),
   },
   wire: {
-    id: 'wire', name: 'Fil-mono', description: 'Contrôle : frappe à 3 cases, attire, ralentit et immobilise.', cost: 350, art: 'wire',
+    id: 'wire', name: 'Fil-mono', description: 'Contrôle : frappe à 3 cases, attire, ralentit et immobilise.', cost: 350,
     spells: ['whip', 'harpoon', 'garrote', 'web'],
   },
   pistol: {
-    id: 'pistol', name: 'Pistolet « Vautour »', description: 'À distance : tire de loin, perce les lignes, roule pour garder ses distances.', cost: 450, art: 'gun',
+    id: 'pistol', name: 'Pistolet « Vautour »', description: 'À distance : tire de loin, perce les lignes, roule pour garder ses distances.', cost: 450,
     spells: ['shot', 'pierce', 'volley', 'roll'],
   },
 };
