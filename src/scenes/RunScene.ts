@@ -1599,6 +1599,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     const hud: HudData = {
       hp: this.hero.hp, maxHp: this.hero.maxHp, psy: this.run.psy, credits: this.run.creditsEarned, blockers: this.run.blockers, psychosis: this.psyOn,
       room: this.run.roomIndex + 1, rooms: CONFIG.ROOMS_PER_RUN,
+      implantIds: this.run.implants.map(i => i.id),
       implants: this.run.implants.map(i => i.name + (i.level && i.level > 1 ? ' ' + ['', 'I', 'II', 'III'][i.level] : '')), relics: this.run.relics.map(r => ({ name: r.name, desc: r.description, rarity: r.rarity })),
       synergies: activeSynergies(this.run.implants, synergyBonus(this.run.relics)).map(a => synergyTier(a.synergy, a.tier, this.psyOn).name),
       psyBonus: this.psyOn ? psyBonusLabel(this.run.psy) : '',

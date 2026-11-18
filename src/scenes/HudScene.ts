@@ -8,6 +8,7 @@ import { title, txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
 import { C, GlitchText, T, bold, drawBar, scanlines, skewPoly, stripes } from '../ui/kit';
 import { camShake } from '../fx/screenFx';
+import { implantTexture } from '../three/implantModels';
 
 const STRIP = 14;
 
@@ -24,6 +25,8 @@ export class HudScene extends Phaser.Scene {
   private creditsText!: Phaser.GameObjects.Text;
   private neuroText!: Phaser.GameObjects.Text;
   private implantsText!: Phaser.GameObjects.Text;
+  private implantIcons: Phaser.GameObjects.Image[] = [];
+  private implantKey = '';
   private bossText!: Phaser.GameObjects.Text;
   private crisisText!: GlitchText;
   private psyBonusText!: Phaser.GameObjects.Text;
@@ -83,6 +86,23 @@ export class HudScene extends Phaser.Scene {
   }
 
   /** The list of carried relics and their effects, above the relic line. */
+  /** Small 3D pictures of the owned implants left of the weapon line; rebuilt when the list changes, absent if a render fails. */
+  private syncImplantIcons(ids: string[], modal: boolean) {
+    const key = ids.join('|');
+    if (key !== this.implantKey) {
+      this.implantKey = key;
+      this.implantIcons.forEach(i => i.destroy());
+      this.implantIcons = [];
+      ids.forEach((id, n) => implantTexture(this, id).then(tex => {
+        if (!tex || key !== this.implantKey || !this.sys?.isActive()) return;
+        this.implantIcons.push(this.add.image(8 + n * 11, CONFIG.HEIGHT - 43, tex).setDisplaySize(10, 10));
+      }).catch(() => {}));
+    }
+    // The weapon line starts after the icons.
+    this.implantsText.setX(4 + (this.implantIcons.length ? ids.length * 11 : 0));
+    this.implantIcons.forEach(i => i.setVisible(!modal));
+  }
+
   private showRelicTip(on: boolean) {
     this.relicTip?.destroy();
     this.relicTip = undefined;
@@ -137,6 +157,7 @@ export class HudScene extends Phaser.Scene {
     const modal = !!this.registry.get('modal');
     const parts = [d.weapon.toUpperCase(), d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : ''];
     this.implantsText.setText(parts.filter(Boolean).join('   |   ')).setVisible(!modal);
+    this.syncImplantIcons(d.implantIds, modal);
     // Relics on their own line; the hit area follows the text when the list changes.
     const key = d.relics.map(r => r.name).join('|');
     if (key !== this.relicKey) {

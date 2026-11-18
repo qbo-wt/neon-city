@@ -6,6 +6,7 @@ import type { Implant } from '../core/types';
 import { FAMILY_COLORS, FAMILY_NAMES, RARITY_COLORS, RARITY_NAMES } from '../data/implants';
 import { SYNERGIES, familyCounts } from '../data/synergies';
 import type { Controls } from '../input/controls';
+import { implantTexture } from '../three/implantModels';
 import { hex, title, txt } from './text';
 import { C, Card, GlitchText, T, backdrop, bold, chip, cutPoly, halftone, keycap, pinToCamera } from './kit';
 
@@ -42,9 +43,9 @@ export class ImplantChoice {
       g.fillStyle(border, 0.5).fillTriangle(cw * 0.62, 0, cw * 0.62 + 6, 0, cw * 0.62, 10);
       // The implant on a halftone disc, ringed by its family colour.
       halftone(g, cw / 2 - 26, 18, 52, 40, fam, 0.22, 'bl', 3, 1.2);
-      g.fillStyle(C.deep, 0.9).fillCircle(cw / 2, 40, 15);
-      g.lineStyle(0.75, fam, 0.9).strokeCircle(cw / 2, 40, 15);
-      g.lineStyle(0.25, fam, 0.5).strokeCircle(cw / 2, 40, 18.5);
+      g.fillStyle(C.deep, 0.9).fillCircle(cw / 2, 40, 19);
+      g.lineStyle(0.75, fam, 0.9).strokeCircle(cw / 2, 40, 19);
+      g.lineStyle(0.25, fam, 0.5).strokeCircle(cw / 2, 40, 22.5);
       if (rarity === 'epic' || rarity === 'black') g.lineStyle(0.5, border, 0.6).strokePoints(cutPoly(3, 3, cw - 6, ch - 6, 6), true);
       card.add(g);
       card.add(bold(scene, 9, 5, RARITY_NAMES[rarity], 5, T.dark).setOrigin(0, 0.5));
@@ -53,7 +54,12 @@ export class ImplantChoice {
       if (imp.family) icon.setTint(fam);
       if (rarity === 'black') icon.setTint(0x39ff88);
       card.add(icon);
-      if (o.upgrade) card.add(chip(scene, cw / 2, 62, '▲ AMÉLIORATION', C.yellow, { filled: true, size: 4.5, originX: 0.5 }));
+      // The 3D picture replaces the generic icon once rendered (lazy); on any failure the generic icon stays.
+      implantTexture(scene, imp.id).then(key => {
+        if (!key || !icon.active) return;
+        icon.setTexture(key).clearTint().setScale(42 / 128);
+      }).catch(() => {});
+      if (o.upgrade) card.add(chip(scene, cw / 2, 65, '▲ AMÉLIORATION', C.yellow, { filled: true, size: 4.5, originX: 0.5 }));
       card.add(title(scene, cw / 2, 76, `${imp.name}${o.level > 1 ? ' ' + ROMAN[o.level] : ''}`, 13, T.text).setFontStyle('600').setOrigin(0.5).setWordWrapWidth(cw - 10).setAlign('center'));
       const desc = imp.describe?.(o.level) ?? imp.description;
       card.add(txt(scene, cw / 2, 88, desc, 6, rarity === 'black' ? T.green : T.yellow).setOrigin(0.5, 0).setWordWrapWidth(cw - 14).setAlign('center').setLineSpacing(1));

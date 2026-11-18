@@ -56,7 +56,7 @@ export interface HudData {
   hp: number; maxHp: number; psy: number; credits: number; blockers: number;
   /** false in a normal run: no PSY gauge, no neuro-blockers, no psychosis screen effects */
   psychosis: boolean;
-  room: number; rooms: number; implants: string[];
+  room: number; rooms: number; implants: string[]; implantIds: string[];
   /** carried relics, with their effect for the hover list */
   relics: { name: string; desc: string; rarity: RelicRarity }[];
   synergies: string[];
