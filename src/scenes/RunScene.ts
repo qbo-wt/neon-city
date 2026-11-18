@@ -82,11 +82,11 @@ const wait = (scene: Phaser.Scene, ms: number) => new Promise<void>(res => scene
 
 /** Cells to light on the 3D ground; flushed to the world when they change. */
 class CellLayer {
-  cells: { p: Pt; color: number; alpha: number }[] = [];
+  cells: { p: Pt; color: number; alpha: number; edge?: boolean }[] = [];
   dirty = true;
   constructor(readonly name: string, readonly order: number) {}
   clear() { if (this.cells.length) { this.cells = []; this.dirty = true; } }
-  add(p: Pt, color: number, alpha: number) { this.cells.push({ p, color, alpha }); this.dirty = true; }
+  add(p: Pt, color: number, alpha: number, edge?: boolean) { this.cells.push({ p, color, alpha, edge }); this.dirty = true; }
 }
 
 type Mode = 'explore' | 'placement' | 'input' | 'busy' | 'ai' | 'done';
@@ -1498,7 +1498,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     if (shown !== null && this.spells[shown]) {
       const s = this.spells[shown];
       if (s.target === 'self') { if (s.zone.shape !== 'cell') for (const c of zoneCells(f, p, s, p)) this.diamond(g, c, 0xff2a6d, 0.3, 0xff2a6d); }
-      else for (const r of rangeCells(f, p, s)) this.diamond(g, r.p, r.sight ? 0x2a6aff : 0x5a5578, r.sight ? 0.32 : 0.22);
+      else for (const r of rangeCells(f, p, s)) g.add(r.p, r.sight ? 0x2a6aff : 0x5a5578, r.sight ? 0.32 : 0.22, r.sight);
       return;
     }
     if (this.mode !== 'input') return;

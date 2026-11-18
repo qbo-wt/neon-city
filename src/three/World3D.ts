@@ -559,25 +559,26 @@ export class World3D {
   })();
 
   /** Coloured cells on the ground, one named layer each (range, hover, markers, flashes). */
-  setOverlay(layer: string, cells: { p: Pt; color: number; alpha: number }[], order = 0) {
+  setOverlay(layer: string, cells: { p: Pt; color: number; alpha: number; edge?: boolean }[], order = 0) {
     const old = this.layers.get(layer);
     if (old) { this.scene.remove(old); old.dispose(); this.layers.delete(layer); }
     const oldF = this.frames.get(layer);
     if (oldF) { this.scene.remove(oldF); oldF.dispose(); this.frames.delete(layer); }
     if (!cells.length) return;
     const m = new THREE.InstancedMesh(this.layerGeo, this.layerMat, cells.length);
-    // Flashes (order 3) fade out on their own and need no frame.
-    const f = order < 3 ? new THREE.InstancedMesh(this.frameGeo, this.layerMat, cells.length) : undefined;
+    // Only cells flagged `edge` (a spell's range) get the frame and a slightly stronger fill.
+    const edged = cells.filter(c => c.edge);
+    const f = edged.length ? new THREE.InstancedMesh(this.frameGeo, this.layerMat, edged.length) : undefined;
     const mx = new THREE.Matrix4(), col = new THREE.Color();
     cells.forEach((c, i) => {
       mx.makeTranslation(this.cellPos(c.p, 0.025 + order * 0.004));
       m.setMatrixAt(i, mx);
-      m.setColorAt(i, col.setHex(c.color).multiplyScalar(c.alpha * 0.9));
-      if (f) {
-        mx.makeTranslation(this.cellPos(c.p, 0.027 + order * 0.004));
-        f.setMatrixAt(i, mx);
-        f.setColorAt(i, col.setHex(c.color).multiplyScalar(Math.min(1, c.alpha * 3)));
-      }
+      m.setColorAt(i, col.setHex(c.color).multiplyScalar(c.alpha * (c.edge ? 0.7 : 0.55)));
+    });
+    edged.forEach((c, i) => {
+      mx.makeTranslation(this.cellPos(c.p, 0.027 + order * 0.004));
+      f!.setMatrixAt(i, mx);
+      f!.setColorAt(i, col.setHex(c.color).multiplyScalar(c.alpha * 1.4));
     });
     m.renderOrder = 2 + order;
     this.scene.add(m);
