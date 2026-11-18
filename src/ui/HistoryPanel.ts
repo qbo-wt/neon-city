@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config';
-import { bestFirst, formatTime, recentFirst, type RunRecord } from '../core/history';
+import { bestFirst, formatTime, recentFirst, recordModeLabel, type RunRecord } from '../core/history';
 import type { DailyRecord } from '../core/save';
 import { txt } from './text';
 import { C, T, bold, chip, hints, pinToCamera, screenFrame, tabs } from './kit';
@@ -8,7 +8,7 @@ import { C, T, bold, chip, hints, pinToCamera, screenFrame, tabs } from './kit';
 type Filter = 'recent' | 'best' | 'daily';
 const ROWS = 11;
 const COLS: [label: string, x: number][] = [
-  ['#', 18], ['DATE', 32], ['RÉSULTAT', 96], ['ENNEMIS', 170], ['DÉGÂTS', 222], ['SOINS', 272], ['CRÉDITS', 318], ['TEMPS', 372],
+  ['#', 16], ['DATE', 28], ['MODE', 82], ['RÉSULTAT', 124], ['ENNEMIS', 190], ['DÉGÂTS', 234], ['SOINS', 280], ['CRÉDITS', 322], ['TEMPS', 374],
 ];
 
 const fmtDate = (ms: number) => {
@@ -80,9 +80,11 @@ export class HistoryPanel {
     }
     list.forEach((r, i) => {
       const y = this.row(root, i);
-      const cells = [String(i + 1), fmtDate(r.date), '', String(r.kills), String(r.damageDealt), String(r.hpHealed), `${r.credits}¢`, formatTime(r.timeMs)];
-      cells.forEach((c, k) => { if (c) root.add(txt(s, COLS[k][1], y + 5, c, 7, k === 0 ? T.mute : k === 6 ? T.yellow : T.text).setOrigin(0, 0.5)); });
-      root.add(chip(s, COLS[2][1], y + 5, r.victory ? 'VICTOIRE' : `MORT — S${r.sector}`, r.victory ? C.yellow : C.magenta, { size: 5, filled: r.victory }));
+      const cells = [String(i + 1), fmtDate(r.date), '', '', String(r.kills), String(r.damageDealt), String(r.hpHealed), `${r.credits}¢`, formatTime(r.timeMs)];
+      cells.forEach((c, k) => { if (c) root.add(txt(s, COLS[k][1], y + 5, c, 7, k === 0 ? T.mute : k === 7 ? T.yellow : T.text).setOrigin(0, 0.5)); });
+      const mode = recordModeLabel(r);
+      root.add(bold(s, COLS[2][1], y + 5, mode, 5, mode === 'NORMALE' ? T.cyan : mode === 'CYBERHARD' ? T.magenta : T.dim).setOrigin(0, 0.5));
+      root.add(chip(s, COLS[3][1], y + 5, r.victory ? 'VICTOIRE' : `MORT — S${r.sector}`, r.victory ? C.yellow : C.magenta, { size: 5, filled: r.victory }));
     });
 
     root.add(txt(s, W - 16, H - 12, `${all.length} run(s) enregistrée(s)`, 5, T.off).setOrigin(1, 0.5));

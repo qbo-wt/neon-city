@@ -8,10 +8,10 @@ export const RELIC_WEIGHTS: Record<RelicRarity, number> = { common: 5, rare: 3, 
 export const RELIC_RARITY_NAMES: Record<RelicRarity, string> = { common: 'COMMUNE', rare: 'RARE', legendary: 'LÉGENDAIRE', cursed: 'MAUDITE' };
 export const RELIC_RARITY_COLORS: Record<RelicRarity, string> = { common: '#8a86b0', rare: '#00f0ff', legendary: '#f5e663', cursed: '#39ff88' };
 
-/** Relics still to find in this run: not owned, and useful with this spell bar. */
-export function relicPool(all: readonly Relic[], owned: readonly Relic[], spells: readonly SpellDef[]): Relic[] {
+/** Relics still to find in this run: not owned, useful with this spell bar, and with psychosis if they need it. */
+export function relicPool(all: readonly Relic[], owned: readonly Relic[], spells: readonly SpellDef[], psychosis = true): Relic[] {
   const have = new Set(owned.map(r => r.id));
-  return all.filter(r => !have.has(r.id) && (!r.fits || r.fits(spells)));
+  return all.filter(r => !have.has(r.id) && (!r.fits || r.fits(spells)) && (psychosis || !r.psyOnly));
 }
 
 /**

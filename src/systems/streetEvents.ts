@@ -30,6 +30,8 @@ export const STREET_EVENTS: Record<StreetEventId, { name: string; look: string; 
 /** What an event can do to the run; implemented by the RunScene. */
 export interface EventCtx {
   rng: Rng;
+  /** false in a normal run: the psychosis and neuro-blocker options give way to plain ones */
+  psychosis: boolean;
   /** a base price after the build's discounts */
   price(n: number): number;
   credits(): number;
@@ -58,7 +60,8 @@ export function eventOptions(id: StreetEventId, c: EventCtx): ChoiceOption[] {
   const money = (n: number) => c.credits() >= n;
   /** A paid option at its (possibly discounted) price. */
   const buy = (base: number) => { const p = c.price(base); return { cost: `${p}¢`, enabled: money(p), pay: () => c.spend(p) }; };
-  const doc = buy(25), pirate = buy(12), stim = buy(15), blocker = buy(12), revision = buy(30), counter = buy(60);
+  const doc = buy(25), pirate = buy(12), stim = buy(15), blocker = buy(12), revision = buy(30), counter = buy(60), patch = buy(10);
+  const psy = c.psychosis;
   switch (id) {
     case 'fixer':
       return CONTRACTS.map(k => ({
@@ -69,23 +72,32 @@ export function eventOptions(id: StreetEventId, c: EventCtx): ChoiceOption[] {
       return [
         { label: 'Greffe propre', desc: 'Un implant rare ou mieux, posé proprement.', cost: doc.cost, enabled: doc.enabled, pick: () => { doc.pay(); c.implants({ minRarity: 'rare' }); } },
         { label: 'Greffe du marché noir', desc: 'Gratuit. Un implant du marché noir : très fort, avec un vrai défaut.', cost: 'gratuit', pick: () => c.implants('black') },
-        { label: 'Purge neurale', desc: 'Retire 35 de psychose. Il prélève un peu de sang au passage.', cost: '-15 PV', enabled: c.hp() > 15, pick: () => { c.hurt(15); c.addPsy(-35); c.say('-35 PSY', '#39ff88'); } },
+        psy
+          ? { label: 'Purge neurale', desc: 'Retire 35 de psychose. Il prélève un peu de sang au passage.', cost: '-15 PV', enabled: c.hp() > 15, pick: () => { c.hurt(15); c.addPsy(-35); c.say('-35 PSY', '#39ff88'); } }
+          : { label: 'Points de suture', desc: 'Soigne 30 % de ta vie. Vite fait, pas très droit.', cost: patch.cost, enabled: patch.enabled, pick: () => { patch.pay(); c.healFraction(0.3); } },
       ];
     case 'netrunner':
       return [
-        { label: 'Quitte ou double', desc: 'Une chance sur deux : -40 de psychose... ou +25.', cost: 'pari', pick: () => {
-          if (c.rng() < 0.5) { c.addPsy(-40); c.say('GAGNÉ — -40 PSY', '#39ff88'); } else { c.addPsy(25); c.say('PERDU — +25 PSY', '#ff2a6d'); }
-        } },
+        psy
+          ? { label: 'Quitte ou double', desc: 'Une chance sur deux : -40 de psychose... ou +25.', cost: 'pari', pick: () => {
+            if (c.rng() < 0.5) { c.addPsy(-40); c.say('GAGNÉ — -40 PSY', '#39ff88'); } else { c.addPsy(25); c.say('PERDU — +25 PSY', '#ff2a6d'); }
+          } }
+          : { label: 'Quitte ou double', desc: 'Une chance sur deux : un implant amélioré d\'un niveau... ou -12 PV.', cost: 'pari', enabled: c.canUpgrade() && c.hp() > 12, pick: () => {
+            const n = c.rng() < 0.5 ? c.upgradeRandom() : undefined;
+            if (n) c.say(`GAGNÉ — ${n.toUpperCase()} AMÉLIORÉ`, '#39ff88'); else { c.hurt(12); c.say('PERDU — -12 PV', '#ff2a6d'); }
+          } },
         { label: 'Pirater un distributeur', desc: '65 % : +25¢. Sinon la contre-mesure te grille : -15 PV.', cost: 'pari', enabled: c.hp() > 15, pick: () => {
           if (c.rng() < 0.65) { c.gain(25); c.say('+25¢', '#f5e663'); } else { c.hurt(15); c.say('CONTRE-MESURE — -15 PV', '#ff2a6d'); }
         } },
-        { label: 'Neuro-bloqueur pirate', desc: '+1 neuro-bloqueur.', cost: pirate.cost, enabled: pirate.enabled, pick: () => { pirate.pay(); c.addBlocker(); c.say('+1 NEURO-BLOQUEUR', '#39ff88'); } },
+        psy
+          ? { label: 'Neuro-bloqueur pirate', desc: '+1 neuro-bloqueur.', cost: pirate.cost, enabled: pirate.enabled, pick: () => { pirate.pay(); c.addBlocker(); c.say('+1 NEURO-BLOQUEUR', '#39ff88'); } }
+          : { label: 'Patch médical pirate', desc: 'Soigne 25 % de ta vie.', cost: pirate.cost, enabled: pirate.enabled, pick: () => { pirate.pay(); c.healFraction(0.25); } },
       ];
     case 'merchant': {
       const relic = c.relicLeft();
       const opts: ChoiceOption[] = [
         { label: 'Stimpack', desc: 'Soigne 40 % de ta vie.', cost: stim.cost, enabled: stim.enabled, pick: () => { stim.pay(); c.healFraction(0.4); } },
-        { label: 'Neuro-bloqueur', desc: '+1 neuro-bloqueur.', cost: blocker.cost, enabled: blocker.enabled, pick: () => { blocker.pay(); c.addBlocker(); c.say('+1 NEURO-BLOQUEUR', '#39ff88'); } },
+        ...(psy ? [{ label: 'Neuro-bloqueur', desc: '+1 neuro-bloqueur.', cost: blocker.cost, enabled: blocker.enabled, pick: () => { blocker.pay(); c.addBlocker(); c.say('+1 NEURO-BLOQUEUR', '#39ff88'); } }] : []),
         { label: 'Révision d\'implant', desc: 'Améliore d\'un niveau un implant que tu portes, au hasard.', cost: revision.cost, enabled: revision.enabled && c.canUpgrade(), pick: () => {
           revision.pay(); const n = c.upgradeRandom(); if (n) c.say(`${n.toUpperCase()} AMÉLIORÉ`, '#f5e663');
         } },

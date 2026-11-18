@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { walkable } from '../../src/tactics/board';
-import { beginFight, byUid, cloneFight, createFight, current, endTurn, kill, moveTo, previewCast, unitAt, type Fight } from '../../src/tactics/fight';
+import { beginFight, byUid, cast, cloneFight, createFight, current, endTurn, kill, moveTo, previewCast, unitAt, type Fight } from '../../src/tactics/fight';
 import { playTurn } from '../../src/tactics/ai';
-import { BOSS_HOOKS, BOSS_TUNING, guarded, relays } from '../../src/tactics/bosses';
+import { BOSS_HOOKS, BOSS_PHASES, BOSS_TUNING, bossNotes, guarded, phaseSub, relays } from '../../src/tactics/bosses';
 import { hazardAt } from '../../src/tactics/hazards';
 import { TERRAIN_HOOKS, addHazard } from '../../src/tactics/terrain';
 import { makeBreakable, makeEnemy, makePlayer, makeSummon } from '../../src/tactics/units';
@@ -287,5 +287,51 @@ describe('Exécuteur Psy-Sec', () => {
       if (!h.over) endTurn(h);
     }
     expect(h.round).toBeGreaterThan(1);
+  });
+});
+
+describe('a fight without psychosis (normal run)', () => {
+  const exec = (f: Fight) => f.units.find(u => u.kind === 'boss')!;
+  const calm = (w: number, h: number, units: Unit[]) => {
+    const f = createFight(board(w, h), units, fixed, makeSummon);
+    f.hooks = [TERRAIN_HOOKS, BOSS_HOOKS];
+    f.noPsy = true;
+    beginFight(f);
+    return f;
+  };
+
+  it('the Exécuteur\'s surge still hurts but adds no psychosis', () => {
+    const f = calm(9, 9, [hero({ x: 2, y: 6 }), makeEnemy('boss', { x: 6, y: 1 }, sc)]);
+    const p = player(f), b = exec(f);
+    toTurn(f, b.uid);
+    toTurn(f, p.uid);
+    const before = p.hp;
+    const ev = toTurn(f, b.uid);
+    expect(p.hp).toBeLessThan(before);
+    expect(ev.some(e => e.t === 'psy')).toBe(false);
+  });
+
+  it('phase 3: no purge psychosis, and neither the info panel nor the banner mention it', () => {
+    const f = calm(13, 13, [hero({ x: 6, y: 11 }), makeEnemy('boss', { x: 6, y: 1 }, sc)]);
+    const b = exec(f);
+    b.hp = Math.floor(b.maxHp * 0.2);
+    const ev = toTurn(f, b.uid);
+    expect(b.phase).toBe(2);
+    expect(ev.some(e => e.t === 'psy')).toBe(false);
+    expect(bossNotes(f, b).some(l => l.includes('psychose'))).toBe(false);
+    expect(phaseSub('boss', 2, true)).not.toMatch(/psychose/);
+    expect(phaseSub('boss', 2, false)).toBe(BOSS_PHASES.boss[2].sub);
+  });
+
+  it('an enemy hack hits but adds no psychosis; the same hack with psychosis does', () => {
+    for (const noPsy of [true, false]) {
+      const f = createFight(board(9, 9), [hero({ x: 1, y: 1 }), makeEnemy('runner', { x: 5, y: 1 }, sc)], fixed, makeSummon);
+      f.noPsy = noPsy;
+      const foe = f.units.find(u => u.kind === 'runner')!;
+      foe.pa = 10;
+      const ev = cast(f, foe, spell('e-hack'), { x: 1, y: 1 });
+      expect(ev.some(e => e.t === 'damage')).toBe(true);
+      expect(ev.some(e => e.t === 'psy')).toBe(!noPsy);
+    }
   });
 });

@@ -1,3 +1,5 @@
+import { isRunMode, type RunMode } from './mode';
+
 export interface RunRecord {
   /** epoch ms when the run ended */
   date: number;
@@ -13,9 +15,17 @@ export interface RunRecord {
   heat?: number;
   /** date key if it was the daily run */
   daily?: string;
+  /** run tier (core/mode.ts); records from before the tiers have none and were CyberHard */
+  mode?: RunMode;
 }
 
 export const HISTORY_CAP = 50;
+
+/** How the terminal names the run of a record. */
+export function recordModeLabel(r: RunRecord): string {
+  if (r.daily) return 'DU JOUR';
+  return (isRunMode(r.mode) ? r.mode : 'cyberhard') === 'normal' ? 'NORMALE' : 'CYBERHARD';
+}
 
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 

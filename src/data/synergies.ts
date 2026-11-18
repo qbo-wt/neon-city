@@ -1,6 +1,10 @@
 import type { Family, Implant, Stats } from '../core/types';
 
-export interface SynergyTier { count: number; name: string; description: string; modify: (s: Stats) => Stats }
+export interface SynergyTier {
+  count: number; name: string; description: string; modify: (s: Stats) => Stats;
+  /** what the tier gives instead in a normal run (no psychosis), when its own bonus is about psychosis */
+  calm?: { description: string; modify: (s: Stats) => Stats };
+}
 export interface Synergy { family: Family; tiers: SynergyTier[] }
 
 /** Carrying 2, then 3 implants of one family unlocks its set bonus (the tiers stack). */
@@ -10,7 +14,8 @@ export const SYNERGIES: Record<Family, Synergy> = {
     { count: 3, name: 'Forteresse', description: 'Renvoie 8 dégâts à qui te frappe au contact, +20 vie max, +1 tacle', modify: s => ({ ...s, thorns: s.thorns + 8, maxHp: s.maxHp + 20, tackle: s.tackle + 1 }) },
   ] },
   neural: { family: 'neural', tiers: [
-    { count: 2, name: 'Esprit froid', description: '-20 % de psychose gagnée', modify: s => ({ ...s, psyResist: s.psyResist + 0.2 }) },
+    { count: 2, name: 'Esprit froid', description: '-20 % de psychose gagnée', modify: s => ({ ...s, psyResist: s.psyResist + 0.2 }),
+      calm: { description: '+8 % de dégâts', modify: s => ({ ...s, damagePct: s.damagePct + 0.08 }) } },
     { count: 3, name: 'Singularité', description: '+1 PA', modify: s => ({ ...s, pa: s.pa + 1 }) },
   ] },
   blood: { family: 'blood', tiers: [
@@ -36,4 +41,10 @@ export function activeSynergies(implants: readonly Implant[], bonus = 0): { syne
   const counts = familyCounts(implants, bonus), out: { synergy: Family; tier: number }[] = [];
   for (const f of Object.keys(SYNERGIES) as Family[]) SYNERGIES[f].tiers.forEach((t, i) => { if (counts[f] >= t.count) out.push({ synergy: f, tier: i }); });
   return out;
+}
+
+/** A tier as it plays in this run: its calm variant when there is no psychosis. */
+export function synergyTier(f: Family, tier: number, psychosis = true): SynergyTier {
+  const t = SYNERGIES[f].tiers[tier];
+  return !psychosis && t.calm ? { ...t, ...t.calm } : t;
 }

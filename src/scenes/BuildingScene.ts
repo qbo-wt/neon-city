@@ -48,8 +48,9 @@ export class BuildingScene extends InteriorScene {
   }
 
   protected layout() {
-    this.descent = new DescentPanel(this, () => this.save, s => this.persistSave(s), daily =>
-      this.go(SCENES.Run, daily ? { seed: 0, daily: true } : { seed: Date.now() >>> 0 }, daily ? '▼ RUN DU JOUR — NEON CITY' : '▼ REZ-DE-CHAUSSÉE — NEON CITY'));
+    this.descent = new DescentPanel(this, () => this.save, s => this.persistSave(s), kind =>
+      this.go(SCENES.Run, kind === 'daily' ? { seed: 0, daily: true } : { seed: Date.now() >>> 0, mode: kind },
+        kind === 'daily' ? '▼ RUN DU JOUR — NEON CITY' : kind === 'cyberhard' ? '▼ RUN CYBERHARD — NEON CITY' : '▼ REZ-DE-CHAUSSÉE — NEON CITY'));
     this.modals.push(this.descent);
     this.vending = new VendingTalk(this, () => this.controls, { machine: HALL.vending, till: HALL.till }, () => this.save, s => this.persistSave(s), () => this.player, () => this.tutorial.event('see:vending'));
     this.modals.push(this.vending);

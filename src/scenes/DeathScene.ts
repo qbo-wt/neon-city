@@ -7,13 +7,16 @@ import { Button, C, GlitchText, T, bold, chip, drawPanel, halftone, pips, scanli
 import { wipeTo } from '../ui/transition';
 import { audio } from '../audio/audio';
 import { fadeVisibility, showStage, stage, stageOpacity } from '../three/stage';
+import { UNLOCK_LINES, UNLOCK_TITLES, type UnlockId } from '../core/mode';
 
 export class DeathScene extends Phaser.Scene {
   private rain!: Rain;
   private leaving = false;
   constructor() { super(SCENES.Death); }
 
-  create(data: { victory: boolean; creditsEarned: number; roomReached: number; heat?: number; recordBonus?: number; daily?: string; dailyBest?: boolean; killer?: string }) {
+  /** `mode`: the run tier's name (not for the daily run); `unlocked`: elevator tiers this run opened. */
+  create(data: { victory: boolean; creditsEarned: number; roomReached: number; heat?: number; recordBonus?: number; daily?: string; dailyBest?: boolean; killer?: string;
+    mode?: string; modeBonus?: number; unlocked?: UnlockId[] }) {
     const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, win = data.victory;
     const accent = win ? C.yellow : C.magenta;
     this.leaving = false;
@@ -54,13 +57,26 @@ export class DeathScene extends Phaser.Scene {
     txt(this, x0 + cw + gx + 8, y0 + 37, 'Versés sur ton compte à la planque.', 5, T.mute).setOrigin(0, 0.5);
 
     const extra: [string, number][] = [];
+    if (data.mode) extra.push([data.modeBonus ? `${data.mode} : CRÉDITS +${data.modeBonus} %` : data.mode, data.modeBonus ? C.magenta : C.cyan]);
     if (data.heat) extra.push([`NOTORIÉTÉ ${data.heat} : CRÉDITS x${(1 + data.heat * 0.1).toFixed(1)}`, C.magenta]);
     if (data.recordBonus) extra.push([`NOUVEAU RECORD DE NOTORIÉTÉ ! PRIME +${data.recordBonus}¢`, C.yellow]);
     if (data.daily) extra.push([`RUN DU JOUR ${data.daily}${data.dailyBest ? ' — NOUVEAU RECORD DU JOUR !' : ''}`, C.cyan]);
-    const chips = extra.map(([s, col], i) => chip(this, 0, 0, s, col, { size: 5, filled: i === 1 && !!data.recordBonus }));
+    const chips = extra.map(([s, col]) => chip(this, 0, 0, s, col, { size: 5, filled: s.startsWith('NOUVEAU RECORD') }));
     const total = chips.reduce((s, c) => s + c.width, 0) + (chips.length - 1) * 5;
     let cx = W / 2 - total / 2;
     chips.forEach(c => { c.setPosition(cx, 186); cx += c.width + 5; });
+
+    // A new tier of the elevator: announced at the top, over the street.
+    const fresh = data.unlocked ?? [];
+    if (fresh.length) {
+      const top = this.add.graphics();
+      top.fillStyle(C.deep, 0.9).fillPoints(skewPoly(W / 2 - 170, 6, 340, 30, 8), true);
+      top.lineStyle(0.75, C.magenta, 1).strokePoints(skewPoly(W / 2 - 170, 6, 340, 30, 8), true);
+      stripes(top, W / 2 - 160, 8, 40, 4, C.magenta, 0.6, 4, 1.5);
+      new GlitchText(this, W / 2, 16, fresh.map(u => UNLOCK_TITLES[u]).join(' · '), 13, T.magenta, { every: 2200 });
+      txt(this, W / 2, 28, fresh.map(u => UNLOCK_LINES[u]).join(' '), 5.5, T.text).setOrigin(0.5).setAlign('center').setWordWrapWidth(330);
+      audio.sfx('relic');
+    }
 
     const back = new Button(this, W / 2 - 80, 200, 160, 20, 'REVENIR À LA PLANQUE', { accent: C.cyan, solid: true, size: 12, hoverSfx: true, onClick: () => this.leave() });
     this.tweens.add({ targets: back, alpha: 0.75, yoyo: true, repeat: -1, duration: 700 });

@@ -59,7 +59,7 @@ export type VendingStage = 0 | 1 | 2 | 3 | 4;
 export type GiftId = 'cherry' | 'zero' | 'mystery' | 'crowbar';
 
 export const GIFTS: Record<GiftId, { name: string; effect: string }> = {
-  cherry: { name: 'NEON COLA Cerise', effect: '+1 neuro-bloqueur au début du prochain run' },
+  cherry: { name: 'NEON COLA Cerise', effect: '+1 neuro-bloqueur au début du prochain run (+15¢ en run normale)' },
   zero: { name: 'NEON COLA Zéro', effect: '+25¢ au début du prochain run' },
   mystery: { name: 'NEON COLA Saveur Mystère', effect: 'une relique commune au hasard pour le prochain run' },
   crowbar: { name: 'Pied-de-biche du livreur', effect: 'la relique Pied-de-biche pour le prochain run' },
@@ -74,6 +74,8 @@ export const SMASH_CREDITS = 30;
 export const MODULE_PRICE = 80;
 /** Starting credits given by a NEON COLA Zéro. */
 export const ZERO_CREDITS = 25;
+/** What a NEON COLA Cerise gives instead in a normal run, which has no neuro-blockers. */
+export const CHERRY_CALM_CREDITS = 15;
 /** The relic the crowbar gift puts in your pocket (src/data/relics.ts). */
 export const CROWBAR_RELIC = 'scavenger';
 const TRUST_MIN = -3, TRUST_MAX = 5;

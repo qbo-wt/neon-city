@@ -42,12 +42,12 @@ const HUB: Step[] = [
   { id: 'b-shops', track: 'basic', place: 'building', point: 'clinic', ack: true, after: ['b-talk'], until: ['enter:clinic', 'enter:den'],
     text: 'La clinique du Doc (corps) et, à l\'autre bout, le repaire de Nyx (esprit) vendent des améliorations permanentes contre tes crédits.' },
   { id: 'b-run', track: 'basic', place: 'building', point: 'elevator', ack: true, after: ['b-shops'], until: ['hub:elevator'],
-    text: 'Prêt ? L\'ascenseur descend dans la rue : c\'est là que commence un run. Les crédits gagnés reviennent avec toi.' },
+    text: 'Prêt ? L\'ascenseur descend dans la rue : commence par une run normale. Les crédits gagnés reviennent avec toi.' },
   // The shops, whenever you first walk in.
   { id: 'c-doc', track: 'basic', place: 'clinic', point: 'doc', ack: true, until: ['hub:shop:doc'],
     text: 'Doc Kessler greffe du chrome : PV, dégâts, PM… Parle-lui (E) pour ouvrir son catalogue ; tout reste acquis d\'un run à l\'autre.' },
   { id: 'd-nyx', track: 'basic', place: 'den', point: 'nyx', ack: true, until: ['hub:shop:nyx'],
-    text: 'Nyx calibre ton esprit : résistance à la psychose, charge d\'implants, crédits. Parle-lui (E) pour voir ses greffes.' },
+    text: 'Nyx calibre ton esprit : crédits et primes, puis la résistance à la psychose une fois la run CyberHard débloquée. Parle-lui (E) pour voir ses greffes.' },
 ];
 
 const FIGHT: Step[] = [
@@ -99,11 +99,11 @@ const TIPS: Step[] = [
   { id: 't-telegraph', track: 'tip', place: 'run', point: 'telegraph', trigger: 'see:telegraph', ack: true, when: fight, until: ['run:endturn'],
     text: 'Attaque annoncée : elle frappera les cases marquées à son prochain tour. Sors-en avant de finir le tien !' },
   { id: 't-relic', track: 'tip', place: 'run', point: 'relics', trigger: 'got:relic', ack: true,
-    text: 'Relique ! Elle te suit jusqu\'à la fin du run, sans charge psy. Survole la ligne rouge en bas à gauche pour relire son effet.' },
+    text: 'Relique ! Elle te suit jusqu\'à la fin du run. Survole la ligne rouge en bas à gauche pour relire son effet.' },
   { id: 't-implant', track: 'tip', place: 'run', point: 'implants', trigger: 'got:implant', ack: true,
-    text: 'Implant greffé : un bonus pour tout le run, mais sa charge fait grimper ta psychose plus vite. Tes greffes sont listées en bas à gauche.' },
+    text: 'Implant greffé : un bonus pour tout le run (en CyberHard, sa charge fait aussi grimper ta psychose). Tes greffes sont listées en bas à gauche.' },
   { id: 't-psy', track: 'tip', place: 'run', point: 'psy', trigger: 'psy:high', ack: true,
-    text: 'Psychose à 50 % : tes coups font plus mal, mais dès 75 % tu perds des PV à chaque tour. Le neuro-bloqueur (F) la fait baisser.' },
+    text: 'Run CyberHard — psychose à 50 % : tes coups font plus mal, mais dès 75 % tu perds des PV à chaque tour. Le neuro-bloqueur (F) la fait baisser.' },
 ];
 
 export const TUTORIAL_STEPS: readonly Step[] = [...HUB, ...FIGHT, ...TIPS];

@@ -68,6 +68,8 @@ export interface Stats {
   foeDamage: number;
   /** breakables always drop something, credits x(1 + lootBonus) */
   lootBonus: number;
+  /** extra heal factor in a normal run (no psychosis), see core/mode.ts */
+  calmHeal: number;
 }
 
 export type Family = 'chrome' | 'neural' | 'blood' | 'optic';
@@ -88,6 +90,8 @@ export interface Implant {
   level?: number;
   /** a spell this implant adds to your bar */
   spell?: string;
+  /** only makes sense with psychosis: never offered in a normal run */
+  psyOnly?: boolean;
 }
 
 /** Cursed relics give a big edge with a real drawback. */
@@ -113,6 +117,8 @@ export interface Relic {
   hooks?: FightHooks;
   /** only offered when it can do something for this spell bar */
   fits?: (spells: readonly SpellDef[]) => boolean;
+  /** only makes sense with psychosis: never offered in a normal run */
+  psyOnly?: boolean;
 }
 
 export interface SkillNode {
@@ -125,4 +131,6 @@ export interface SkillNode {
   /** 0-3 body branches, 4-5 mind branches; each branch is one UI column */
   branch: number;
   modify: (s: Stats) => Stats;
+  /** only does something with psychosis: sold once the CyberHard run is unlocked */
+  cyberhard?: boolean;
 }

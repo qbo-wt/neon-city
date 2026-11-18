@@ -60,7 +60,7 @@ export const BOSS_TUNING = {
 };
 
 /** Name and one-line rule of each phase, for the banner and the info panel. */
-export const BOSS_PHASES: Record<BossKind, { title: string; sub: string; color: number }[]> = {
+export const BOSS_PHASES: Record<BossKind, { title: string; sub: string; color: number; calmSub?: string }[]> = {
   warden: [
     { title: 'LE LIEUTENANT', sub: 'Son mortier pilonne la croix où tu te tiens : bouge avant son tour', color: 0xff2a6d },
     { title: 'LA MEUTE', sub: 'Renforts et barils ! Il encaisse moins tant que ses Rats sont debout', color: 0xff8c2a },
@@ -69,8 +69,15 @@ export const BOSS_PHASES: Record<BossKind, { title: string; sub: string; color: 
   boss: [
     { title: 'PROTOCOLE D\'ÉLIMINATION', sub: 'Il électrifie la ligne où tu te tiens : quitte-la avant son tour', color: 0x00f0ff },
     { title: 'BOUCLIER PSIONIQUE', sub: 'Détruis les deux relais pour briser son bouclier — surcharge en croix', color: 0xb84dff },
-    { title: 'PURGE TOTALE', sub: 'Surcharge à chaque tour, ta psychose monte à chacun de ses tours', color: 0xff2a6d },
+    { title: 'PURGE TOTALE', sub: 'Surcharge à chaque tour, ta psychose monte à chacun de ses tours', color: 0xff2a6d,
+      calmSub: 'Une surcharge à chaque tour : ne reste jamais sur sa ligne' },
   ],
+};
+
+/** A phase's banner line; without psychosis (normal run), the variant that does not mention it. */
+export const phaseSub = (kind: BossKind, phase: number, noPsy = false) => {
+  const ph = BOSS_PHASES[kind][Math.min(2, phase)];
+  return noPsy ? ph.calmSub ?? ph.sub : ph.sub;
 };
 
 export const TELEGRAPH_NAMES: Record<TelegraphKind, string> = { mortar: 'MORTIER EN APPROCHE', surge: 'SURCHARGE' };
@@ -179,7 +186,7 @@ function announceSurge(f: Fight, boss: Unit, p: Unit, ev: FightEvent[]): boolean
   for (const cells of tries) {
     if (!cells.length || !escapable(f, p, cells)) continue;
     boss.mem.surges = n + 1;
-    lay(f, boss, { kind: 'surge', by: boss.uid, cells, min: s.min, max: s.max, psy: s.psy, shock: s.shock[ph] }, ev);
+    lay(f, boss, { kind: 'surge', by: boss.uid, cells, min: s.min, max: s.max, psy: f.noPsy ? 0 : s.psy, shock: s.shock[ph] }, ev);
     return true;
   }
   return false;
@@ -201,7 +208,7 @@ function fire(f: Fight, boss: Unit, ev: FightEvent[]) {
       if (!v || v === boss || v.team === 2) continue;
       const res = clampRes(v.st.res + buffSum(v, 'res') / 100);
       hurt(f, v, Math.max(1, Math.round(randInt(f.rng, t.min, t.max) * bossMult(boss) * (1 - res))), ev, boss);
-      if (t.psy && v.kind === 'player' && !v.dead) ev.push({ t: 'psy', uid: v.uid, v: t.psy });
+      if (t.psy && !f.noPsy && v.kind === 'player' && !v.dead) ev.push({ t: 'psy', uid: v.uid, v: t.psy });
     }
     // The lines stay live a while: electrified floor (shock) where nobody stands and no other hazard lies.
     if (t.shock && !f.over) {
@@ -327,7 +334,7 @@ function executorTurn(f: Fight, boss: Unit, ev: FightEvent[]) {
     if (add > 0) { boss.shield += add; boss.shieldTurns = 999; ev.push({ t: 'shield', uid: boss.uid, v: add }); }
   }
   const p = player(f);
-  if ((boss.phase ?? 0) >= 2 && p && !p.dead) ev.push({ t: 'psy', uid: p.uid, v: T.purgePsy });
+  if (!f.noPsy && (boss.phase ?? 0) >= 2 && p && !p.dead) ev.push({ t: 'psy', uid: p.uid, v: T.purgePsy });
 }
 
 // ---------- the listener ----------
@@ -375,7 +382,7 @@ export function bossNotes(f: Fight, u: Unit): string[] {
     if (guarded(f, u)) out.push(`garde rapprochée : -${Math.round((1 - BOSS_TUNING.warden.guardMult) * 100)} % de dégâts de tes sorts tant que ses Rats sont debout (explosions et poussées passent)`);
     const n = relays(f, u).length;
     if (n && (u.mem.shieldCap ?? 0) > 0) out.push(`bouclier psionique : +${Math.round(u.maxHp * BOSS_TUNING.boss.regenPct)} par tour tant qu'un relais tient (${n} debout) ; tous détruits, il tombe et l'Exécuteur perd ${BOSS_TUNING.boss.breakPa} PA`);
-    if (u.kind === 'boss' && (u.phase ?? 0) >= 2) out.push(`purge : +${BOSS_TUNING.boss.purgePsy} psychose à chacun de ses tours`);
+    if (u.kind === 'boss' && (u.phase ?? 0) >= 2 && !f.noPsy) out.push(`purge : +${BOSS_TUNING.boss.purgePsy} psychose à chacun de ses tours`);
     const t = f.telegraphs?.find(x => x.by === u.uid);
     if (t) out.push(`prépare : ${TELEGRAPH_NAMES[t.kind]} (au début de son tour)`);
   }
@@ -388,7 +395,7 @@ export function telegraphInfo(f: Fight, p: Pt): { name: string; text: string; co
   const t = telegraphAt(f, p), b = t && f.units.find(u => u.uid === t.by), pl = player(f);
   if (!t || !b || !pl) return undefined;
   const [lo, hi] = telegraphRange(f, t, pl);
-  const extra = (t.psy ? ` +${t.psy} psychose.` : '') + (t.shock ? ` Les cases restent électrifiées ${t.shock} round${t.shock > 1 ? 's' : ''}.` : '');
+  const extra = (t.psy && !f.noPsy ? ` +${t.psy} psychose.` : '') + (t.shock ? ` Les cases restent électrifiées ${t.shock} round${t.shock > 1 ? 's' : ''}.` : '');
   return {
     name: `DANGER — ${TELEGRAPH_NAMES[t.kind]}`, color: TELEGRAPH_COLORS[t.kind],
     text: `Frappe au début du prochain tour de ${b.name} : ${lo}-${hi} dégâts à qui se trouve sur ces cases.${extra} Sors de la zone !`,

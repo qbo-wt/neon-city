@@ -6,34 +6,41 @@ import { formatTime } from '../core/history';
 import { HEAT_PACTS, heatCreditMult, heatPoints } from '../data/heat';
 import { WEAPONS } from '../data/weapons';
 import { audio } from '../audio/audio';
+import { CYBERHARD_CREDIT_MULT } from '../core/mode';
 import { title, txt } from './text';
 import { C, Card, T, bold, chip, halftone, hints, keycap, pinToCamera, pips, screenFrame, stripes } from './kit';
 
+/** What the elevator starts: a run tier (core/mode.ts) or today's daily run. */
+export type DescentKind = 'normal' | 'cyberhard' | 'daily';
+
 /**
- * Building elevator: start a normal run, today's daily run, or set the notoriety (after a first
- * victory). Keys 1-3 in the menu; in the notoriety view keys 1-7 cycle each pact's rank.
+ * Building elevator: the normal run, the CyberHard run (after a first victory), the wanted posters
+ * (notoriety for CyberHard, after a CyberHard victory) and today's daily run. Keys 1-4 in the menu;
+ * in the notoriety view keys 1-7 cycle each pact's rank.
  */
 export class DescentPanel {
   private root?: Phaser.GameObjects.Container;
   private view: 'menu' | 'heat' = 'menu';
 
   constructor(private scene: Phaser.Scene, private getSave: () => SaveData, private persist: (s: SaveData) => void,
-    private start: (daily: boolean) => void) {}
+    private start: (kind: DescentKind) => void) {}
 
   get isOpen() { return !!this.root; }
   open() { this.view = 'menu'; this.render(); audio.sfx('uiOpen'); }
   close() { this.root?.destroy(); this.root = undefined; }
-  private get unlocked() { return this.getSave().history.some(h => h.victory); }
 
   select(n: number) {
     if (!this.root) return;
     if (this.view === 'menu') {
-      if (n === 1) { this.close(); this.start(false); }
-      else if (n === 2) { this.close(); this.start(true); }
-      else if (n === 3) {
-        if (!this.unlocked) { audio.sfx('deny'); return; }
+      const { cyberhard, wanted } = this.getSave().unlocks;
+      if (n === 1) { this.close(); this.start('normal'); }
+      else if (n === 2) {
+        if (!cyberhard) { audio.sfx('deny'); return; }
+        this.close(); this.start('cyberhard');
+      } else if (n === 3) {
+        if (!wanted) { audio.sfx('deny'); return; }
         this.view = 'heat'; audio.sfx('ui'); this.render();
-      }
+      } else if (n === 4) { this.close(); this.start('daily'); }
       return;
     }
     const p = HEAT_PACTS[n - 1];
@@ -55,22 +62,26 @@ export class DescentPanel {
     if (this.view === 'menu') {
       root.add(screenFrame(s, 'ASCENSEUR — DESCENTE VERS LA RUE', C.magenta, 'NIVEAU -1 // LA RUE'));
       const today = dateKey(), best = save.daily.find(d => d.date === today);
+      const { cyberhard, wanted } = save.unlocks, weapon = WEAPONS[save.weapon].name;
+      const bonus = Math.round((CYBERHARD_CREDIT_MULT - 1) * 100);
+      const heatLine = wanted && pts ? ` Notoriété ${pts} : +${pts * 10} % de plus.` : '';
       const rows: [string, string, string, number, boolean, string][] = [
-        ['DESCENDRE', `Run normale avec ${WEAPONS[save.weapon].name}${pts ? ` — notoriété ${pts} (+${pts * 10} % de crédits)` : ''}.`, 'RUN', C.white, true, T.text],
-        [`RUN DU JOUR — ${today}`, `Même ville pour tout le monde aujourd'hui : Lame-mono, sans notoriété. ${best ? `Ton record du jour : ${best.victory ? 'victoire' : `secteur ${best.sector}`} en ${formatTime(best.timeMs)}.` : 'Pas encore tentée.'}`, 'QUOTIDIEN', C.cyan, true, T.cyan],
-        ['AVIS DE RECHERCHE', this.unlocked ? `Règle ta notoriété : des handicaps contre plus de crédits. Record : ${save.bestHeat}.` : 'Termine une run pour débloquer la notoriété.', this.unlocked ? `NOTORIÉTÉ ${pts}` : 'VERROUILLÉ', C.magenta, this.unlocked, T.magenta],
+        ['RUN NORMALE', `Avec ${weapon}. Sans cyberpsychose : ennemis moins coriaces, soins renforcés. Gagne-la pour débloquer la run CyberHard.`, 'RUN', C.white, true, T.text],
+        ['RUN CYBERHARD', cyberhard ? `Avec ${weapon}. La cyberpsychose entre en jeu : jauge PSY, neuro-bloqueurs, ennemis à pleine force. +${bonus} % de crédits.${heatLine}` : 'Termine une run normale pour débloquer.', cyberhard ? 'CYBERHARD' : 'VERROUILLÉ', C.magenta, cyberhard, T.magenta],
+        ['AVIS DE RECHERCHE', wanted ? `Règle ta notoriété pour tes runs CyberHard : des handicaps contre plus de crédits. Record : ${save.bestHeat}.` : 'Termine une run CyberHard pour débloquer la notoriété.', wanted ? `NOTORIÉTÉ ${pts}` : 'VERROUILLÉ', C.violet, wanted, T.violet],
+        [`RUN DU JOUR — ${today}`, `Même ville pour tout le monde aujourd'hui : Lame-mono, règles CyberHard, sans notoriété. ${best ? `Ton record du jour : ${best.victory ? 'victoire' : `secteur ${best.sector}`} en ${formatTime(best.timeMs)}.` : 'Pas encore tentée.'}`, 'QUOTIDIEN', C.cyan, true, T.cyan],
       ];
       rows.forEach(([label, desc, tag, col, on, tcol], i) => {
-        const y = 28 + i * 70;
-        const card = new Card(s, 18, y, W - 36, 62, { accent: col === C.white ? C.yellow : col, state: on ? 'idle' : 'off', hoverSfx: true, cut: 8, onClick: on ? () => this.select(i + 1) : undefined });
+        const y = 26 + i * 56;
+        const card = new Card(s, 18, y, W - 36, 50, { accent: col === C.white ? C.yellow : col, state: on ? 'idle' : 'off', hoverSfx: true, cut: 8, onClick: on ? () => this.select(i + 1) : undefined });
         const g = s.add.graphics();
-        if (on) halftone(g, W - 36 - 110, 4, 104, 54, col === C.white ? C.yellow : col, 0.16, 'br', 3, 1.2);
-        else stripes(g, 2, 2, W - 40, 58, C.white, 0.03, 4, 1.5);
+        if (on) halftone(g, W - 36 - 110, 4, 104, 42, col === C.white ? C.yellow : col, 0.16, 'br', 3, 1.2);
+        else stripes(g, 2, 2, W - 40, 46, C.white, 0.03, 4, 1.5);
         // A big level number on the left, like an elevator panel.
-        g.fillStyle(C.deep, 0.9).fillRect(8, 8, 34, 46);
-        g.lineStyle(0.5, on ? (col === C.white ? C.yellow : col) : C.line, 0.8).strokeRect(8, 8, 34, 46);
+        g.fillStyle(C.deep, 0.9).fillRect(8, 7, 34, 36);
+        g.lineStyle(0.5, on ? (col === C.white ? C.yellow : col) : C.line, 0.8).strokeRect(8, 7, 34, 36);
         card.add(g);
-        card.add(title(s, 25, 33, `${i + 1}`, 34, on ? (col === C.white ? T.yellow : tcol) : T.off).setFontStyle('600').setOrigin(0.5));
+        card.add(title(s, 25, 26, `${i + 1}`, 30, on ? (col === C.white ? T.yellow : tcol) : T.off).setFontStyle('600').setOrigin(0.5));
         card.add(keycap(s, 52, 13, `${i + 1}`, on ? C.yellow : C.line, 5));
         card.add(title(s, 66, 13.5, label, 15, on ? (i === 0 ? T.text : tcol) : T.off).setFontStyle('600').setOrigin(0, 0.5));
         card.add(chip(s, W - 36 - 12, 12, tag, on ? (col === C.white ? C.yellow : col) : C.line, { size: 5, originX: 1, filled: on && i === 0, text: on ? undefined : T.off }));
@@ -78,7 +89,7 @@ export class DescentPanel {
         root.add(card);
       });
     } else {
-      root.add(screenFrame(s, 'AVIS DE RECHERCHE — NOTORIÉTÉ', C.magenta, 'PRIMES // HANDICAPS'));
+      root.add(screenFrame(s, 'AVIS DE RECHERCHE — NOTORIÉTÉ (RUNS CYBERHARD)', C.magenta, 'PRIMES // HANDICAPS'));
       root.add(bold(s, 16, 24, `NOTORIÉTÉ ${pts}`, 6, T.magenta).setOrigin(0, 0.5));
       root.add(txt(s, 70, 24, `crédits x${heatCreditMult(pts).toFixed(1)} — record ${save.bestHeat} (gagner au-dessus de ton record rapporte une prime)`, 6, T.yellow).setOrigin(0, 0.5));
       HEAT_PACTS.forEach((p, i) => {
@@ -93,7 +104,7 @@ export class DescentPanel {
         root.add(card);
       });
     }
-    root.add(hints(s, W / 2, H - 12, this.view === 'menu' ? [['1-3', 'Choisir'], ['ÉCHAP', 'Fermer']] : [['1-7', 'Changer un rang'], ['ÉCHAP', 'Fermer']], C.magenta));
+    root.add(hints(s, W / 2, H - 12, this.view === 'menu' ? [['1-4', 'Choisir'], ['ÉCHAP', 'Fermer']] : [['1-7', 'Changer un rang'], ['ÉCHAP', 'Fermer']], C.magenta));
     pinToCamera(root);
   }
 }

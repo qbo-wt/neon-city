@@ -13,6 +13,8 @@ export interface OfferOpts {
   /** black-market cards can show up (from sector 3) */
   allowBlack?: boolean;
   count?: number;
+  /** false in a normal run: implants that only make sense with psychosis are left out */
+  psychosis?: boolean;
 }
 
 const ORDER: Rarity[] = ['common', 'rare', 'epic'];
@@ -30,7 +32,8 @@ export function offerImplants(rng: Rng, owned: readonly Implant[], roomIndex: nu
   const used = new Set<string>();
   const offers: Offer[] = [];
   const upgradable = owned.filter(canUpgrade);
-  const fresh = (pred: (i: Implant) => boolean) => IMPLANTS.filter(i => !ownedIds.has(i.id) && !used.has(i.id) && pred(i));
+  const calm = opts.psychosis === false;
+  const fresh = (pred: (i: Implant) => boolean) => IMPLANTS.filter(i => !ownedIds.has(i.id) && !used.has(i.id) && !(calm && i.psyOnly) && pred(i));
   const take = (list: Implant[]) => list.length ? list[Math.floor(rng() * list.length)] : undefined;
 
   for (let slot = 0; slot < count; slot++) {

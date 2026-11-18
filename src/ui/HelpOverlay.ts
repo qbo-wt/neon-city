@@ -20,7 +20,7 @@ const RUN_KEYS: [string, string][] = [
   ['1 à 9 ou clic', 'Choisir un sort, puis clic sur la cible'],
   ['CLIC DROIT / ÉCHAP', 'Annuler le sort choisi'],
   ['ESPACE / ENTRÉE', 'Fin du tour (ou PRÊT au placement)'],
-  ['F', 'Neuro-bloqueur (2 PA, -30 psychose)'],
+  ['F', 'Neuro-bloqueur (run CyberHard : 2 PA, -30 psychose)'],
   ['ÉCHAP (aucun sort choisi)', 'Options : son, vitesse des combats…'],
   ['SURVOL', 'Infos d\'une créature, portée et dégâts prévus'],
   ['M', 'Couper / remettre le son'],

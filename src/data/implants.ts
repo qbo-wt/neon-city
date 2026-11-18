@@ -57,8 +57,12 @@ const DEFS: Def[] = [
     s => ({ ...s, pa: s.pa + 2, castPsy: s.castPsy + 2 })],
 ];
 
+/** Implants whose bonus or price is psychosis: never offered in a normal run (core/mode.ts). */
+export const PSY_IMPLANTS: readonly string[] = ['psy-dampener', 'overclock-chip', 'neuro-leak', 'overdrive'];
+
 export const IMPLANTS: Implant[] = DEFS.map(([id, name, family, rarity, load, describe, modify, spell]) => ({
   id, name, family, rarity, load, describe, description: describe(1), modify: (s, l = 1) => modify(s, l), spell,
+  ...(PSY_IMPLANTS.includes(id) ? { psyOnly: true } : {}),
 }));
 
 export const IMPLANT_BY_ID = new Map(IMPLANTS.map(i => [i.id, i]));

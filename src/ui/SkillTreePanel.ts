@@ -113,7 +113,8 @@ export class SkillTreePanel {
         lines.fillStyle(lit ? th.frame : th.lockedStroke, 1).fillPoints(skewPoly(x - 1.5, y - 19.5, 3, 1.5, 0), true);
       }
       const owned = save.ownedNodes.includes(n.id);
-      const buyable = canBuy(n.id, save.ownedNodes, save.credits);
+      const sealed = !!n.cyberhard && !save.unlocks.cyberhard && !save.ownedNodes.includes(n.id);
+      const buyable = canBuy(n.id, save.ownedNodes, save.credits, save.unlocks.cyberhard);
       const stroke = owned ? th.frame : buyable ? 0xffffff : th.lockedStroke;
       const g = s.add.graphics();
       const draw = (hot: boolean) => {
@@ -132,11 +133,12 @@ export class SkillTreePanel {
       root.add(box);
       root.add(bold(s, x, y - 5, n.name, 6, owned ? th.owned : buyable ? th.text : th.dim)
         .setOrigin(0.5).setAlign('center').setWordWrapWidth(boxW - 8));
-      root.add(bold(s, x, y + 9, owned ? '✓ INSTALLÉ' : `${n.cost}¢`, 5.5, owned ? th.owned : buyable ? T.yellow : th.dim).setOrigin(0.5));
+      root.add(bold(s, x, y + 9, owned ? '✓ INSTALLÉ' : sealed ? 'CYBERHARD' : `${n.cost}¢`, 5.5, owned ? th.owned : buyable ? T.yellow : th.dim).setOrigin(0.5));
 
       box.on('pointerover', () => {
         draw(true);
         const state = owned ? 'Déjà installé' : buyable ? `Clique pour acheter (${n.cost}¢)`
+          : sealed ? 'Psychose : en vente une fois la run CyberHard débloquée (termine une run normale)'
           : n.requires && !save.ownedNodes.includes(n.requires) ? 'Débloque d\'abord l\'amélioration au-dessus' : `Il te faut ${n.cost}¢`;
         this.detail?.setText(`${n.name} — ${n.description}`);
         this.detailState?.setText(state).setColor(owned ? th.owned : buyable ? T.yellow : th.dim);
@@ -145,8 +147,8 @@ export class SkillTreePanel {
       if (buyable) box.on('pointerdown', (p: Phaser.Input.Pointer) => {
         if (p.button !== 0) return;
         const cur = this.getSave();
-        if (!canBuy(n.id, cur.ownedNodes, cur.credits)) return;
-        const r = buyNode(n.id, cur.ownedNodes, cur.credits);
+        if (!canBuy(n.id, cur.ownedNodes, cur.credits, cur.unlocks.cyberhard)) return;
+        const r = buyNode(n.id, cur.ownedNodes, cur.credits, cur.unlocks.cyberhard);
         this.persist({ ...cur, ownedNodes: r.owned, credits: r.credits });
         const c = Phaser.Display.Color.IntegerToRGB(th.frame);
         camFlash(this.scene.cameras.main, 140, c.r, c.g, c.b);

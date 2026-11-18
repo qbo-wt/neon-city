@@ -64,6 +64,8 @@ export interface Fight {
   hazards?: Hazard[];
   /** big attacks bosses announced, going off at their next turn: see bosses.ts; cloneFight copies it */
   telegraphs?: Telegraph[];
+  /** a run without psychosis (normal run, core/mode.ts): nothing in the fight adds any */
+  noPsy?: boolean;
 }
 
 // ---------- queries ----------
@@ -391,6 +393,7 @@ function applyEffect(f: Fight, u: Unit, s: SpellDef, e: Effect, cell: Pt, origin
       break;
     }
     case 'psy': {
+      if (f.noPsy) break;
       for (const t of inZone()) if (t.kind === 'player') ev.push({ t: 'psy', uid: t.uid, v: e.v });
       break;
     }

@@ -11,7 +11,7 @@ import { camShake } from '../fx/screenFx';
 
 const STRIP = 14;
 
-/** Top bar + psychosis screen effects, drawn over the RunScene. */
+/** Top bar + psychosis screen effects, drawn over the RunScene. A normal run (no psychosis) hides the PSY gauge and the neuro-blockers. */
 export class HudScene extends Phaser.Scene {
   private g!: Phaser.GameObjects.Graphics;
   private base!: Phaser.GameObjects.Graphics;
@@ -106,9 +106,11 @@ export class HudScene extends Phaser.Scene {
     const g = this.g;
     g.clear();
     const show = !!d;
-    for (const t of [this.base, ...this.labels, this.hpText, this.psyText, this.psyLabel, this.sectorText, this.creditsText, this.neuroText]) t.setVisible(show);
+    for (const t of [this.base, ...this.labels, this.hpText, this.sectorText, this.creditsText]) t.setVisible(show);
+    const psy = !!d?.psychosis;
+    for (const t of [this.psyText, this.psyLabel, this.psyBonusText, this.neuroText]) t.setVisible(show && psy);
     if (!d) { this.relicText.setVisible(false); this.showRelicTip(false); return; }
-    const W = CONFIG.WIDTH, tier = psyTier(d.psy), dt = Math.min(dtMs, 50) / 1000;
+    const W = CONFIG.WIDTH, tier = psy ? psyTier(d.psy) : 'stable', dt = Math.min(dtMs, 50) / 1000;
 
     // HP, with a white trail that catches up after a hit.
     const hp = d.maxHp ? d.hp / d.maxHp : 0;
@@ -116,9 +118,9 @@ export class HudScene extends Phaser.Scene {
     drawBar(g, 18, 4.5, 102, 5, hp, hp < 0.3 ? C.red : C.magenta, { ghost: this.hpGhost, seg: 12, skew: 2.5 });
     this.hpText.setText(`${d.hp}/${d.maxHp}`);
 
-    // Psychosis: colour by tier, markers at 50 % and 75 %.
+    // Psychosis (CyberHard only): colour by tier, markers at 50 % and 75 %.
     const psyCol = tier === 'stable' ? C.cyan : tier === 'glitch' ? C.yellow : C.magenta;
-    drawBar(g, 178, 4.5, 80, 5, d.psy / 100, psyCol, { marks: [0.5, 0.75], skew: 2.5 });
+    if (psy) drawBar(g, 178, 4.5, 80, 5, d.psy / 100, psyCol, { marks: [0.5, 0.75], skew: 2.5 });
     this.psyLabel.setColor(Phaser.Display.Color.IntegerToColor(psyCol).rgba);
     this.psyText.setText(`${Math.floor(d.psy)} %`);
     this.psyBonusText.setText(d.psyBonus).setColor(tier === 'crisis' ? T.magenta : tier === 'drain' ? T.red : T.yellow);
@@ -130,7 +132,7 @@ export class HudScene extends Phaser.Scene {
     this.neuroText.setText(`NEURO [F] ×${d.blockers}`).setX(this.creditsText.x - this.creditsText.width - 9);
     const sep = (x: number) => g.fillStyle(C.line, 1).fillPoints(skewPoly(x - 1, 3.5, 2, 7, 1.5), true);
     sep(this.sectorText.x - this.sectorText.width - 4.5);
-    sep(this.creditsText.x - this.creditsText.width - 4.5);
+    if (psy) sep(this.creditsText.x - this.creditsText.width - 4.5);
 
     const modal = !!this.registry.get('modal');
     const parts = [d.weapon.toUpperCase(), d.implants.length ? 'IMPLANTS : ' + d.implants.join(' · ') : ''];

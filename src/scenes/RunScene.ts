@@ -12,14 +12,15 @@ import { getStorage } from '../core/storage';
 import type { Family, Relic, Stats } from '../core/types';
 import { ENEMIES, type EnemyId } from '../data/enemies';
 import { FAMILY_COLORS, FAMILY_NAMES, IMPLANTS, canUpgrade } from '../data/implants';
-import { SYNERGIES, activeSynergies } from '../data/synergies';
+import { activeSynergies, synergyTier } from '../data/synergies';
 import { applyOffer, offerImplants, type Offer } from '../core/implantOffer';
 import { RELICS } from '../data/relics';
 import { ASPECT_BY_ID, aspectRank, defaultAspect, equip } from '../data/aspects';
 import { heatCreditMult, heatEffects, heatRecordBonus } from '../data/heat';
 import { dailySeed, dateKey, recordDaily } from '../core/daily';
+import { MODE_NAMES, hasPsychosis, modeCreditMult, modeScaling, modeStats, overheatHpCost, unlockAfterRun, type RunMode } from '../core/mode';
 import { bossIntro } from '../core/story';
-import { CROWBAR_RELIC, GIFTS, ZERO_CREDITS, afterRun, streetTip, takeGifts, type GiftId } from '../core/vending';
+import { CHERRY_CALM_CREDITS, CROWBAR_RELIC, GIFTS, ZERO_CREDITS, afterRun, streetTip, takeGifts, type GiftId } from '../core/vending';
 import { BOSS_LINES } from '../data/story';
 import { spell } from '../data/spells';
 import { WEAPONS } from '../data/weapons';
@@ -47,7 +48,7 @@ import {
 import { nextAction } from '../tactics/ai';
 import { HAZARD_COLORS, HAZARD_NAMES, hazardAt, hazardText, steamActive, steamIn, type Hazard } from '../tactics/hazards';
 import { BARREL_BLAST, TERRAIN_HOOKS, inCover, isBarrel } from '../tactics/terrain';
-import { BOSS_HOOKS, BOSS_PHASES, TELEGRAPH_COLORS, bossNotes, isBossKind, telegraphAt, telegraphInfo } from '../tactics/bosses';
+import { BOSS_HOOKS, BOSS_PHASES, TELEGRAPH_COLORS, bossNotes, isBossKind, phaseSub, telegraphAt, telegraphInfo } from '../tactics/bosses';
 import { makeBreakable, makeEnemy, makePlayer, makeSummon, type EnemyScaling } from '../tactics/units';
 import type { Board, FightEvent, Pt, SpellDef, Unit } from '../tactics/types';
 import { UnitView3D as UnitView } from '../three/UnitView3D';
@@ -146,14 +147,16 @@ export class RunScene extends Phaser.Scene {
 
   constructor() { super(SCENES.Run); }
 
-  init(data: { seed?: number; daily?: boolean }) {
+  /** `mode`: the elevator's choice; CyberHard falls back to normal while it is locked (core/mode.ts). */
+  init(data: { seed?: number; daily?: boolean; mode?: RunMode }) {
     if (data?.seed !== undefined) {
       const sv = loadSave(getStorage());
-      // The daily run is the same city for everyone today: fixed seed, mono-blade, no notoriety.
-      if (data.daily) { const key = dateKey(); setRun(this.registry, newRun(dailySeed(key), sv.ownedNodes, 'blade', { daily: key })); }
+      // The daily run is the same city for everyone today: fixed seed, mono-blade, no notoriety, CyberHard rules.
+      if (data.daily) { const key = dateKey(); setRun(this.registry, newRun(dailySeed(key), sv.ownedNodes, 'blade', { mode: 'cyberhard', daily: key })); }
       else {
         const aspect = sv.aspect[sv.weapon] ?? defaultAspect(sv.weapon);
-        const run = newRun(data.seed, sv.ownedNodes, sv.weapon, { heat: sv.heat, aspect, aspectRank: aspectRank(sv.aspects, aspect) });
+        const mode: RunMode = data.mode === 'cyberhard' && sv.unlocks.cyberhard ? 'cyberhard' : 'normal';
+        const run = newRun(data.seed, sv.ownedNodes, sv.weapon, { mode, heat: sv.unlocks.wanted ? sv.heat : {}, aspect, aspectRank: aspectRank(sv.aspects, aspect) });
         // Still learning the fights (no sector cleared with the tutorial on): the first one is easier.
         run.gentle = tutorialStepOpen('f-exit');
         // Capsule's drinks (the corridor's vending machine) act now, once.
@@ -191,12 +194,19 @@ export class RunScene extends Phaser.Scene {
     this.psyTold = false;
   }
 
-  /** Stats and spell bar of the run: skill nodes, implants, synergies, relics, weapon and aspect, notoriety. */
+  /** Psychosis is on (CyberHard and the daily run); a normal run has none of it. */
+  private get psyOn() { return hasPsychosis(this.run.mode); }
+
+  /** Stats and spell bar of the run: skill nodes, implants, synergies, relics, weapon and aspect, notoriety, mode. */
   private build() {
-    const geared = equip(this.run.weapon, computeStats(this.run.implants, this.run.ownedNodes, this.run.relics), this.run.aspect, this.run.aspectRank);
+    const geared = equip(this.run.weapon, computeStats(this.run.implants, this.run.ownedNodes, this.run.relics, this.psyOn), this.run.aspect, this.run.aspectRank);
     const h = heatEffects(this.run.heat);
-    this.stats = { ...geared.stats, healMult: geared.stats.healMult * h.healMult, psyRateMult: geared.stats.psyRateMult * h.psyRateMult };
-    this.spells = applyRelicSpells([...geared.spells, ...grantedSpells(this.run.implants, this.run.relics).map(spell), spell('overheat'), spell('blocker')], this.run.relics);
+    this.stats = modeStats({ ...geared.stats, healMult: geared.stats.healMult * h.healMult, psyRateMult: geared.stats.psyRateMult * h.psyRateMult }, this.run.mode);
+    // Without psychosis, Surchauffe costs a little HP and there are no neuro-blockers.
+    const overheat = spell('overheat');
+    if (!this.psyOn) overheat.desc = `+${this.stats.overheatPa} PA tout de suite, contre ${overheatHpCost(this.stats.maxHp)} PV. Une fois par tour.`;
+    const always = this.psyOn ? [overheat, spell('blocker')] : [overheat];
+    this.spells = applyRelicSpells([...geared.spells, ...grantedSpells(this.run.implants, this.run.relics).map(spell), ...always], this.run.relics);
   }
 
   create() {
@@ -357,6 +367,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     };
     return {
       rng: Math.random,
+      psychosis: this.psyOn,
       price: n => Math.max(1, Math.round(n * this.stats.priceMult)),
       credits: () => this.run.creditsEarned,
       spend: n => { this.run.creditsEarned = Math.max(0, this.run.creditsEarned - n); audio.sfx('buy'); },
@@ -364,12 +375,12 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       hp: () => this.hero.hp,
       hurt: n => { this.hero.hp = this.run.hp = Math.max(1, this.hero.hp - n); audio.sfx('hurt'); camFlash(this.cameras.main, 120, 255, 40, 40); },
       healFraction: f => { const g = this.heal(this.stats.maxHp * f); say(`+${Math.round(g)} PV`, '#39ff88'); audio.sfx('heal'); },
-      addPsy: n => { this.run.psy = addPsy(this.run.psy, n, this.stats.psyResist); },
+      addPsy: n => { if (this.psyOn) this.run.psy = addPsy(this.run.psy, n, this.stats.psyResist); },
       addBlocker: () => { this.run.blockers++; },
       implants: opts => {
         const options: Offer[] = opts === 'black'
-          ? IMPLANTS.filter(i => i.rarity === 'black' && !this.run.implants.some(o => o.id === i.id)).slice(0, 3).map(i => ({ implant: i, level: 1, upgrade: false }))
-          : offerImplants(Math.random, this.run.implants, this.run.roomIndex, opts);
+          ? IMPLANTS.filter(i => i.rarity === 'black' && (this.psyOn || !i.psyOnly) && !this.run.implants.some(o => o.id === i.id)).slice(0, 3).map(i => ({ implant: i, level: 1, upgrade: false }))
+          : offerImplants(Math.random, this.run.implants, this.run.roomIndex, { ...opts, psychosis: this.psyOn });
         if (options.length) this.time.delayedCall(10, () => this.openImplantChoice(options, () => undefined, opts === 'black' ? 'MARCHÉ NOIR — UNE GREFFE, UN PRIX' : 'GREFFE DE RUE — CHOISIS UN IMPLANT'));
       },
       relicLeft: () => offerRelics(Math.random, this.relicsLeft())[0],
@@ -392,10 +403,10 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
   // ---------- fight setup ----------
 
   private scaling(boss: boolean): EnemyScaling {
-    const h = heatEffects(this.run.heat), ri = this.run.roomIndex;
+    const h = heatEffects(this.run.heat), ri = this.run.roomIndex, m = modeScaling(this.run.mode, boss);
     return {
-      hpMult: h.hpMult * (1 + CONFIG.DEPTH_HP * ri) * (boss ? h.bossHpMult : 1),
-      dmgMult: h.damageMult * (1 + CONFIG.DEPTH_DAMAGE * ri) * (1 + this.stats.foeDamage),
+      hpMult: m.hp * h.hpMult * (1 + CONFIG.DEPTH_HP * ri) * (boss ? h.bossHpMult : 1),
+      dmgMult: m.dmg * h.damageMult * (1 + CONFIG.DEPTH_DAMAGE * ri) * (1 + this.stats.foeDamage),
       pmBonus: h.pmBonus, paBonus: boss ? h.bossPaBonus : 0, initBonus: h.initBonus, elite: this.room.elite,
     };
   }
@@ -507,6 +518,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     f.nextUid = this.uidSeq + 100;
     f.hooks = this.fightHooks();
     f.hazards = this.hazards;
+    f.noPsy = !this.psyOn;
     this.fight = f;
     this.tut.event('run:ready');
     for (const v of this.views.values()) { v.showBar = true; v.drawBar(); }
@@ -517,7 +529,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     if (boss) {
       const ph = BOSS_PHASES[boss.kind][0];
       this.views.get(boss.uid)?.setAura(ph.color);
-      await this.fx.banner(`PHASE 1 — ${ph.title}`, ph.sub, ph.color);
+      await this.fx.banner(`PHASE 1 — ${ph.title}`, phaseSub(boss.kind, 0, !this.psyOn), ph.color);
     }
     const ev = beginFight(f);
     await this.play(ev);
@@ -631,6 +643,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       case 'stat': if (view) floatText(this, view.x, view.y - 30, `${e.v > 0 ? '+' : ''}${e.v} ${({ pa: 'PA', pm: 'PM', dmg: '% dég', res: '% rés', range: 'PO', pushDmg: 'poussée' })[e.stat]}`, e.stat === 'pa' ? '#00f0ff' : e.stat === 'pm' ? '#39ff88' : '#f5e663', 7); break;
       case 'shield': if (view) { floatText(this, view.x, view.y - 28, `+${e.v} bouclier`, '#e8e8ff', 7); view.drawBar(); } break;
       case 'psy': {
+        if (!this.psyOn) break;
         const before = this.run.psy;
         this.run.psy = addPsy(this.run.psy, e.v, this.stats.psyResist);
         const d = Math.round(this.run.psy - before);
@@ -688,7 +701,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
         audio.sfx('bossRoar');
         camShake(this.cameras.main, 300, 0.006);
         view?.setAura(ph.color);
-        await this.fx.banner(`PHASE ${e.phase + 1} — ${ph.title}`, ph.sub, ph.color);
+        await this.fx.banner(`PHASE ${e.phase + 1} — ${ph.title}`, phaseSub(u.kind, e.phase, !this.psyOn), ph.color);
         break;
       }
       case 'telegraph': {
@@ -769,6 +782,12 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
   // ---------- run rules on fight events ----------
 
   private onPlayerTurnStart(p: Unit) {
+    if (!this.psyOn) {
+      p.st.extraMult = 1;
+      this.ui.say('À TOI DE JOUER', '#00f0ff');
+      this.tut.event('run:turn');
+      return;
+    }
     const before = this.run.psy;
     this.run.psy = psyOnTurn(this.run.psy, totalLoad(this.run.implants, this.stats), this.stats.psyResist, this.stats.psyRateMult);
     const tier = psyTier(this.run.psy);
@@ -792,11 +811,20 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
 
   private onPlayerCast(s: SpellDef) {
     if (s.id === 'overheat') {
-      this.run.psy = addPsy(this.run.psy, this.stats.overheatPsy, this.stats.psyResist);
+      if (this.psyOn) this.run.psy = addPsy(this.run.psy, this.stats.overheatPsy, this.stats.psyResist);
+      else {
+        // Normal run: the PA cost a little blood instead (never the last HP).
+        const cost = Math.min(this.hero.hp - 1, overheatHpCost(this.hero.maxHp));
+        if (cost > 0) {
+          this.hero.hp -= cost;
+          const v = this.views.get(1);
+          if (v) { floatText(this, v.x, v.y - 24, `-${cost} (surchauffe)`, '#ff2a6d', 7); v.drawBar(); }
+        }
+      }
       audio.sfx('glitch');
       this.registry.set('parryAt', this.game.loop.time);
     }
-    if (this.stats.castPsy) this.run.psy = addPsy(this.run.psy, this.stats.castPsy, this.stats.psyResist);
+    if (this.psyOn && this.stats.castPsy) this.run.psy = addPsy(this.run.psy, this.stats.castPsy, this.stats.psyResist);
   }
 
   private onNewRound(f: Fight) {
@@ -844,12 +872,12 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       if (!selfBlast) {
         this.run.kills++;
         this.run.killsByType[u.kind] = (this.run.killsByType[u.kind] ?? 0) + 1;
-        this.run.psy = psyOnKill(this.run.psy, this.stats.psyResist, this.stats.psyPerKill);
+        if (this.psyOn) this.run.psy = psyOnKill(this.run.psy, this.stats.psyResist, this.stats.psyPerKill);
         if (this.mode === 'input' || this.mode === 'busy') this.turnKills++;
         const gain = Math.round((ENEMIES[u.kind as EnemyId]?.credits ?? 0) * this.stats.creditMult);
         this.run.creditsEarned += gain;
         if (view && gain) floatText(this, view.x, view.y - 18, `+${gain}¢`, '#f5e663', 7);
-        if (psyTier(this.run.psy) === 'crisis' && !this.hero.dead) {
+        if (this.psyOn && psyTier(this.run.psy) === 'crisis' && !this.hero.dead) {
           const g = Math.min(this.hero.maxHp - this.hero.hp, CONFIG.CRISIS_KILL_HEAL);
           if (g > 0) { this.hero.hp += g; floatText(this, this.views.get(1)!.x, this.views.get(1)!.y - 28, `+${g}`, '#39ff88', 6); }
         }
@@ -891,7 +919,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
 
   /** Relics not found yet in this run that can do something for the current spell bar. */
   private relicsLeft(): Relic[] {
-    return relicPool(RELICS, this.run.relics, this.spells);
+    return relicPool(RELICS, this.run.relics, this.spells, this.psyOn);
   }
 
   /** What a broken object (or a boss) leaves: applied right away. */
@@ -1010,7 +1038,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     }
     if (this.room.elite) {
       this.run.creditsEarned += Math.round(15 * this.stats.creditMult);
-      steps.push(next => this.openImplantChoice(offerImplants(createRng(this.run.seed + ri * 29), this.run.implants, ri, { minRarity: ri >= 6 ? 'epic' : 'rare' }), next, 'BUTIN D\'ÉLITE — CHOISIS UN IMPLANT'));
+      steps.push(next => this.openImplantChoice(offerImplants(createRng(this.run.seed + ri * 29), this.run.implants, ri, { minRarity: ri >= 6 ? 'epic' : 'rare', psychosis: this.psyOn }), next, 'BUTIN D\'ÉLITE — CHOISIS UN IMPLANT'));
       if (relicRng() < 0.5) steps.push(next => this.openRelicChoice(offerRelics(relicRng, this.relicsLeft(), 2, true), next, 'BUTIN D\'ÉLITE — UNE RELIQUE'));
     }
     const c = this.run.contract;
@@ -1023,7 +1051,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
         audio.sfx(ok ? 'buy' : 'deny');
         if (!ok) { next(); return; }
         if (c.reward === 'credits') { this.run.creditsEarned += Math.round(c.amount * this.stats.creditMult); next(); return; }
-        this.time.delayedCall(700, () => this.openImplantChoice(offerImplants(Math.random, this.run.implants, ri, { minRarity: c.reward === 'implant-epic' ? 'epic' : 'rare' }), next, 'PRIME DU FIXER — CHOISIS UN IMPLANT'));
+        this.time.delayedCall(700, () => this.openImplantChoice(offerImplants(Math.random, this.run.implants, ri, { minRarity: c.reward === 'implant-epic' ? 'epic' : 'rare', psychosis: this.psyOn }), next, 'PRIME DU FIXER — CHOISIS UN IMPLANT'));
       });
     }
     const runSteps = (i: number) => (i < steps.length ? steps[i](() => runSteps(i + 1)) : this.openExits());
@@ -1069,7 +1097,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       if (gain > 0) { this.run.creditsEarned += gain; floatText(this, this.views.get(1)!.x, this.views.get(1)!.y - 32, `+${gain}¢ (intérêts)`, '#f5e663', 7); }
     }
     if (reward === 'implant') {
-      const options = offerImplants(createRng(this.run.seed + ri * 13), this.run.implants, ri, { family, allowBlack: ri >= 2 });
+      const options = offerImplants(createRng(this.run.seed + ri * 13), this.run.implants, ri, { family, allowBlack: ri >= 2, psychosis: this.psyOn });
       if (options.length) { this.openImplantChoice(options, () => this.nextRoom()); return; }
       reward = 'credits';
     }
@@ -1078,7 +1106,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     let relic: Relic | undefined;
     if (reward === 'chest') {
       this.run.creditsEarned += Math.round((5 + ri * 2) * this.stats.creditMult);
-      if (Math.random() < 0.5) this.run.blockers++;
+      if (this.psyOn && Math.random() < 0.5) this.run.blockers++;
       // Now and then the chest holds a relic.
       if (Math.random() < 0.15) relic = offerRelics(Math.random, this.relicsLeft())[0];
       if (relic) this.grantRelic(relic);
@@ -1101,12 +1129,12 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       const fresh = activeSynergies(this.run.implants, bonus).filter(a => !had.has(`${a.synergy}${a.tier}`));
       this.choice = undefined;
       if (fresh.length) {
-        const t = SYNERGIES[fresh[0].synergy].tiers[fresh[0].tier];
+        const t = synergyTier(fresh[0].synergy, fresh[0].tier, this.psyOn);
         const msg = this.screenText(`SYNERGIE ${FAMILY_NAMES[fresh[0].synergy]} — ${t.name.toUpperCase()}\n${t.description}`, 9, FAMILY_COLORS[fresh[0].synergy], 90);
         audio.sfx('relic');
         this.time.delayedCall(1300, () => { msg.destroy(); then(); });
       } else then();
-    }, title);
+    }, title, this.psyOn);
   }
 
   private nextRoom() {
@@ -1132,14 +1160,15 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     const bonus = victory ? Math.round(CONFIG.BOSS_CREDIT_BONUS * this.stats.creditMult * this.stats.bossBonusMult) : 0;
     const pts = this.run.heatPoints;
     const record = victory && !this.run.daily ? heatRecordBonus(pts, save.bestHeat) : 0;
-    const earned = Math.round((this.run.creditsEarned + bonus) * heatCreditMult(pts)) + record;
+    const modeMult = modeCreditMult(this.run.mode, !!this.run.daily);
+    const earned = Math.round((this.run.creditsEarned + bonus) * heatCreditMult(pts) * modeMult) + record;
     const sector = this.run.roomIndex + 1;
     save.credits += earned;
     save.runs += 1;
     save.bestRoom = Math.max(save.bestRoom, sector);
     if (victory && !this.run.daily) save.bestHeat = Math.max(save.bestHeat, pts);
     for (const [id, n] of Object.entries(this.run.killsByType)) save.codex[id] = (save.codex[id] ?? 0) + n;
-    const killer = victory ? undefined : this.run.killer ?? 'psychosis';
+    const killer = victory ? undefined : this.run.killer ?? (this.psyOn ? 'psychosis' : undefined);
     if (killer) save.deaths[killer] = (save.deaths[killer] ?? 0) + 1;
     save.story.lastRun = { victory, sector, killer, weapon: this.run.weapon, heat: pts };
     const vending = afterRun(save.story.vending, { smashed: this.run.vending ?? 0, wardenDown: (this.run.killsByType.warden ?? 0) > 0 });
@@ -1153,13 +1182,17 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     save.history = addRecord(save.history, {
       date: Date.now(), victory, sector, kills: this.run.kills,
       damageDealt: Math.round(this.run.damageDealt), hpHealed: Math.round(this.run.hpHealed), credits: earned, timeMs: Math.round(this.run.timeMs),
-      weapon: this.run.weapon, heat: pts, daily: this.run.daily,
+      weapon: this.run.weapon, heat: pts, daily: this.run.daily, mode: this.run.mode,
     });
+    // The elevator's next tiers: CyberHard after any victory, the wanted posters after a CyberHard one.
+    const unlocked = unlockAfterRun(save.unlocks, { mode: this.run.mode, victory, daily: !!this.run.daily });
+    save.unlocks = unlocked.unlocks;
     writeSave(storage, save);
     this.registry.remove('run');
     this.scene.stop(SCENES.Hud);
     wipeTo(this, SCENES.Death, {
       victory, creditsEarned: earned, roomReached: sector, heat: pts, recordBonus: record, daily: this.run.daily, dailyBest,
+      mode: this.run.daily ? undefined : MODE_NAMES[this.run.mode], modeBonus: modeMult > 1 ? Math.round((modeMult - 1) * 100) : 0, unlocked: unlocked.fresh,
       killer: killer === 'psychosis' ? 'la cyberpsychose' : killer === 'barrel' ? 'un baril explosif' : killer === 'trap' ? 'un piège de rue'
         : killer ? ENEMIES[killer as EnemyId]?.name : undefined,
     });
@@ -1282,8 +1315,9 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     void this.playerAct(moveTo(f, p, cell));
   }
 
-  /** Run-side conditions of a spell (neuro-blockers left). */
+  /** Run-side conditions of a spell (neuro-blockers left, Surchauffe's HP in a normal run). */
   private spellBlocked(s: SpellDef): string | null {
+    if (s.id === 'overheat' && !this.psyOn && this.hero.hp <= overheatHpCost(this.hero.maxHp)) return 'pas assez de PV';
     if (s.id === 'blocker' && this.stats.blockerAmount <= 0) return 'neuro-bloqueurs grillés';
     if (s.id === 'blocker' && this.run.blockers <= 0) return 'aucun neuro-bloqueur';
     if (s.id === 'blocker' && this.hero.pa < BLOCKER_PA) return 'PA insuffisants';
@@ -1378,7 +1412,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     stageOpacity(fadeVisibility(this.cameras.main.fadeEffect));
     this.world.frame();
     if (!this.ready || this.ending) return;
-    if (!this.psyTold && psyTier(this.run.psy) !== 'stable') { this.psyTold = true; this.tut.event('psy:high'); }
+    if (this.psyOn && !this.psyTold && psyTier(this.run.psy) !== 'stable') { this.psyTold = true; this.tut.event('psy:high'); }
     // Modal windows (implant cards, street events) hide the fight bar and its spell card.
     const modal = !!(this.choice || this.panel);
     this.ui.setVisible(!modal);
@@ -1517,16 +1551,16 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
   private publishHud() {
     const boss = this.liveUnits().find(u => u.boss);
     const hud: HudData = {
-      hp: this.hero.hp, maxHp: this.hero.maxHp, psy: this.run.psy, credits: this.run.creditsEarned, blockers: this.run.blockers,
+      hp: this.hero.hp, maxHp: this.hero.maxHp, psy: this.run.psy, credits: this.run.creditsEarned, blockers: this.run.blockers, psychosis: this.psyOn,
       room: this.run.roomIndex + 1, rooms: CONFIG.ROOMS_PER_RUN,
       implants: this.run.implants.map(i => i.name + (i.level && i.level > 1 ? ' ' + ['', 'I', 'II', 'III'][i.level] : '')), relics: this.run.relics.map(r => ({ name: r.name, desc: r.description, rarity: r.rarity })),
-      synergies: activeSynergies(this.run.implants, synergyBonus(this.run.relics)).map(a => SYNERGIES[a.synergy].tiers[a.tier].name),
-      psyBonus: psyBonusLabel(this.run.psy),
+      synergies: activeSynergies(this.run.implants, synergyBonus(this.run.relics)).map(a => synergyTier(a.synergy, a.tier, this.psyOn).name),
+      psyBonus: this.psyOn ? psyBonusLabel(this.run.psy) : '',
       notice: this.run.contract && this.run.contract.room === this.run.roomIndex ? contractProgress(this.run.contract, this.tally)
         : this.run.contract ? 'CONTRAT EN ATTENTE' : this.room.elite ? `ÉLITE — ${ELITE_LABELS[this.room.elite]}` : undefined,
       boss: boss ? { hp: boss.hp, max: boss.maxHp, name: boss.name } : undefined,
       weapon: WEAPONS[this.run.weapon].name + (this.run.aspect ? ` (${ASPECT_BY_ID.get(this.run.aspect)?.name} ${['', 'I', 'II', 'III'][this.run.aspectRank] ?? ''})` : ''),
-      tag: [this.run.daily ? 'RUN DU JOUR' : '', this.run.heatPoints ? `NOTORIÉTÉ ${this.run.heatPoints}` : ''].filter(Boolean).join(' · '),
+      tag: [this.run.daily ? 'RUN DU JOUR' : this.run.mode === 'cyberhard' ? 'CYBERHARD' : '', this.run.heatPoints ? `NOTORIÉTÉ ${this.run.heatPoints}` : ''].filter(Boolean).join(' · '),
     };
     this.registry.set('hud', hud);
   }
@@ -1541,7 +1575,8 @@ function psyBonusLabel(psy: number) {
 /** Capsule's gifts on a new run: a neuro-blocker, starting credits, a relic. */
 function applyGifts(run: RunState, gifts: GiftId[]) {
   for (const g of gifts) {
-    if (g === 'cherry') run.blockers += 1;
+    // No neuro-blockers in a normal run: the cherry cola is worth a few credits there.
+    if (g === 'cherry') { if (hasPsychosis(run.mode)) run.blockers += 1; else run.creditsEarned += CHERRY_CALM_CREDITS; }
     else if (g === 'zero') run.creditsEarned += ZERO_CREDITS;
     else {
       const free = RELICS.filter(r => !run.relics.some(o => o.id === r.id));

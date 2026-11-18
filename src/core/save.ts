@@ -4,6 +4,7 @@ import { HEAT_PACTS, type HeatRanks } from '../data/heat';
 import { HISTORY_CAP, isRunRecord, type RunRecord } from './history';
 import { ASPECT_BY_ID, MAX_ASPECT_RANK, aspectRank } from '../data/aspects';
 import { parseVending, type VendingState } from './vending';
+import type { Unlocks } from './mode';
 
 /** Best result of the daily run for one date (YYYY-MM-DD). */
 export interface DailyRecord { date: string; sector: number; victory: boolean; timeMs: number; kills: number }
@@ -42,6 +43,8 @@ export interface SaveData {
   aspects: Record<string, number>;
   /** equipped aspect per weapon id */
   aspect: Partial<Record<WeaponId, string>>;
+  /** run tiers of the elevator (core/mode.ts): CyberHard after any victory, the wanted posters after a CyberHard one */
+  unlocks: Unlocks;
 }
 
 export const SAVE_KEY = 'neon-city-save';
@@ -53,6 +56,7 @@ export function defaultSave(): SaveData {
     weapons: ['blade'], weapon: 'blade', codex: {}, deaths: {}, heat: {}, bestHeat: 0, daily: [],
     story: { talks: {}, flags: [] },
     aspects: {}, aspect: {},
+    unlocks: { cyberhard: false, wanted: false },
   };
 }
 
@@ -98,6 +102,16 @@ function aspects(rawRanks: unknown, rawEquip: unknown): Pick<SaveData, 'aspects'
   return { aspects: ranks, aspect };
 }
 
+/**
+ * Saves from before the run tiers: everything played then was today's CyberHard, so a past victory
+ * (in the history, the bestiary's final boss, a notoriety record or the last run) opens both tiers.
+ */
+function unlocks(v: unknown, legacyWin: () => boolean): Unlocks {
+  if (isObj(v) && typeof v.cyberhard === 'boolean' && typeof v.wanted === 'boolean') return { cyberhard: v.cyberhard || v.wanted, wanted: v.wanted };
+  const won = legacyWin();
+  return { cyberhard: won, wanted: won };
+}
+
 /** Never throws: any missing, corrupt or outdated save yields a fresh default. Missing new fields get defaults. */
 export function loadSave(storage: Pick<Storage, 'getItem'>): SaveData {
   try {
@@ -111,6 +125,8 @@ export function loadSave(storage: Pick<Storage, 'getItem'>): SaveData {
     if (!weapons.includes('blade')) weapons.unshift('blade');
     const heat: HeatRanks = {};
     for (const p of HEAT_PACTS) { const n = isObj(d.heat) ? d.heat[p.id] : undefined; if (isCount(n) && n > 0) heat[p.id] = Math.min(p.max, Math.floor(n)); }
+    const history: RunRecord[] = Array.isArray(d.history) ? d.history.filter(isRunRecord).slice(-HISTORY_CAP) : [];
+    const codex = counts(d.codex), bestHeat = isCount(d.bestHeat) ? Math.floor(d.bestHeat) : 0, st = story(d.story);
     return {
       version: 1,
       credits: Math.floor(d.credits),
@@ -118,16 +134,17 @@ export function loadSave(storage: Pick<Storage, 'getItem'>): SaveData {
       runs: Math.floor(d.runs),
       bestRoom: Math.floor(d.bestRoom),
       // Optional: saves from before the history existed simply start with an empty one.
-      history: Array.isArray(d.history) ? d.history.filter(isRunRecord).slice(-HISTORY_CAP) : [],
+      history,
       weapons: [...new Set(weapons)] as WeaponId[],
       weapon: isWeaponId(d.weapon) && weapons.includes(d.weapon) ? d.weapon : 'blade',
-      codex: counts(d.codex),
+      codex,
       deaths: counts(d.deaths),
       heat,
-      bestHeat: isCount(d.bestHeat) ? Math.floor(d.bestHeat) : 0,
+      bestHeat,
       daily: Array.isArray(d.daily) ? d.daily.filter(isDaily).slice(-DAILY_CAP) : [],
-      story: story(d.story),
+      story: st,
       ...aspects(d.aspects, d.aspect),
+      unlocks: unlocks(d.unlocks, () => history.some(h => h.victory) || (codex.boss ?? 0) > 0 || bestHeat > 0 || !!st.lastRun?.victory),
     };
   } catch {
     return defaultSave();

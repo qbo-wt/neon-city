@@ -6,10 +6,13 @@ import { computeStats } from '../core/stats';
 import type { Implant, Relic, RelicRarity } from '../core/types';
 import type { Contract } from '../core/contract';
 import type { WeaponId } from '../data/weapons';
+import { hasPsychosis, type RunMode } from '../core/mode';
 
 /** Everything that survives between rooms of one run. Lives in the game registry. */
 export interface RunState {
   seed: number;
+  /** run tier (core/mode.ts): psychosis and notoriety only exist in CyberHard */
+  mode: RunMode;
   rooms: RoomPlan[];
   roomIndex: number;
   implants: Implant[];
@@ -51,6 +54,8 @@ export interface RunState {
 /** Live values the HUD draws each frame. */
 export interface HudData {
   hp: number; maxHp: number; psy: number; credits: number; blockers: number;
+  /** false in a normal run: no PSY gauge, no neuro-blockers, no psychosis screen effects */
+  psychosis: boolean;
   room: number; rooms: number; implants: string[];
   /** carried relics, with their effect for the hover list */
   relics: { name: string; desc: string; rarity: RelicRarity }[];
@@ -67,17 +72,23 @@ export interface HudData {
 
 const KEY = 'run';
 
-export function newRun(seed: number, ownedNodes: string[], weapon: WeaponId = 'blade', opts: { heat?: HeatRanks; daily?: string; aspect?: string; aspectRank?: number } = {}): RunState {
-  const base = computeStats([], ownedNodes);
-  const heat = opts.heat ?? {};
+/**
+ * A fresh run. `mode` defaults to the normal run; notoriety only applies to CyberHard (the daily run
+ * passes none), and neuro-blockers only exist there.
+ */
+export function newRun(seed: number, ownedNodes: string[], weapon: WeaponId = 'blade',
+  opts: { mode?: RunMode; heat?: HeatRanks; daily?: string; aspect?: string; aspectRank?: number } = {}): RunState {
+  const mode = opts.mode ?? 'normal', psy = hasPsychosis(mode);
+  const base = computeStats([], ownedNodes, [], psy);
+  const heat = mode === 'cyberhard' ? opts.heat ?? {} : {};
   let rooms = generateRun(seed);
   // Notoriety "Escouades": one sector in three is an elite squad.
   if (heatEffects(heat).squads) rooms = rooms.map((r, i) => (!r.isBoss && i % 3 === 2 ? makeElite(r, createRng(seed + i * 53)) : r));
   return {
-    seed, rooms, roomIndex: 0, implants: [], relics: [], ownedNodes,
+    seed, mode, rooms, roomIndex: 0, implants: [], relics: [], ownedNodes,
     heat, heatPoints: heatPoints(heat), daily: opts.daily, killsByType: {},
     aspect: opts.aspect, aspectRank: opts.aspectRank ?? 0,
-    psy: 0, hp: base.maxHp, creditsEarned: 0, blockers: base.startBlockers,
+    psy: 0, hp: base.maxHp, creditsEarned: 0, blockers: psy ? base.startBlockers : 0,
     kills: 0, damageDealt: 0, hpHealed: 0, timeMs: 0, weapon,
   };
 }

@@ -19,15 +19,16 @@ export class ImplantChoice {
   private root: Phaser.GameObjects.Container;
   private done = false;
 
-  /** `bonus`: extra implants each carried family counts for the synergies (relic). */
+  /** `bonus`: extra implants each carried family counts for the synergies (relic). `psychosis` false: normal run, no load shown. */
   constructor(private scene: Phaser.Scene, readonly options: Offer[], private controls: Controls, owned: readonly Implant[], bonus: number,
-    private onPick: (o: Offer) => void, heading = 'CLINIQUE CLANDESTINE — CHOISIS UN IMPLANT') {
+    private onPick: (o: Offer) => void, heading = 'CLINIQUE CLANDESTINE — CHOISIS UN IMPLANT', psychosis = true) {
     const { WIDTH: W, HEIGHT: H } = CONFIG;
     const counts = familyCounts(owned, bonus);
     this.root = scene.add.container(0, 0).setScrollFactor(0).setDepth(5000);
     this.root.add(backdrop(scene, 0.86, C.cyan));
     this.root.add(new GlitchText(scene, W / 2, 30, heading, 17, T.cyan, { every: 3500 }));
-    this.root.add(txt(scene, W / 2, 46, 'Chaque implant augmente ta charge de psychose. 2 et 3 implants d\'une famille débloquent une synergie.', 6, T.mute).setOrigin(0.5));
+    this.root.add(txt(scene, W / 2, 46, psychosis ? 'Chaque implant augmente ta charge de psychose. 2 et 3 implants d\'une famille débloquent une synergie.'
+      : 'Un implant te suit jusqu\'à la fin de la run. 2 et 3 implants d\'une famille débloquent une synergie.', 6, T.mute).setOrigin(0.5));
 
     const cw = 140, ch = 152, gap = 12, total = options.length * cw + (options.length - 1) * gap;
     options.forEach((o, i) => {
@@ -57,7 +58,7 @@ export class ImplantChoice {
       const desc = imp.describe?.(o.level) ?? imp.description;
       card.add(txt(scene, cw / 2, 88, desc, 6, rarity === 'black' ? T.green : T.yellow).setOrigin(0.5, 0).setWordWrapWidth(cw - 14).setAlign('center').setLineSpacing(1));
       const load = Math.round(implantLoad({ ...imp, level: o.level }) - (o.upgrade ? implantLoad({ ...imp, level: o.level - 1 }) : 0));
-      card.add(chip(scene, cw / 2, 116, `CHARGE PSY +${load}`, C.magenta, { size: 5, originX: 0.5 }));
+      if (psychosis) card.add(chip(scene, cw / 2, 116, `CHARGE PSY +${load}`, C.magenta, { size: 5, originX: 0.5 }));
       // How this card moves its family toward the next synergy.
       if (imp.family && !o.upgrade) {
         // The bonus only counts for families you already carry: a first implant of a family brings it along.

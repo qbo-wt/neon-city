@@ -10,6 +10,7 @@ import { BARREL_BLAST, BARREL_HP, COVER_MULT } from '../tactics/terrain';
 import { BOSS_TUNING } from '../tactics/bosses';
 import { hex, title, txt } from './text';
 import { Button, C, Card, T, bold, chip, cutPoly, hints, keycap, markPanelClosed, pinToCamera, screenFrame } from './kit';
+import { CYBERHARD_CREDIT_MULT, NORMAL_TUNING } from '../core/mode';
 
 /** One piece of a guide page. */
 type Block =
@@ -41,12 +42,20 @@ const CHAPTERS: Chapter[] = [
     { list: [
       ['APPART', 'Râtelier d\'armes, terminal (historique), serveur (bestiaire), ce guide.'],
       ['COULOIR', 'Le Doc Kessler (améliorations du corps), Nyx (améliorations de l\'esprit), Capsule, le distributeur qui parle (des services contre des boissons), et l\'ascenseur.'],
-      ['ASCENSEUR', 'Lance une run normale, la run du jour ou règle ta notoriété.'],
+      ['ASCENSEUR', 'Lance une run normale, une run CyberHard (après une victoire), la run du jour, ou règle ta notoriété (après une victoire en CyberHard).'],
       ['LA RUN', `${CONFIG.ROOMS_PER_RUN} secteurs à traverser. Un boss tous les ${CONFIG.BOSS_EVERY} secteurs, le dernier ferme le contrat.`],
     ] },
     { h: 'Ce que tu gardes' },
     { p: 'À la mort comme à la victoire, les crédits gagnés pendant la run sont rapatriés. Les implants, les reliques et la psychose sont perdus : chaque run repart de zéro, mais tu reviens plus fort grâce aux crédits.' },
     { tip: 'Une victoire contre le dernier boss rapporte une prime en plus.' },
+  ], [
+    { h: 'Trois paliers' },
+    { list: [
+      ['RUN NORMALE', `Le point de départ. Pas de cyberpsychose ni de neuro-bloqueurs ; ennemis -${Math.round((1 - NORMAL_TUNING.enemyHp) * 100)} % de vie et -${Math.round((1 - NORMAL_TUNING.enemyDamage) * 100)} % de dégâts, soins +${Math.round((NORMAL_TUNING.heal - 1) * 100)} %. La Surchauffe coûte un peu de vie.`],
+      ['RUN CYBERHARD', `Débloquée en gagnant une run normale. Les règles complètes : la psychose (chapitre PSYCHOSE), ennemis à pleine force, +${Math.round((CYBERHARD_CREDIT_MULT - 1) * 100)} % de crédits.`],
+      ['AVIS DE RECHERCHE', 'Débloqués en gagnant une run CyberHard : la notoriété ajoute des handicaps à tes runs CyberHard contre plus de crédits.'],
+    ] },
+    { p: 'Les deux runs partagent tout le reste : secteurs, boss, reliques, implants, crédits, histoire. La run du jour garde les règles CyberHard, sans notoriété.' },
   ]] },
   { name: 'SE DÉPLACER', pages: [[
     { h: 'Dans l\'immeuble' },
@@ -115,8 +124,8 @@ const CHAPTERS: Chapter[] = [
     { p: 'Les pièges valent pour tout le monde, poussées et attractions comprises : envoie les ennemis dessus. Le chemin affiché les contourne quand ça ne coûte rien de plus, et annonce les PV que tu y perdrais. Survole une case pour la décrire. Les ennemis évitent les pièges et les barils.' },
   ]] },
   { name: 'PSYCHOSE', pages: [[
-    { h: 'La jauge PSY' },
-    { p: `Neon City t'use : la psychose monte au début de chacun de tes tours (${PSY.PSY_PER_TURN} de base, plus la charge de tes implants) et de ${PSY.PSY_PER_KILL} à chaque élimination.` },
+    { h: 'La jauge PSY (run CyberHard)' },
+    { p: `Règle de la run CyberHard et de la run du jour (la run normale n'en a pas). Neon City t'use : la psychose monte au début de chacun de tes tours (${PSY.PSY_PER_TURN} de base, plus la charge de tes implants) et de ${PSY.PSY_PER_KILL} à chaque élimination.` },
     { list: [
       ['50 %', `Glitch : dégâts x${PSY.PSY_GLITCH_DAMAGE}. L'écran grésille.`],
       ['75 %', `Dérive : dégâts x${PSY.PSY_DRAIN_DAMAGE}, mais tu perds ${PSY.PSY_DRAIN_SLOW * 100} % de tes PV max à chaque tour.`],
@@ -126,6 +135,7 @@ const CHAPTERS: Chapter[] = [
     { list: [
       ['SURCHAUFFE', `0 PA, une fois par tour : +${PSY.OVERHEAT_PA} PA tout de suite, contre ${PSY.OVERHEAT_PSY} de psychose.`],
       ['NEURO-BLOQUEUR', `Touche F, 2 PA : -${PSY.BLOCKER_AMOUNT} de psychose. Il faut en avoir un (coffres, rencontres, arbre de Nyx).`],
+      ['RUN NORMALE', `Pas de jauge : la Surchauffe coûte ${Math.round(NORMAL_TUNING.overheatHp * 100)} % de ta vie max, et il n'y a pas de neuro-bloqueurs.`],
     ] },
     { tip: 'La psychose est aussi une arme : rester juste sous 75 % donne de gros dégâts sans perdre de vie.' },
   ]] },
@@ -166,16 +176,16 @@ const CHAPTERS: Chapter[] = [
   { name: 'IMPLANTS', pages: [[
     { h: 'Pendant la run' },
     { p: 'Les cliniques de la rue proposent un implant parmi trois. Ils donnent PA, PM, portée, résistance, vol de vie, dégâts de poussée… et certains ajoutent un sort (Grenade, Tourelle, Stimulant, Bouclier cinétique, Court-circuit, Tir réflexe).' },
-    { p: 'Chaque implant ajoute de la charge psy : ta psychose monte plus vite. Retrouver un implant déjà posé l\'améliore (jusqu\'au niveau III).' },
+    { p: 'En CyberHard, chaque implant ajoute de la charge psy : ta psychose monte plus vite (les implants liés à la psychose ne sortent qu\'en CyberHard). Retrouver un implant déjà posé l\'améliore (jusqu\'au niveau III).' },
     { h: 'Familles et synergies' },
     { chips: [['CHROME', C.white], ['NEURAL', C.green], ['SANG', C.red], ['OPTIQUE', C.yellow]] },
-    { p: '2 puis 3 implants d\'une même famille débloquent ses synergies : blindage et épines (chrome), psychose réduite et +1 PA (neural), soins aux éliminations et frénésie (sang), critiques et portée (optique).' },
+    { p: '2 puis 3 implants d\'une même famille débloquent ses synergies : blindage et épines (chrome), psychose réduite (+8 % de dégâts en run normale) et +1 PA (neural), soins aux éliminations et frénésie (sang), critiques et portée (optique).' },
     { h: 'Marché noir' },
     { p: 'Dès le secteur 3, une carte du marché noir peut apparaître : un gros avantage, avec une contrepartie.' },
   ]] },
   { name: 'RELIQUES', pages: [[
     { h: 'Des objets uniques' },
-    { p: `Une relique reste avec toi jusqu'à la fin de la run, sans charge psy. Il en existe ${RELICS.length}, et la plupart changent ta façon de jouer : effets aux éliminations, en début ou fin de tour, quand tu encaisses, selon ta position, sur la psychose, les crédits, les implants ou tes sorts.` },
+    { p: `Une relique reste avec toi jusqu'à la fin de la run, sans charge psy (celles qui jouent sur la psychose ne sortent qu'en CyberHard). Il en existe ${RELICS.length}, et la plupart changent ta façon de jouer : effets aux éliminations, en début ou fin de tour, quand tu encaisses, selon ta position, sur la psychose, les crédits, les implants ou tes sorts.` },
     { h: 'Où les trouver' },
     { list: [
       ['BOSS', 'Le Lieutenant des Rats (secteur 5) en laisse toujours une, au choix parmi trois.'],
@@ -193,9 +203,9 @@ const CHAPTERS: Chapter[] = [
     { h: 'Rencontres' },
     { list: [
       ['ROOK, FIXER', 'Propose un contrat sur le prochain combat.'],
-      ['DOC PAVÉ', 'Charcudoc de rue : greffe propre, greffe du marché noir, purge de psychose.'],
-      ['ZÉRO', 'Netrunner : paris (psychose quitte ou double, distributeur piraté), neuro-bloqueur pirate.'],
-      ['MAMA KIT', 'Marchande : stimpack, neuro-bloqueur, révision d\'implant, parfois une relique.'],
+      ['DOC PAVÉ', 'Charcudoc de rue : greffe propre, greffe du marché noir, purge de psychose (en run normale : points de suture).'],
+      ['ZÉRO', 'Netrunner : paris (quitte ou double, distributeur piraté), neuro-bloqueur pirate (en run normale : patch médical).'],
+      ['MAMA KIT', 'Marchande : stimpack, neuro-bloqueur (CyberHard), révision d\'implant, parfois une relique.'],
     ] },
     { h: 'Secteurs d\'élite' },
     { p: 'Un ennemi de plus par vague, tous plus solides et marqués d\'un trait : boucliers, explosifs (ils sautent en mourant), camouflés (ciblables à 2 cases au plus) ou enragés (+1 PM, plus de dégâts). La récompense est meilleure.' },
@@ -206,9 +216,9 @@ const CHAPTERS: Chapter[] = [
     { h: 'Le Doc Kessler — le CORPS' },
     { p: 'Sa clinique, dans le couloir, vend des améliorations permanentes en 4 branches : Ossature, Muscle, Mobilité, Instinct. Chaque palier demande le précédent.' },
     { h: 'Nyx — l\'ESPRIT' },
-    { p: 'La netrunneuse vend Sérénité (moins de psychose, implants moins lourds, un neuro-bloqueur de départ) et Réseau (plus de crédits, neuro-bloqueurs plus forts, prime de victoire doublée).' },
+    { p: 'La netrunneuse vend Réseau (plus de crédits, neuro-bloqueurs plus forts ou soins en run normale, prime de victoire doublée) et, une fois la run CyberHard débloquée, Sérénité (moins de psychose, implants moins lourds, un neuro-bloqueur de départ).' },
     { h: 'Notoriété' },
-    { p: 'Après une première victoire, l\'avis de recherche de l\'ascenseur active des handicaps (ennemis blindés, enragés, air vicié…). Chaque point donne +10 % de crédits ; battre ton record rapporte une prime.' },
+    { p: 'Après une victoire en CyberHard, l\'avis de recherche de l\'ascenseur active des handicaps sur tes runs CyberHard (ennemis blindés, enragés, air vicié…). Chaque point donne +10 % de crédits ; battre ton record rapporte une prime.' },
     { h: 'Run du jour et bestiaire' },
     { p: 'La run du jour : la même ville pour tout le monde, avec la Lame-mono et sans notoriété. Le serveur de l\'appart tient le bestiaire : chaque type d\'ennemi éliminé ouvre son dossier, puis sa tactique (10 éliminations) et son histoire (25).' },
   ]] },
@@ -221,7 +231,7 @@ const CHAPTERS: Chapter[] = [
       ['1 à 9 ou clic', 'Choisir un sort, puis clic sur la cible'],
       ['CLIC DROIT / ÉCHAP', 'Annuler le sort (sinon : options)'],
       ['ESPACE / ENTRÉE', 'Fin du tour (PRÊT au placement)'],
-      ['F', 'Neuro-bloqueur'],
+      ['F', 'Neuro-bloqueur (CyberHard)'],
       ['MOLETTE / ZQSD', 'Zoomer / déplacer la caméra'],
       ['SURVOL', 'Infos, chemin, portée, dégâts prévus'],
     ] },

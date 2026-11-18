@@ -25,7 +25,7 @@ Roguelite tactique cyberpunk au tour par tour (PA/PM, sorts, grille, ligne de vu
 | Config, entrée | `src/config.ts` (`SCENES`, `ZOOM = 4`, logique 480×270), `src/main.ts` |
 | Scènes | `src/scenes/` : `MenuScene`, `HideoutScene` (appart), `BuildingScene` (couloir), `InteriorScene` (base des intérieurs), `RipperdocScene` (Doc), `NetrunnerScene` (Nyx), `RunScene` (run + combat), `HudScene`, `DeathScene`, `BootScene` |
 | Combat (logique pure, testée) | `src/tactics/` : `fight.ts` (règles, `FightHooks`, `cloneFight`), `ai.ts`, `arena.ts` (génération, `TERRAIN`), `terrain.ts` + `hazards.ts` (pièges, barils, couverts), `bosses.ts` (`BOSS_HOOKS`, `BOSS_TUNING`), `units.ts`, `board.ts` |
-| Run, progression | `src/core/` : `runMap.ts`, `relics.ts`, `psychosis.ts`, `stats.ts`, `loot.ts`, `save.ts`, `story.ts`, `daily.ts`, `skillTree.ts`, `tutorial.ts`, `vending.ts` (Capsule), `settings.ts` ; `src/systems/runState.ts`, `streetEvents.ts` |
+| Run, progression | `src/core/` : `mode.ts` (paliers de run), `runMap.ts`, `relics.ts`, `psychosis.ts`, `stats.ts`, `loot.ts`, `save.ts`, `story.ts`, `daily.ts`, `skillTree.ts`, `tutorial.ts`, `vending.ts` (Capsule), `settings.ts` ; `src/systems/runState.ts`, `streetEvents.ts` |
 | Données | `src/data/` : `enemies`, `spells`, `weapons`, `implants`, `synergies`, `relics`, `heat`, `aspects`, `story`, `dialogue`, `codex`, `tutorial`, `vending`, `rooms`, `skillNodes` |
 | Rendu 3D | `src/three/` : `stage.ts` (canvas three sous Phaser), `stylize.ts` (`StylePass` : cel, encre, effets), `characters.ts` (VRM `CharacterRig`, `CAST`), `cyberware.ts` (table `CYBER`), `World3D.ts` + `street/*` (rues/combat), `Interior3D.ts` + `interior/*` (une pièce par fichier : `apartment`, `corridor`, `clinic`, `den`), `portraits.ts`, `quality.ts`, `preload.ts` |
 | Textures 2D restantes | `src/gfx/` : `generateTextures.ts` (icônes de la carte, glow, slash, corps physiques invisibles), `sprites.ts`, `vendingFace.ts` (visage de Capsule) |
@@ -33,6 +33,7 @@ Roguelite tactique cyberpunk au tour par tour (PA/PM, sorts, grille, ligne de vu
 | Effets, son | `src/fx/animeFx.ts`, `src/fx/screenFx.ts`, `src/audio/audio.ts` (`TRACKS`) |
 
 ## Pièges connus
+- Paliers de run (`src/core/mode.ts`) : run normale (défaut, sans psychose, réglages dans `NORMAL_TUNING`) → CyberHard (débloquée par une victoire) → avis de recherche (victoire en CyberHard, notoriété CyberHard seulement), persistés dans `save.unlocks`. La run du jour garde les règles CyberHard. Tout ce qui touche la psychose passe par `psyOn` (`RunScene`) ou `Fight.noPsy` ; le contenu qui n'a de sens qu'avec elle est marqué `psyOnly` (reliques, implants), `cyberhard` (nœuds de Nyx) ou `calm` (synergie).
 - Les crochets de combat ne gardent **aucun état propre** : l'IA et les aperçus jouent sur des copies (`cloneFight`). État par unité dans `Unit.mem`, état de combat dans `Fight`.
 - Les scènes réécrivent leur copie complète de la sauvegarde : un état modifié en cours de scène hors de cette copie doit avoir sa propre clé localStorage (comme `settings.ts`, `tutorial.ts`).
 - Intérieurs : positions en pixels logiques via `at(px, py, h)` ; collisions dans les `blockers` de chaque pièce. Les scènes ambiantes de Capsule repèrent les habitants par l'ordre des `res(...)` dans `BuildingScene` : ne pas les réordonner.
