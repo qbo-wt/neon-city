@@ -29,7 +29,7 @@ export const HALL = {
   ],
   clinic: { x: 44, y: 100 },
   home: { x: 148, y: 100 },
-  lo: { x: 215, y: 87 },
+  lo: { x: 215, y: 83 },
   elevator: { x: 344, y: 102 },
   den: { x: 440, y: 100 },
   /**
