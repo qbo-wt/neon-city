@@ -105,7 +105,7 @@ export class LoadingScreen {
     this.bytes = txt(scene, 30, 258, '', 5, T.mute).setOrigin(0, 0.5);
     ui.add(this.bytes);
     ui.add(txt(scene, 400, 258, 'Ne débranche pas ton implant.', 5, T.off).setOrigin(1, 0.5));
-    this.pct = title(scene, W - 28, 246, '0%', 34, T.yellow).setFontStyle('600').setOrigin(1, 0.5);
+    this.pct = title(scene, W - 8, 246, '0%', 34, T.yellow).setFontStyle('600').setOrigin(1, 0.5);
     ui.add(this.pct);
 
     this.fx = scene.add.graphics().setDepth(4);
