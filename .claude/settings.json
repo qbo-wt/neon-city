@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "enabledPlugins": {
+    "superpowers@superpowers-marketplace": false,
+    "episodic-memory@superpowers-marketplace": false,
+    "elements-of-style@superpowers-marketplace": false,
+    "mattpocock-skills@claude-plugins-official": false,
+    "php-lsp@claude-plugins-official": false
+  }
+}
