@@ -7,7 +7,8 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <style>
       html, body { margin: 0; height: 100%; background: #0b0820; overflow: hidden; }
-      #game { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+      /* Phaser centres the canvas itself (autoCenter): a flex centre here doubled its offset. */
+      #game { width: 100vw; height: 100vh; }
       canvas { image-rendering: pixelated; }
     </style>
   </head>
