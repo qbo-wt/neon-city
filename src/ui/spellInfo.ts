@@ -61,3 +61,32 @@ export function zoneIcon(scene: Phaser.Scene, x: number, y: number, s: SpellDef,
   if (caster) dia(caster, 0x00f0ff, 1);
   return g;
 }
+
+/**
+ * The spell's real reach around you (cyan, centre): every cell you can aim at (dim), and the zone it
+ * hits when aimed as far as it goes (bright). Scaled to fit a `box` px wide picture.
+ */
+export function rangeIcon(scene: Phaser.Scene, x: number, y: number, s: SpellDef, range: [number, number], color: number, box = 50): Phaser.GameObjects.Graphics {
+  if (s.target === 'self') return zoneIcon(scene, x, y, s, color);
+  const g = scene.add.graphics();
+  const [min, max] = range;
+  // Aimed straight "east" at full range; the zone is drawn around that target cell.
+  const zone = relZone(s).map(c => ({ x: c.x + max, y: c.y }));
+  const reach = Math.max(max, ...zone.map(c => Math.abs(c.x) + Math.abs(c.y)));
+  const W = Math.min(5, box / (2 * reach + 2)), H = W / 2;
+  const at = (c: Pt) => ({ x: x + (c.x - c.y) * W, y: y + (c.x + c.y) * H });
+  const dia = (c: Pt, fill: number, a: number) => {
+    const p = at(c), k = Math.min(0.5, W * 0.1);
+    g.fillStyle(fill, a).fillPoints([new Phaser.Math.Vector2(p.x, p.y - H + k), new Phaser.Math.Vector2(p.x + W - k, p.y), new Phaser.Math.Vector2(p.x, p.y + H - k), new Phaser.Math.Vector2(p.x - W + k, p.y)], true);
+  };
+  for (let dy = -reach; dy <= reach; dy++) for (let dx = -reach; dx <= reach; dx++) {
+    const d = Math.abs(dx) + Math.abs(dy);
+    if (d > reach) continue;
+    const inRange = d >= min && d <= max && (!s.line || dx === 0 || dy === 0);
+    dia({ x: dx, y: dy }, inRange ? color : 0x3a3550, inRange ? 0.35 : 0.5);
+  }
+  for (const c of zone) dia(c, color, 0.9);
+  dia({ x: max, y: 0 }, 0xffffff, 0.9);
+  dia({ x: 0, y: 0 }, 0x00f0ff, 1);
+  return g;
+}

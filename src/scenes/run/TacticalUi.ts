@@ -3,7 +3,7 @@ import { CONFIG, COLORS } from '../../config';
 import { spellRange, type Fight } from '../../tactics/fight';
 import type { SpellDef, Unit } from '../../tactics/types';
 import { txt, hex, title } from '../../ui/text';
-import { spellBits, zoneIcon, zoneLabel } from '../../ui/spellInfo';
+import { rangeIcon, spellBits, zoneLabel } from '../../ui/spellInfo';
 import { Button, C, T, bold, chip, cutPoly, drawBar, drawPanel, pinToCamera, scanlines, skewPoly, stripes, tabTitle } from '../../ui/kit';
 
 export const BAR_H = 38;
@@ -237,15 +237,15 @@ export class TacticalUi {
       items.push(dmgLabel, dmgLine);
       if (extraT) { extraT.setPosition(dmgLine.x + dmgLine.width + 6, yy + 6).setOrigin(0, 0.5); items.push(extraT); }
     } else if (extraT) { extraT.setPosition(x + 7, yy + 2); items.push(extraT); }
-    // A picture of the zone, framed on the right of the card.
+    // A picture of the real range around you and the zone at full reach, framed on the right of the card.
     const fx = x + w - ICON - 4, fy = y + 8, fh = h - 14;
     const frame = sc.add.graphics();
     frame.fillStyle(C.deep, 0.9).fillPoints(cutPoly(fx, fy, ICON, fh, [0, 4, 0, 4]), true);
     frame.lineStyle(0.25, s.color, 0.6).strokePoints(cutPoly(fx, fy, ICON, fh, [0, 4, 0, 4]), true);
     scanlines(frame, fx, fy, ICON, fh, [0, 4, 0, 4], s.color, 0.06);
     items.push(frame);
-    items.push(bold(sc, fx + ICON / 2, fy + 5, 'ZONE', 4.5, hex(s.color)).setOrigin(0.5));
-    items.push(zoneIcon(sc, fx + ICON / 2, fy + fh / 2 + 3, s, s.color));
+    items.push(bold(sc, fx + ICON / 2, fy + 5, s.target === 'self' ? 'ZONE' : 'PORTÉE', 4.5, hex(s.color)).setOrigin(0.5));
+    items.push(rangeIcon(sc, fx + ICON / 2, fy + fh / 2 + 3, s, spellRange(u, s), s.color, ICON - 6));
     this.tip.add(items);
     pinToCamera(this.tip);
     this.tip.setVisible(true);
