@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config';
 import { SPELLS } from '../data/spells';
+import { showSpellPicture } from '../three/spellModels';
 import { RELICS } from '../data/relics';
 import { RELIC_RARITY_COLORS, RELIC_RARITY_NAMES } from '../core/relics';
 import type { Relic } from '../core/types';
@@ -389,6 +390,7 @@ export class GuidePanel {
         g.lineStyle(0.25, sp.color, 0.6).strokePoints(cutPoly(cx - cw / 2 + 2, y, cw - 4, 40, [0, 4, 0, 4]), true);
         root.add(g);
         root.add(zoneIcon(s, cx, y + 17, sp, sp.color));
+        showSpellPicture(s, root, sp.id, cx - cw / 2 + 8, y + 7, 9);
         root.add(bold(s, cx, y + 31, sp.name.toUpperCase(), 4.5, hex(sp.color)).setOrigin(0.5));
         root.add(txt(s, cx, y + 36.5, zoneLabel(sp), 4.5, T.mute).setOrigin(0.5));
       });

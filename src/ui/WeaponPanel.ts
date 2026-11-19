@@ -9,6 +9,7 @@ import { hex, title } from './text';
 import { audio } from '../audio/audio';
 import { txt } from './text';
 import { SPELLS } from '../data/spells';
+import { showSpellPicture } from '../three/spellModels';
 import { Button, C, Card, T, bold, chip, drawPanel, heading, hints, keycap, pinToCamera, pips, screenFrame } from './kit';
 
 const ROMAN = ['', 'I', 'II', 'III'];
@@ -124,7 +125,8 @@ export class WeaponPanel {
     spells.forEach((sp, i) => {
       const x = 16 + i * cw;
       root.add(drawPanel(s.add.graphics(), x + 1, top, cw - 4, 64, { accent: sp.color, cut: 5, marks: false, shadow: false, alpha: 0.9 }));
-      root.add(title(s, x + 6, top + 6.5, sp.name.toUpperCase(), 10, hex(sp.color)).setFontStyle('600').setOrigin(0, 0.5));
+      showSpellPicture(s, root, sp.id, x + 11, top + 7, 11);
+      root.add(title(s, x + 18, top + 6.5, sp.name.toUpperCase(), 10, hex(sp.color)).setFontStyle('600').setOrigin(0, 0.5));
       root.add(txt(s, x + 6, top + 13, spellBits(sp).replace(/ · ligne de vue| · sans ligne de vue/, ''), 5, T.dim).setWordWrapWidth(cw - 44));
       root.add(txt(s, x + 6, top + 29, `${sp.zone.shape === 'cell' ? '' : `Zone : ${zoneLabel(sp)}. `}${sp.desc}`, 5, T.text).setWordWrapWidth(cw - 12).setLineSpacing(1));
       root.add(zoneIcon(s, x + cw - 20, top + 15, sp, sp.color));

@@ -4,6 +4,7 @@ import { spellRange, type Fight } from '../../tactics/fight';
 import type { SpellDef, Unit } from '../../tactics/types';
 import { txt, hex, title } from '../../ui/text';
 import { rangeIcon, spellBits, zoneLabel } from '../../ui/spellInfo';
+import { showSpellPicture } from '../../three/spellModels';
 import { Button, C, T, bold, chip, cutPoly, drawBar, drawPanel, pinToCamera, scanlines, skewPoly, stripes, tabTitle } from '../../ui/kit';
 
 export const BAR_H = 38;
@@ -39,6 +40,7 @@ export class TacticalUi {
   private modeKey = '';
   private endBtn: Button;
   private tip: Phaser.GameObjects.Container;
+  private tipSeq = 0;
   private msg: Phaser.GameObjects.Text;
   private timeline: Phaser.GameObjects.Container;
   private info: Phaser.GameObjects.Container;
@@ -172,7 +174,9 @@ export class TacticalUi {
       r.on('pointerdown', (p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => { if (p.button === 0) { e.stopPropagation(); this.h.selectSpell(i); } });
       this.slotRects.push(r);
       c.add([g, r]);
-      c.add(title(sc, 0, 0.2, s.icon, 13, on ? (hot || sel ? T.text : hex(s.color)) : T.off).setFontStyle('600').setOrigin(0.5));
+      const label = title(sc, 0, 0.2, s.icon, 13, on ? (hot || sel ? T.text : hex(s.color)) : T.off).setFontStyle('600').setOrigin(0.5);
+      c.add(label); // fallback while the 3D picture renders, or if it fails
+      showSpellPicture(sc, c, s.id, 0, -0.5, SLOT - 8, { dim: !on, fallback: label });
       c.add(bold(sc, -SLOT / 2 + 4.5, -SLOT / 2 + 3.8, `${i + 1}`, 4.5, sel ? T.yellow : T.mute).setOrigin(0.5));
       // PA cost in a small cyan badge, bottom right.
       const badge = sc.add.graphics();
@@ -195,6 +199,7 @@ export class TacticalUi {
   /** `avoidX`: screen x to keep clear (the hero), the card goes to the other side. */
   showTip(s: SpellDef | null, u?: Unit, extra?: string, avoidX = 0) {
     this.tip.removeAll(true);
+    const seq = ++this.tipSeq;
     if (!s || !u) { this.tip.setVisible(false); return; }
     const W = CONFIG.WIDTH, sc = this.scene, ICON = 54, TW = 160;
     const items: Phaser.GameObjects.GameObject[] = [];
@@ -225,7 +230,8 @@ export class TacticalUi {
     const x = avoidX < W / 2 ? W - w - 4 : 4, y = CONFIG.HEIGHT - BAR_H - h - 8;
     const g = drawPanel(sc.add.graphics(), x, y, w, h, { accent: s.color, cut: 6, dots: 'br' });
     items.push(g);
-    items.push(tabTitle(sc, x + 8, y, s.name.toUpperCase(), s.color, 10));
+    const tab = tabTitle(sc, x + 8, y, s.name.toUpperCase(), s.color, 10);
+    items.push(tab);
     let yy = y + 9;
     chips.forEach(ch => { ch.setPosition(ch.x + x + 7, ch.y + yy + 3); items.push(ch); });
     yy += chipsH + 3;
@@ -247,6 +253,7 @@ export class TacticalUi {
     items.push(bold(sc, fx + ICON / 2, fy + 5, s.target === 'self' ? 'ZONE' : 'PORTÉE', 4.5, hex(s.color)).setOrigin(0.5));
     items.push(rangeIcon(sc, fx + ICON / 2, fy + fh / 2 + 3, s, spellRange(u, s), s.color, ICON - 6));
     this.tip.add(items);
+    showSpellPicture(sc, this.tip, s.id, x + 8 + tab.width + 9, y + 0.5, 14, { valid: () => seq === this.tipSeq });
     pinToCamera(this.tip);
     this.tip.setVisible(true);
   }
