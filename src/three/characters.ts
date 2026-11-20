@@ -23,9 +23,17 @@ export const CAST: Record<string, string> = {
 /** Everyone, for the preloader. */
 export const ALL_AVATARS = ['hero', 'lo', 'doc', 'nyx', 'runner', 'gunner', 'brute', 'bomber', 'hacker', 'warden', 'boss', ...Array.from({ length: 10 }, (_, i) => `res${i}`)];
 
-const ANIMS: AnimName[] = ['idle', 'walk', 'slash', 'punch', 'kick', 'shoot', 'cast', 'jump', 'roll', 'hit', 'death', 'victory', 'talk'];
+/** Which clip of the Quaternius pack plays each role. Roles without their own clip share the nearest one. */
+const ROLE_CLIP: Record<AnimName, string> = {
+  idle: 'Idle_Loop', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', ready: 'Sword_Idle',
+  slash: 'Sword_Attack', punch: 'Punch_Jab', kick: 'Punch_Cross', shoot: 'Pistol_Shoot', cast: 'Spell_Simple_Shoot',
+  hack: 'Interact', buff: 'Spell_Simple_Enter', jump: 'Jump_Start', roll: 'Roll', hit: 'Hit_Chest', death: 'Death01',
+  victory: 'Dance_Loop', dance: 'Dance_Loop', talk: 'Idle_Talking_Loop', phone: 'Idle_Torch_Loop',
+  sit: 'Sitting_Idle_Loop', sitTalk: 'Sitting_Talking_Loop',
+};
+const ANIMS = Object.keys(ROLE_CLIP) as AnimName[];
 /** Clips that play once and hand back to idle. */
-const ONCE = new Set<AnimName>(['slash', 'punch', 'kick', 'shoot', 'cast', 'jump', 'roll', 'hit', 'death', 'victory']);
+const ONCE = new Set<AnimName>(['slash', 'punch', 'kick', 'shoot', 'cast', 'hack', 'buff', 'jump', 'roll', 'hit', 'death', 'victory']);
 
 /** Quaternius bone → VRM humanoid bone (the *_leaf end bones and the root are dropped). */
 const RIG: Record<string, VRMHumanBoneName> = {
@@ -47,29 +55,34 @@ const RIG: Record<string, VRMHumanBoneName> = {
 };
 
 /**
- * Where each clip starts (seconds): the source swings wind up slower than the 110 ms the combat
- * gives a cast before its impact (RunScene 'cast' event), so the clip skips its wind-up and the
- * blow lands on the swing.
+ * Time (seconds into the clip) of the blow of each attack. The combat gives a cast 110 ms
+ * between the start of the animation and its impact (RunScene 'cast' event), so the clip skips
+ * its wind-up and starts at peak - 110 ms (scaled by the clip's speed).
  */
-const START: Partial<Record<AnimName, number>> = { slash: 0.29, punch: 0.06, kick: 0.12 };
+const IMPACT: Partial<Record<AnimName, number>> = { slash: 0.4, punch: 0.17, kick: 0.23 };
+const startOf = (name: AnimName, speed: number) => Math.max(0, (IMPACT[name] ?? 0) - 0.11 * speed);
+
+/** How a unit moves: heavy ones swing slowly, light ones are quick and jog instead of walking. */
+export type Build = 'light' | 'heavy';
+const ATTACKS = new Set<AnimName>(['slash', 'punch', 'kick', 'shoot', 'cast', 'hack']);
 
 /**
  * A clip with its rotations already moved into world rest space (that part is the same for
  * every avatar); only the bone names, the VRM 0 axis flip and the hips scale are per avatar.
  */
 type Motion = { clip: THREE.AnimationClip; hipsHeight: number };
-let motions: Promise<Map<AnimName, Motion>> | undefined;
+let motions: Promise<Map<string, Motion>> | undefined;
 
-function loadMotions(): Promise<Map<AnimName, Motion>> {
+function loadMotions(): Promise<Map<string, Motion>> {
   motions ??= (async () => {
     const asset = await new GLTFLoader().loadAsync(ANIM_FILE).catch(() => null);
-    if (!asset) return new Map<AnimName, Motion>();
+    if (!asset) return new Map<string, Motion>();
     const nodes = new Map<string, THREE.Object3D>();
     asset.scene.traverse(o => nodes.set(o.name, o));
     asset.scene.updateMatrixWorld(true);
     const hipsHeight = nodes.get('pelvis')!.getWorldPosition(new THREE.Vector3()).y || 1;
     const restInv = new THREE.Quaternion(), parentRest = new THREE.Quaternion(), q = new THREE.Quaternion();
-    const out = new Map<AnimName, Motion>();
+    const out = new Map<string, Motion>();
     for (const src of asset.animations) {
       const tracks: THREE.KeyframeTrack[] = [];
       for (const t of src.tracks) {
@@ -96,7 +109,7 @@ function loadMotions(): Promise<Map<AnimName, Motion>> {
           tracks.push(new THREE.VectorKeyframeTrack(`${bone}.${prop}`, t.times, v));
         }
       }
-      out.set(src.name as AnimName, { clip: new THREE.AnimationClip(src.name, src.duration, tracks), hipsHeight });
+      out.set(src.name, { clip: new THREE.AnimationClip(src.name, src.duration, tracks), hipsHeight });
     }
     return out;
   })();
@@ -174,9 +187,11 @@ export class CharacterRig implements Rig {
   private t = Math.random() * 10;
   private nextBlink = 1 + Math.random() * 3;
   private mood?: { name: string; until: number };
+  private pace = 1;
+  private phase = 0;
 
   /** `avatar`: file name in assets/vrm; `scale` 1 = a person of 1.7 m. */
-  constructor(avatar: string, scale = 1) {
+  constructor(avatar: string, scale = 1, private build?: Build) {
     this.ready = Promise.all([parse(avatar), loadMotions()]).then(([vrm, mo]) => {
       if (!vrm) return false;
       this.vrm = vrm;
@@ -205,7 +220,12 @@ export class CharacterRig implements Rig {
       installCyberware(avatar, vrm);
       this.root.add(vrm.scene);
       this.mixer = new THREE.AnimationMixer(vrm.scene);
-      for (const [name, m] of mo) {
+      // Everyone breathes at their own pace and starts at their own moment of the loop.
+      this.pace = 0.92 + Math.random() * 0.16;
+      this.phase = Math.random();
+      for (const name of ANIMS) {
+        const m = mo.get(ROLE_CLIP[name]);
+        if (!m) continue;
         const a = this.mixer.clipAction(retarget(m, vrm));
         if (ONCE.has(name)) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
         this.actions.set(name, a);
@@ -222,13 +242,20 @@ export class CharacterRig implements Rig {
   play(name: AnimName) {
     this.pending = name;
     if (!this.mixer) return;
-    const fallback: Partial<Record<AnimName, AnimName>> = { punch: 'slash', kick: 'punch', shoot: 'cast', cast: 'punch', roll: 'jump', talk: 'idle', victory: 'idle' };
+    const fallback: Partial<Record<AnimName, AnimName>> = {
+      punch: 'slash', kick: 'punch', shoot: 'cast', cast: 'punch', hack: 'cast', buff: 'cast', roll: 'jump', talk: 'idle', victory: 'idle',
+      jog: 'walk', ready: 'idle', phone: 'idle', dance: 'talk', sit: 'idle', sitTalk: 'sit',
+    };
+    if (this.build === 'light' && name === 'walk') name = 'jog';
     let n: AnimName | undefined = name;
     while (n && !this.actions.has(n)) n = fallback[n];
     const next = this.actions.get(n ?? 'idle');
     if (!next || (next === this.current && !ONCE.has(name))) return;
     next.reset().setEffectiveWeight(1).fadeIn(0.15).play();
-    next.time = START[n ?? 'idle'] ?? 0;
+    const role = n ?? 'idle';
+    const speed = this.build && ATTACKS.has(role) ? (this.build === 'heavy' ? 0.8 : 1.25) : ONCE.has(role) ? 1 : this.pace;
+    next.setEffectiveTimeScale(speed);
+    next.time = ONCE.has(role) ? startOf(role, speed) : this.phase * next.getClip().duration;
     if (this.current && this.current !== next) this.current.fadeOut(0.15);
     this.current = next;
     this.currentName = name;
@@ -249,7 +276,7 @@ export class CharacterRig implements Rig {
       let blink = 0;
       if (this.t > this.nextBlink) { blink = 1; if (this.t > this.nextBlink + 0.12) this.nextBlink = this.t + 2 + Math.random() * 3.5; }
       em.setValue('blink', blink);
-      em.setValue('aa', this.currentName === 'talk' ? Math.max(0, Math.sin(this.t * 14)) * 0.6 : 0);
+      em.setValue('aa', this.currentName === 'talk' || this.currentName === 'sitTalk' ? Math.max(0, Math.sin(this.t * 14)) * 0.6 : 0);
       for (const m of ['happy', 'angry', 'sad']) em.setValue(m, this.mood && this.mood.name === m && this.t < this.mood.until ? 0.8 : 0);
     }
     this.vrm?.update(dt);

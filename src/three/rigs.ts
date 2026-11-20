@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 
 /** What a character model can play. Real characters map these to their animation clips. */
-export type AnimName = 'idle' | 'walk' | 'slash' | 'punch' | 'kick' | 'shoot' | 'cast' | 'jump' | 'roll' | 'hit' | 'death' | 'victory' | 'talk';
+export type AnimName = 'idle' | 'walk' | 'slash' | 'punch' | 'kick' | 'shoot' | 'cast' | 'jump' | 'roll' | 'hit' | 'death' | 'victory' | 'talk'
+  // ambient and flavour clips (the stand-in rigs ignore them)
+  | 'sit' | 'sitTalk' | 'dance' | 'phone' | 'ready' | 'jog' | 'hack' | 'buff';
 
 export interface Rig {
   root: THREE.Object3D;

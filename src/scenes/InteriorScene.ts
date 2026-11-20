@@ -28,6 +28,19 @@ const modelFor = (look: string) => look === 'npc-lo' ? 'lo' : look === 'npc-doc'
 
 export const HUD_H = 14;
 
+/**
+ * The clip an ambient resident plays: relaxed standing, never a fighting stance. Seated ones use
+ * the sitting clips, talkers gesture, the rest stand easy (each rig desyncs its own loop).
+ */
+function ambientAnim(n: Npc, moving: boolean): AnimName {
+  if (moving) return 'walk';
+  const chat = n.speaking || n.activity === 'talk';
+  if (n.seat) return chat ? 'sitTalk' : 'sit';
+  if (n.activity === 'dance') return 'dance';
+  if (n.activity === 'phone') return 'phone';
+  return chat || n.activity === 'cook' ? 'talk' : 'idle';
+}
+
 export interface Interaction {
   x: number; y: number; r: number;
   label: string;
@@ -181,7 +194,7 @@ export abstract class InteriorScene extends Phaser.Scene {
           if (n.speaking && !(n.seat && n.look !== 'npc-nyx') && n.activity !== 'cook' && n.activity !== 'play' && n.activity !== 'eat') return { x: this.player.x - n.x, y: this.player.y - n.y };
           const f = n.faceDir;
           return f.facing === 'u' ? { x: 0, y: -1 } : f.facing === 's' ? { x: f.flip ? -1 : 1, y: 0 } : { x: f.flip ? -0.35 : 0.35, y: 1 };
-        }, (): AnimName => (moving() ? 'walk' : n.speaking || n.activity === 'talk' || n.activity === 'phone' || n.activity === 'cook' || n.activity === 'dance' ? 'talk' : 'idle'), 0, n.seat);
+        }, (): AnimName => ambientAnim(n, moving()), 0, n.seat);
       }
     }).catch(e => console.error('interior 3D', e)).finally(() => { if (this.view3d === view) hideLoading(); });
   }

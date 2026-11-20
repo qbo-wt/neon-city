@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { World3D } from './World3D';
 import { CAST, CharacterRig } from './characters';
 import { MannequinRig, type AnimName, type Rig } from './rigs';
-import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm';
+import type { VRM } from '@pixiv/three-vrm';
 import { kitModel, type ModelOpts } from './interior/kit';
 import { disposeTree } from './dispose';
 import { Animator, dust, flicker, liveCanvas, steam, sway } from './interior/fx';
@@ -454,27 +454,18 @@ export class Interior3D {
   }
 
   /**
-   * Seated pose on top of the clip (there is no sitting animation): thighs forward, shins down,
-   * hips lowered onto the seat. Works on the VRM normalized bones, then re-syncs the skeleton.
+   * Seated characters play the sitting clips; this only lowers them so their hips rest on the
+   * seat (the clip puts the hips at the height of a normal chair, the seats here differ).
    */
   private tmp = new THREE.Vector3();
   private sit(c: Char) {
     const vrm = (c.rig as unknown as { vrm?: VRM }).vrm;
     if (!vrm) { c.holder.position.y = c.seat + 0.06 - 0.86; return; }
-    const flip = vrm.meta?.metaVersion === '0' ? -1 : 1, h = vrm.humanoid;
-    const set = (name: VRMHumanBoneName, x: number, z = 0) => h.getNormalizedBoneNode(name)?.quaternion.setFromEuler(new THREE.Euler(x * flip, 0, z * flip));
-    set('leftUpperLeg', -1.45, 0.1); set('rightUpperLeg', -1.45, -0.1);
-    set('leftLowerLeg', 1.5); set('rightLowerLeg', 1.5);
-    set('leftFoot', -0.05); set('rightFoot', -0.05);
-    // The clip may turn or lift the hips (talking): keep them square on the seat.
-    const hips = h.getNormalizedBoneNode('hips');
-    if (hips) {
-      hips.quaternion.identity();
-      c.holder.updateMatrixWorld(true);
-      const rel = hips.getWorldPosition(this.tmp).y - c.holder.position.y;
-      c.holder.position.y = c.seat + 0.1 - rel;
-    }
-    h.update();
+    const hips = vrm.humanoid.getNormalizedBoneNode('hips');
+    if (!hips) return;
+    c.holder.updateMatrixWorld(true);
+    const rel = hips.getWorldPosition(this.tmp).y - c.holder.position.y;
+    c.holder.position.y = c.seat + 0.1 - rel;
   }
 
   update(dt: number) {
