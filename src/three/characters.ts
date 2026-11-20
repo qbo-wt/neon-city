@@ -4,6 +4,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type MToonMaterial, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
 import type { AnimName, Rig } from './rigs';
 import { installCyberware } from './cyberware';
+import { LOOK_COLOR } from '../core/ending';
+import { settings } from '../core/settings';
 
 /**
  * Anime characters: VRM avatars (assets/vrm, VIPE Heroes by Polygonal Mind, CC-BY, see CREDITS.md),
@@ -178,14 +180,17 @@ export class CharacterRig implements Rig {
       this.height = 1.7 * scale;
       // The ink line around the body: a fixed few millimetres in the world (the avatars' own
       // settings assume a perspective camera and blow up under our orthographic one).
+      // The hero's outline can be a neon colour, unlocked by a first win (core/ending.ts).
+      const pick = settings().look;
+      const look = avatar === 'hero' && pick !== 'none' ? LOOK_COLOR[pick] : 0x0a0614;
       vrm.scene.traverse(o => {
         const mesh = o as THREE.Mesh;
         if (!mesh.isMesh) return;
         for (const mat of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as MToonMaterial[]) {
           if (!mat.isMToonMaterial) continue;
           mat.outlineWidthMode = 'worldCoordinates';
-          mat.outlineWidthFactor = 0.012 / k;
-          mat.outlineColorFactor.setHex(0x0a0614);
+          mat.outlineWidthFactor = (look === 0x0a0614 ? 0.012 : 0.02) / k;
+          mat.outlineColorFactor.setHex(look);
           mat.outlineLightingMixFactor = 0;
         }
       });

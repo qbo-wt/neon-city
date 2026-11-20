@@ -1,4 +1,5 @@
 import { getStorage } from './storage';
+import { isHeroLook, type HeroLook } from './ending';
 
 /**
  * Player options (sound, fight speed, screen effects). Kept under their own storage key, apart from
@@ -37,6 +38,8 @@ export interface Settings {
   /** accessibility: no camera shake, no full-screen flash or negative frame */
   reduceFx: boolean;
   quality: GraphicsQuality;
+  /** outline colour of the hero, once unlocked by a first win (core/ending.ts) */
+  look: HeroLook;
 }
 
 export const SETTINGS_KEY = 'neon-city-settings';
@@ -44,7 +47,7 @@ export const SETTINGS_KEY = 'neon-city-settings';
 export const LEGACY_MUTE_KEY = 'neon-city-muted';
 
 export function defaultSettings(): Settings {
-  return { version: 1, music: VOLUME_STEPS, sfx: VOLUME_STEPS, muted: false, speed: 'normal', reduceFx: false, quality: 'auto' };
+  return { version: 1, music: VOLUME_STEPS, sfx: VOLUME_STEPS, muted: false, speed: 'normal', reduceFx: false, quality: 'auto', look: 'none' };
 }
 
 const step = (v: unknown, fallback: number) =>
@@ -65,6 +68,7 @@ export function loadSettings(storage: Pick<Storage, 'getItem'>): Settings {
     if (typeof d.muted === 'boolean') s.muted = d.muted;
     if (typeof d.speed === 'string' && (COMBAT_SPEEDS as readonly string[]).includes(d.speed)) s.speed = d.speed as CombatSpeed;
     if (typeof d.reduceFx === 'boolean') s.reduceFx = d.reduceFx;
+    if (isHeroLook(d.look)) s.look = d.look;
     if (typeof d.quality === 'string' && (QUALITIES as readonly string[]).includes(d.quality)) s.quality = d.quality as GraphicsQuality;
   } catch {
     // Corrupt JSON or blocked storage: defaults (plus the legacy mute, if it could be read).

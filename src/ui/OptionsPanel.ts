@@ -8,21 +8,25 @@ import { resetTutorial } from '../core/tutorial';
 import { isOptedOut, playerName, setOptOut, typing } from '../core/player';
 import { NamePanel } from './NamePanel';
 import { txt } from './text';
+import { getStorage } from '../core/storage';
+import { loadSave } from '../core/save';
+import { HERO_LOOKS, LOOK_LABEL, lookUnlocked } from '../core/ending';
 import { Button, C, Card, T, backdrop, bold, drawBar, hints, markPanelClosed, panel, pinToCamera, skewPoly } from './kit';
 
 type Row =
   | { kind: 'slider'; label: string; desc: string; key: 'music' | 'sfx' }
   | { kind: 'toggle'; label: string; desc: string; key: 'muted' | 'reduceFx' | 'fullscreen' | 'ranked' }
   | { kind: 'name'; label: string; desc: string }
-  | { kind: 'choice'; label: string; desc: string; key: 'speed' | 'quality' };
+  | { kind: 'choice'; label: string; desc: string; key: 'speed' | 'quality' | 'look' };
 
 /** The values of a choice row, in order, and their labels. */
 const CHOICES = {
   speed: { values: COMBAT_SPEEDS, label: SPEED_LABEL },
   quality: { values: QUALITIES, label: QUALITY_LABEL },
+  look: { values: HERO_LOOKS, label: LOOK_LABEL },
 } as const;
-const choiceIndex = (key: 'speed' | 'quality') => (CHOICES[key].values as readonly string[]).indexOf(settings()[key]);
-const choicePatch = (key: 'speed' | 'quality', i: number): Partial<Settings> => ({ [key]: CHOICES[key].values[i] });
+const choiceIndex = (key: 'speed' | 'quality' | 'look') => (CHOICES[key].values as readonly string[]).indexOf(settings()[key]);
+const choicePatch = (key: 'speed' | 'quality' | 'look', i: number): Partial<Settings> => ({ [key]: CHOICES[key].values[i] });
 
 const ROWS: Row[] = [
   { kind: 'slider', key: 'music', label: 'MUSIQUE', desc: 'Volume des morceaux (appart, rue, boss), par paliers de 10 %.' },
@@ -32,6 +36,7 @@ const ROWS: Row[] = [
   { kind: 'toggle', key: 'fullscreen', label: 'PLEIN ÉCRAN', desc: 'Le jeu occupe tout l\'écran. Échap le quitte aussi.' },
   { kind: 'toggle', key: 'reduceFx', label: 'EFFETS D\'ÉCRAN RÉDUITS', desc: 'Accessibilité : plus de tremblements de caméra, de flashs plein écran ni d\'image négative sur les gros coups.' },
   { kind: 'choice', key: 'quality', label: 'QUALITÉ GRAPHIQUE', desc: 'BASSE pour un PC portable ou une puce graphique intégrée : reflets et ombres redessinés une image sur deux. AUTO passe en BASSE si le jeu rame.' },
+  { kind: 'choice', key: 'look', label: 'LISERÉ DU HÉROS', desc: 'Contour néon de ton héros, gagné à la première victoire de chaque palier : CYAN (run normale), MAGENTA (CyberHard), OR (avis de recherche).' },
   { kind: 'name', label: 'PSEUDO DU CLASSEMENT', desc: 'Le nom sous lequel ta meilleure run apparaît au classement des potes (terminal de l’appart). Entrée ou clic pour le changer.' },
   { kind: 'toggle', key: 'ranked', label: 'CLASSEMENT EN LIGNE', desc: 'OUI : tes runs terminées sont envoyées au classement. NON : rien ne part, tu restes hors classement.' },
 ];
@@ -43,7 +48,7 @@ function fullscreenState(): 'api' | 'browser' | 'off' {
   return 'off';
 }
 
-const PW = 300, PH = 250, ROW_H = 17, ROW_STEP = 20;
+const PW = 300, PH = 250, ROW_H = 17, ROW_STEP = 18.4;
 /** Where the value controls sit inside a row (local x). */
 const CTRL_X = 128, CTRL_END = PW - 20 - 14;
 
@@ -150,6 +155,7 @@ export class OptionsPanel {
   }
 
   private set(patch: Partial<Omit<Settings, 'version'>>) {
+    if (patch.look && !lookUnlocked(loadSave(getStorage()).endings, patch.look)) { audio.sfx('deny'); this.note = 'Pas encore débloqué : gagne une run de ce palier.'; this.paintFocus(); return; }
     this.note = '';
     updateSettings(patch);
     // Heard at the new level (and silent once muted).

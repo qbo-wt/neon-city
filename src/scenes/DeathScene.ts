@@ -25,7 +25,7 @@ export class DeathScene extends Phaser.Scene {
 
   /** `mode`: the run tier's name (not for the daily run); `unlocked`: elevator tiers this run opened. */
   create(data: { victory: boolean; creditsEarned: number; roomReached: number; heat?: number; recordBonus?: number; daily?: string; dailyBest?: boolean; killer?: string;
-    mode?: string; modeBonus?: number; unlocked?: UnlockId[]; score?: RunScore }) {
+    mode?: string; modeBonus?: number; unlocked?: UnlockId[]; score?: RunScore; reward?: { title: string; line: string } }) {
     const W = CONFIG.WIDTH, H = CONFIG.HEIGHT, win = data.victory;
     const accent = win ? C.yellow : C.magenta;
     this.leaving = false;
@@ -77,13 +77,15 @@ export class DeathScene extends Phaser.Scene {
 
     // A new tier of the elevator: announced at the top, over the street.
     const fresh = data.unlocked ?? [];
-    if (fresh.length) {
+    const titles = [...fresh.map(u => UNLOCK_TITLES[u]), ...(data.reward ? [data.reward.title] : [])];
+    const lines = [...fresh.map(u => UNLOCK_LINES[u]), ...(data.reward ? [data.reward.line] : [])];
+    if (titles.length) {
       const top = this.add.graphics();
       top.fillStyle(C.deep, 0.9).fillPoints(skewPoly(W / 2 - 170, 6, 340, 30, 8), true);
       top.lineStyle(0.75, C.magenta, 1).strokePoints(skewPoly(W / 2 - 170, 6, 340, 30, 8), true);
       stripes(top, W / 2 - 160, 8, 40, 4, C.magenta, 0.6, 4, 1.5);
-      new GlitchText(this, W / 2, 16, fresh.map(u => UNLOCK_TITLES[u]).join(' · '), 13, T.magenta, { every: 2200 });
-      txt(this, W / 2, 28, fresh.map(u => UNLOCK_LINES[u]).join(' '), 5.5, T.text).setOrigin(0.5).setAlign('center').setWordWrapWidth(330);
+      new GlitchText(this, W / 2, 16, titles.join(' · '), titles.length > 1 ? 9 : 13, T.magenta, { every: 2200 });
+      txt(this, W / 2, 28, lines.join(' '), lines.length > 1 ? 5 : 5.5, T.text).setOrigin(0.5).setAlign('center').setWordWrapWidth(330);
       audio.sfx('relic');
     }
 

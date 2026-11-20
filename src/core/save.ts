@@ -5,6 +5,7 @@ import { HISTORY_CAP, isRunRecord, type RunRecord } from './history';
 import { ASPECT_BY_ID, MAX_ASPECT_RANK, aspectRank } from '../data/aspects';
 import { parseVending, type VendingState } from './vending';
 import type { Unlocks } from './mode';
+import { isEndingTier, type EndingTier } from './ending';
 
 /** Best result of the daily run for one date (YYYY-MM-DD). */
 export interface DailyRecord { date: string; sector: number; victory: boolean; timeMs: number; kills: number }
@@ -45,6 +46,8 @@ export interface SaveData {
   aspect: Partial<Record<WeaponId, string>>;
   /** run tiers of the elevator (core/mode.ts): CyberHard after any victory, the wanted posters after a CyberHard one */
   unlocks: Unlocks;
+  /** tiers whose ending was seen after a first win (core/ending.ts): each one unlocked a hero outline */
+  endings: EndingTier[];
 }
 
 export const SAVE_KEY = 'neon-city-save';
@@ -56,7 +59,7 @@ export function defaultSave(): SaveData {
     weapons: ['blade'], weapon: 'blade', codex: {}, deaths: {}, heat: {}, bestHeat: 0, daily: [],
     story: { talks: {}, flags: [] },
     aspects: {}, aspect: {},
-    unlocks: { cyberhard: false, wanted: false },
+    unlocks: { cyberhard: false, wanted: false }, endings: [],
   };
 }
 
@@ -144,6 +147,7 @@ export function loadSave(storage: Pick<Storage, 'getItem'>): SaveData {
       daily: Array.isArray(d.daily) ? d.daily.filter(isDaily).slice(-DAILY_CAP) : [],
       story: st,
       ...aspects(d.aspects, d.aspect),
+      endings: Array.isArray(d.endings) ? [...new Set((d.endings as unknown[]).filter(isEndingTier))] : [],
       unlocks: unlocks(d.unlocks, () => history.some(h => h.victory) || (codex.boss ?? 0) > 0 || bestHeat > 0 || !!st.lastRun?.victory),
     };
   } catch {

@@ -19,6 +19,8 @@ import { RELICS } from '../data/relics';
 import { ASPECT_BY_ID, aspectRank, defaultAspect, equip } from '../data/aspects';
 import { heatCreditMult, heatEffects, heatRecordBonus } from '../data/heat';
 import { dailySeed, dateKey, recordDaily } from '../core/daily';
+import { ENDINGS } from '../data/ending';
+import { endingAfterRun, endingTier } from '../core/ending';
 import { MODE_NAMES, hasPsychosis, modeCreditMult, modeScaling, modeStats, overheatHpCost, unlockAfterRun, type RunMode } from '../core/mode';
 import { bossIntro } from '../core/story';
 import { CHERRY_CALM_CREDITS, CROWBAR_RELIC, GIFTS, ZERO_CREDITS, afterRun, streetTip, takeGifts, type GiftId } from '../core/vending';
@@ -1237,18 +1239,24 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     // The elevator's next tiers: CyberHard after any victory, the wanted posters after a CyberHard one.
     const unlocked = unlockAfterRun(save.unlocks, { mode: this.run.mode, victory, daily: !!this.run.daily });
     save.unlocks = unlocked.unlocks;
+    // A victory plays its tier's ending; the first win of a tier also unlocks that tier's hero outline.
+    const ending = endingAfterRun(save.endings, { mode: this.run.mode, heat: pts, victory, daily: !!this.run.daily });
+    save.endings = ending.done;
     writeSave(storage, save);
     clearRunSave(storage);
     this.registry.remove('run');
     this.scene.stop(SCENES.Hud);
-    wipeTo(this, SCENES.Death, {
+    const deathData = {
       victory, creditsEarned: earned, roomReached: sector, heat: pts, recordBonus: record, daily: this.run.daily, dailyBest,
       score: { mode: this.run.daily ? 'daily' : this.run.mode, day: this.run.daily, victory, sector, heat: this.run.daily || this.run.mode !== 'cyberhard' ? 0 : pts,
         timeMs: Math.round(this.run.timeMs), credits: Math.min(earned, 1_000_000), weapon: this.run.weapon },
       mode: this.run.daily ? undefined : MODE_NAMES[this.run.mode], modeBonus: modeMult > 1 ? Math.round((modeMult - 1) * 100) : 0, unlocked: unlocked.fresh,
       killer: killer === 'psychosis' ? 'la cyberpsychose' : killer === 'barrel' ? 'un baril explosif' : killer === 'trap' ? 'un piège de rue'
         : killer ? ENEMIES[killer as EnemyId]?.name : undefined,
-    });
+      reward: ending.fresh ? ENDINGS[ending.fresh].reward : undefined,
+    };
+    if (victory) wipeTo(this, SCENES.Ending, { tier: endingTier({ mode: this.run.mode, heat: pts, daily: !!this.run.daily }), fresh: !!ending.fresh, next: deathData });
+    else wipeTo(this, SCENES.Death, deathData);
   }
 
   private bossSay(line: string) {

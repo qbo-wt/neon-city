@@ -8,12 +8,12 @@ function fake(init: Record<string, string> = {}) {
 
 describe('settings', () => {
   it('defaults: full volumes, sound on, normal speed, full screen effects', () => {
-    expect(loadSettings(fake())).toEqual({ version: 1, music: 10, sfx: 10, muted: false, speed: 'normal', reduceFx: false, quality: 'auto' });
+    expect(loadSettings(fake())).toEqual({ version: 1, music: 10, sfx: 10, muted: false, speed: 'normal', reduceFx: false, quality: 'auto', look: 'none' });
   });
 
   it('round-trips', () => {
     const s = fake();
-    const v: Settings = { version: 1, music: 3, sfx: 7, muted: true, speed: 'faster', reduceFx: true, quality: 'low' };
+    const v: Settings = { version: 1, music: 3, sfx: 7, muted: true, speed: 'faster', reduceFx: true, quality: 'low', look: 'gold' };
     writeSettings(s, v);
     expect(loadSettings(s)).toEqual(v);
   });
