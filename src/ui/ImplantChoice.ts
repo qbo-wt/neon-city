@@ -6,7 +6,7 @@ import type { Implant } from '../core/types';
 import { FAMILY_COLORS, FAMILY_NAMES, RARITY_COLORS, RARITY_NAMES } from '../data/implants';
 import { SYNERGIES, familyCounts } from '../data/synergies';
 import type { Controls } from '../input/controls';
-import { implantTexture } from '../three/implantModels';
+import { implantTexture } from '../three/iconModels';
 import { hex, title, txt } from './text';
 import { C, Card, GlitchText, T, backdrop, bold, chip, cutPoly, halftone, keycap, pinToCamera } from './kit';
 

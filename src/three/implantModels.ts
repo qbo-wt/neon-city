@@ -206,6 +206,8 @@ const SHAPES: Record<Shape, (b: Builder, d: number) => void> = {
 const SIZE = 128;
 let renderer: THREE.WebGLRenderer | undefined;
 let queue: Promise<unknown> = Promise.resolve();
+let pending = 0;
+let idleTimer: ReturnType<typeof setTimeout> | undefined;
 const cache = new Map<string, Promise<HTMLCanvasElement | null>>();
 
 function getRenderer() {
@@ -215,6 +217,12 @@ function getRenderer() {
     renderer.setClearColor(0x000000, 0);
   }
   return renderer;
+}
+
+function releaseRenderer() {
+  renderer?.dispose();
+  renderer?.forceContextLoss();
+  renderer = undefined;
 }
 
 /** Builds the 3D model of an implant (about 2 units wide, centred on the origin). Null for an unknown id. */
@@ -240,8 +248,9 @@ export function renderModel(model: THREE.Group, rimColor: number, halo?: number)
   model.updateMatrixWorld(true);
   // Frame on the bounding sphere so every shape fills the picture the same way.
   const sphere = new THREE.Box3().setFromObject(model).getBoundingSphere(new THREE.Sphere());
+  let haloMat: THREE.Material | undefined;
   if (halo !== undefined) {
-    const h = new THREE.Mesh(new THREE.SphereGeometry(sphere.radius * 0.98, 24, 16), new THREE.MeshBasicMaterial({ color: halo, transparent: true, opacity: 0.3, depthWrite: false }));
+    const h = new THREE.Mesh(new THREE.SphereGeometry(sphere.radius * 0.98, 24, 16), haloMat = new THREE.MeshBasicMaterial({ color: halo, transparent: true, opacity: 0.3, depthWrite: false }));
     h.position.copy(sphere.center).z -= sphere.radius * 0.5;
     scene.add(h);
   }
@@ -255,6 +264,7 @@ export function renderModel(model: THREE.Group, rimColor: number, halo?: number)
   out.width = out.height = SIZE;
   out.getContext('2d')!.drawImage(r.domElement, 0, 0);
   scene.traverse(o => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+  haloMat?.dispose();
   return out;
 }
 
@@ -262,7 +272,12 @@ export function renderModel(model: THREE.Group, rimColor: number, halo?: number)
 export function cachedPicture(key: string, make: () => HTMLCanvasElement | null): Promise<HTMLCanvasElement | null> {
   let p = cache.get(key);
   if (!p) {
-    p = queue.then(make).catch(() => null);
+    pending++;
+    clearTimeout(idleTimer);
+    p = queue.then(make).catch(() => null).finally(() => {
+      // Idle for a few seconds: give the second WebGL context (and every program it compiled) back.
+      if (--pending === 0) idleTimer = setTimeout(releaseRenderer, 4000);
+    });
     queue = p;
     cache.set(key, p);
   }

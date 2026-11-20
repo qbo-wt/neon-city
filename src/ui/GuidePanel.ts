@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config';
 import { SPELLS } from '../data/spells';
-import { showSpellPicture } from '../three/spellModels';
+import { showSpellPicture } from '../three/iconModels';
 import { RELICS } from '../data/relics';
 import { RELIC_RARITY_COLORS, RELIC_RARITY_NAMES } from '../core/relics';
 import type { Relic } from '../core/types';

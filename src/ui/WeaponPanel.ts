@@ -9,7 +9,7 @@ import { hex, title } from './text';
 import { audio } from '../audio/audio';
 import { txt } from './text';
 import { SPELLS } from '../data/spells';
-import { showSpellPicture } from '../three/spellModels';
+import { showSpellPicture } from '../three/iconModels';
 import { Button, C, Card, T, bold, chip, drawPanel, heading, hints, keycap, pinToCamera, pips, screenFrame } from './kit';
 
 const ROMAN = ['', 'I', 'II', 'III'];

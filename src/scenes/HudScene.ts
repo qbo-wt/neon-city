@@ -8,8 +8,7 @@ import { title, txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
 import { C, GlitchText, T, bold, drawBar, scanlines, skewPoly, stripes } from '../ui/kit';
 import { camShake } from '../fx/screenFx';
-import { implantTexture } from '../three/implantModels';
-import { relicTexture } from '../three/relicModels';
+import { implantTexture, relicTexture } from '../three/iconModels';
 
 const STRIP = 14;
 
@@ -28,6 +27,8 @@ export class HudScene extends Phaser.Scene {
   private implantsText!: Phaser.GameObjects.Text;
   private implantIcons: Phaser.GameObjects.Image[] = [];
   private implantKey = '';
+  /** The list keys of the last published HUD: the registry object only changes on a publish, so they are not rebuilt every frame. */
+  private keyed?: { d: HudData; implants: string; relicNames: string; relicIds: string };
   private bossText!: Phaser.GameObjects.Text;
   private crisisText!: GlitchText;
   private psyBonusText!: Phaser.GameObjects.Text;
@@ -93,9 +94,15 @@ export class HudScene extends Phaser.Scene {
   }
 
   /** The list of carried relics and their effects, above the relic line. */
+  private keys() {
+    const d = this.registry.get('hud') as HudData;
+    if (this.keyed?.d !== d) this.keyed = { d, implants: d.implantIds.join('|'), relicNames: d.relics.map(r => r.name).join('|'), relicIds: d.relics.map(r => r.id).join('|') };
+    return this.keyed;
+  }
+
   /** Small 3D pictures of the owned implants left of the weapon line; rebuilt when the list changes, absent if a render fails. */
   private syncImplantIcons(ids: string[], modal: boolean) {
-    const key = ids.join('|');
+    const key = this.keys().implants;
     if (key !== this.implantKey) {
       this.implantKey = key;
       this.implantIcons.forEach(i => i.destroy());
@@ -112,7 +119,7 @@ export class HudScene extends Phaser.Scene {
 
   /** Small 3D pictures of the carried relics on the relic line; the text line stands in until they are drawn (or if a render fails). Hover on the row lists the effects. */
   private syncRelicIcons(relics: HudData['relics'], modal: boolean) {
-    const key = relics.map(r => r.id).join('|');
+    const key = this.keys().relicIds;
     if (key !== this.relicIconKey) {
       this.relicIconKey = key;
       this.relicIcons.forEach(i => i.destroy());
@@ -191,7 +198,7 @@ export class HudScene extends Phaser.Scene {
     this.implantsText.setText(parts.filter(Boolean).join('   |   ')).setVisible(!modal);
     this.syncImplantIcons(d.implantIds, modal);
     // Relics on their own line; the hit area follows the text when the list changes.
-    const key = d.relics.map(r => r.name).join('|');
+    const key = this.keys().relicNames;
     if (key !== this.relicKey) {
       this.relicKey = key;
       this.relics = d.relics;

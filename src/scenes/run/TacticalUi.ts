@@ -4,7 +4,7 @@ import { spellRange, type Fight } from '../../tactics/fight';
 import type { SpellDef, Unit } from '../../tactics/types';
 import { txt, hex, title } from '../../ui/text';
 import { rangeIcon, spellBits, zoneLabel } from '../../ui/spellInfo';
-import { showSpellPicture } from '../../three/spellModels';
+import { showSpellPicture } from '../../three/iconModels';
 import { Button, C, T, bold, chip, cutPoly, drawBar, drawPanel, pinToCamera, scanlines, skewPoly, stripes, tabTitle } from '../../ui/kit';
 
 export const BAR_H = 38;
@@ -46,6 +46,8 @@ export class TacticalUi {
   private info: Phaser.GameObjects.Container;
   private roundText: Phaser.GameObjects.Text;
   private challengeText: Phaser.GameObjects.Text;
+  private challengeShown = '';
+  private challengeColor = '';
   private hintText: Phaser.GameObjects.Text;
   private hintG: Phaser.GameObjects.Graphics;
   private last?: { spells: SpellDef[]; state: SlotState; selected: number | null; cd: Record<string, number> };
@@ -337,7 +339,10 @@ export class TacticalUi {
   /** Turn order across the top right: whose turn it is, then who comes next. */
   /** The sector challenge line, top left under the HUD (undefined: none taken). */
   setChallenge(c: { text: string; state: 'run' | 'failed' } | undefined) {
-    this.challengeText.setText(c?.text ?? '').setColor(c?.state === 'failed' ? T.magenta : T.yellow);
+    // Called on every refresh: touch the text (and its canvas) only when the line changed.
+    const text = c?.text ?? '', color = c?.state === 'failed' ? T.magenta : T.yellow;
+    if (text !== this.challengeShown) { this.challengeShown = text; this.challengeText.setText(text); }
+    if (color !== this.challengeColor) { this.challengeColor = color; this.challengeText.setColor(color); }
   }
 
   setTimeline(f: Fight | undefined) {

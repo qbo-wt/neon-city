@@ -59,7 +59,7 @@ import type { Board, FightEvent, Pt, SpellDef, Unit } from '../tactics/types';
 import { UnitView3D as UnitView } from '../three/UnitView3D';
 import { stage, environment, showStage, stageOpacity, fadeVisibility } from '../three/stage';
 import type { World3D } from '../three/World3D';
-import { relicTexture } from '../three/relicModels';
+import { relicTexture } from '../three/iconModels';
 import { BAR_H, TacticalUi } from './run/TacticalUi';
 import { TutorialOverlay, type Rect } from '../ui/Tutorial';
 import { tutorialStepOpen } from '../core/tutorial';
@@ -508,23 +508,29 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
   }
   private clearMarkers() { this.markers.forEach(m => m.destroy()); this.markers = []; this.tags = []; this.markLayer.clear(); }
   /** Things drawn by Phaser over a cell, moved when the camera moves. */
-  private tags: { cell: Pt; icon: Phaser.GameObjects.Image; label: Phaser.GameObjects.Text }[] = [];
+  private tags: { cell: Pt; icon: Phaser.GameObjects.Image; label: Phaser.GameObjects.Text; cx: number; cy: number }[] = [];
   private camKey = '';
   /** Wheel zooms, ZQSD / WASD / arrows move the view; overlays drawn by Phaser follow. */
   private moveCamera(dt: number) {
     const m = this.modal() ? { x: 0, y: 0 } : this.controls.move();
     if (m.x || m.y) this.world.panScreen(m.x * dt * 0.6, m.y * dt * 0.6, CONFIG.WIDTH * CONFIG.ZOOM);
     const cam = this.world.camera, key = `${cam.position.x.toFixed(3)},${cam.position.z.toFixed(3)},${cam.zoom.toFixed(3)}`;
-    // Door tags follow the view every frame; the icon's bob is applied here, not by a tween
-    // (a y tween kept the icon at its first screen position when the view moved).
-    const bob = 2 + 2 * Math.sin(this.time.now / 160);
-    for (const t of this.tags) {
-      const c = this.centre(t.cell);
-      t.icon.setPosition(c.x, c.y - (14 + bob) * cam.zoom);
-      t.label.setPosition(c.x, c.y - 28 * cam.zoom);
-      t.icon.setScale(Math.min(2, cam.zoom));
+    const moved = key !== this.camKey;
+    // Door tags follow the view: their screen position is recomputed only when it moved. The icon's bob
+    // is applied every frame, not by a tween (a y tween kept the icon at its first screen position when the view moved).
+    if (this.tags.length) {
+      const bob = 2 + 2 * Math.sin(this.time.now / 160);
+      for (const t of this.tags) {
+        if (moved) {
+          const c = this.centre(t.cell);
+          t.cx = c.x; t.cy = c.y;
+          t.label.setPosition(c.x, c.y - 28 * cam.zoom);
+          t.icon.setScale(Math.min(2, cam.zoom));
+        }
+        t.icon.setPosition(t.cx, t.cy - (14 + bob) * cam.zoom);
+      }
     }
-    if (key === this.camKey) return;
+    if (!moved) return;
     this.camKey = key;
     this.drawHover();
   }
@@ -1184,7 +1190,8 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       const label = reward === 'implant' ? `IMPLANT ${FAMILY_NAMES[fam]}` : DOOR_LABELS[reward];
       const t = txt(this, c.x, c.y - 28, label, 5, reward === 'implant' ? FAMILY_COLORS[fam] : '#e8e8ff').setOrigin(0.5).setDepth(961).setStroke('#05030f', 3);
       this.markers.push(icon, t);
-      this.tags.push({ cell: p, icon, label: t });
+      this.tags.push({ cell: p, icon, label: t, cx: 0, cy: 0 });
+      this.camKey = ''; // place the new tag on the next frame
     });
     if (this.room.doorRewards.length) {
       audio.sfx('door');
@@ -1354,7 +1361,14 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
         : killer ? ENEMIES[killer as EnemyId]?.name : undefined,
       reward: ending.fresh ? ENDINGS[ending.fresh].reward : undefined,
     };
-    if (victory) wipeTo(this, SCENES.Ending, { tier: endingTier({ mode: this.run.mode, heat: pts, daily: !!this.run.daily }), fresh: !!ending.fresh, next: deathData });
+    if (victory) {
+      const data = { tier: endingTier({ mode: this.run.mode, heat: pts, daily: !!this.run.daily }), fresh: !!ending.fresh, next: deathData };
+      // The ending scene is its own chunk, registered the first time it is needed.
+      void import('./EndingScene').then(({ EndingScene }) => {
+        if (!this.game.scene.keys[SCENES.Ending]) this.game.scene.add(SCENES.Ending, EndingScene);
+        wipeTo(this, SCENES.Ending, data);
+      });
+    }
     else wipeTo(this, SCENES.Death, deathData);
   }
 
