@@ -27,10 +27,10 @@ export const CHALLENGES: ChallengeDef[] = [
   { id: 'colosse', name: "Le colosse d'abord", difficulty: 2, text: () => 'Le premier à tomber : le colosse chromé.' },
   { id: 'signal', name: 'Coupe le signal', difficulty: 2, text: () => 'Le premier à tomber : le netrunner.' },
   { id: 'fauchage', name: 'Fauchage', difficulty: 2, text: () => 'Abats 2 ennemis dans un même tour.' },
-  { id: 'economie', name: 'Chargeur compté', difficulty: 2, text: n => `Lance ${n} sorts au plus pendant le combat.` },
+  { id: 'economie', name: 'Chargeur compté', difficulty: 2, text: n => `Ne lance pas plus de ${n} sorts pendant le combat.` },
   { id: 'main_nue', name: 'Rien à distance', difficulty: 2, text: () => 'Aucun sort à distance : mêlée seulement.' },
   { id: 'distance', name: 'Pas de contact', difficulty: 2, text: () => 'Aucun sort de mêlée : tire de loin.' },
-  { id: 'egratignures', name: 'Égratignures', difficulty: 1, text: n => `Perds ${n} PV au plus pendant le combat.` },
+  { id: 'egratignures', name: 'Égratignures', difficulty: 1, text: n => `Ne perds pas plus de ${n} PV pendant le combat.` },
   { id: 'sol', name: 'Œil sur le sol', difficulty: 2, text: () => 'Ne marche sur aucun piège.' },
   { id: 'sang_froid', name: 'Sang-froid', difficulty: 2, psyOnly: true, text: n => `Ne gagne pas plus de ${n} de psychose.` },
 ];
