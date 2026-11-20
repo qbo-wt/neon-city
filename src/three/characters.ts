@@ -34,7 +34,7 @@ export const BACKGROUND_AVATARS = ['lo', 'doc', 'gunner', 'brute', 'bomber', 'ny
 
 /** Which clip of the Quaternius pack plays each role. Roles without their own clip share the nearest one. */
 const ROLE_CLIP: Record<AnimName, string> = {
-  idle: 'Idle_Loop_Easy', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', ready: 'Idle_Loop_Easy', // Sword_Idle squats on the VRM proportions: it read as sitting on air
+  idle: 'Idle_Loop_Easy', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', ready: 'Guard', // built in loadMotions: Sword_Idle arms on standing legs
   slash: 'Sword_Attack', punch: 'Punch_Jab', kick: 'Punch_Cross', shoot: 'Pistol_Shoot', cast: 'Spell_Simple_Shoot',
   hack: 'Interact', buff: 'Spell_Simple_Enter', jump: 'Jump_Start', roll: 'Roll', hit: 'Hit_Chest', death: 'Death01',
   victory: 'Dance_Loop', dance: 'Dance_Loop', talk: 'Idle_Talking_Loop_Easy', phone: 'Idle_Torch_Loop_Easy',
@@ -121,6 +121,18 @@ function loadMotions(): Promise<Map<string, Motion>> {
       out.set(src.name, { clip: new THREE.AnimationClip(src.name, src.duration, tracks), hipsHeight });
     }
     if (!out.size) console.error('[neon] animation file has no usable clips:', ANIM_FILE);
+    // Combat guard: the arms and head of Sword_Idle (raised, ready) on the hips, spine and legs
+    // of the standing idle (Sword_Idle alone squats on the VRM proportions).
+    const sword = out.get('Sword_Idle'), easy = out.get('Idle_Loop_Easy');
+    if (sword && easy) {
+      const upper = /^(clavicle|upperarm|lowerarm|hand|thumb|index|middle|ring|pinky|neck|Head)/;
+      const tracks = [
+        ...sword.clip.tracks.filter(t => upper.test(t.name)),
+        ...easy.clip.tracks.filter(t => !upper.test(t.name)),
+      ].map(t => t.clone());
+      const duration = Math.min(sword.clip.duration, easy.clip.duration);
+      out.set('Guard', { clip: new THREE.AnimationClip('Guard', duration, tracks), hipsHeight: easy.hipsHeight });
+    }
     return out;
   })();
   return motions;
