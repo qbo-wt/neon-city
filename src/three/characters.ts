@@ -75,7 +75,7 @@ let motions: Promise<Map<string, Motion>> | undefined;
 
 function loadMotions(): Promise<Map<string, Motion>> {
   motions ??= (async () => {
-    const asset = await new GLTFLoader().loadAsync(ANIM_FILE).catch(() => null);
+    const asset = await new GLTFLoader().loadAsync(ANIM_FILE).catch(e => { console.error('[neon] animations not loaded:', ANIM_FILE, e); return null; });
     if (!asset) return new Map<string, Motion>();
     const nodes = new Map<string, THREE.Object3D>();
     asset.scene.traverse(o => nodes.set(o.name, o));
@@ -111,6 +111,7 @@ function loadMotions(): Promise<Map<string, Motion>> {
       }
       out.set(src.name, { clip: new THREE.AnimationClip(src.name, src.duration, tracks), hipsHeight });
     }
+    if (!out.size) console.error('[neon] animation file has no usable clips:', ANIM_FILE);
     return out;
   })();
   return motions;
@@ -236,7 +237,7 @@ export class CharacterRig implements Rig {
       });
       this.play(this.pending);
       return true;
-    }).catch(() => false);
+    }).catch(e => { console.error('[neon] character setup failed:', avatar, e); return false; });
   }
 
   play(name: AnimName) {
