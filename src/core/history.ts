@@ -17,6 +17,9 @@ export interface RunRecord {
   daily?: string;
   /** run tier (core/mode.ts); records from before the tiers have none and were CyberHard */
   mode?: RunMode;
+  /** sector challenges held / taken */
+  challengesWon?: number;
+  challengesTried?: number;
 }
 
 export const HISTORY_CAP = 50;

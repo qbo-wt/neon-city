@@ -29,6 +29,8 @@ export interface RunState {
   timeMs: number;
   /** a fixer contract waiting for (or running in) the next combat sector */
   contract?: Contract & { room?: number };
+  /** sector challenges taken and held this run (core/challenges.ts) */
+  challenges?: { won: number; tried: number };
   weapon: WeaponId;
   /** equipped aspect of the weapon and its rank */
   aspect?: string;

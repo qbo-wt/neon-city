@@ -37,6 +37,8 @@ import { ImplantChoice } from '../ui/ImplantChoice';
 import { ChoicePanel } from '../ui/ChoicePanel';
 import { STREET_EVENTS, STREET_EVENT_IDS, eventLine, eventOptions, type EventCtx, type StreetEventId } from '../systems/streetEvents';
 import { contractMet, contractProgress, type SectorTally } from '../core/contract';
+import { drawChallenges, challengeText, challengeFailed, challengeSucceeded, challengeLine, newTally, rollReward, trackEvent, ITEM_CHANCE, challengeCredits, type ChallengeCtx, type ChallengeInstance, type ChallengeTally } from '../core/challenges';
+import { CHALLENGE_BY_ID } from '../data/challenges';
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
 import { combatTimeScale } from '../core/settings';
@@ -135,6 +137,10 @@ export class RunScene extends Phaser.Scene {
   private ending = false;
   private tally: SectorTally = { hitsTaken: 0, rounds: 0, bestTurnKills: 0 };
   private turnKills = 0;
+  /** the sector challenge taken (data/challenges.ts), its counters (fed by real events only), and whether its failure was announced */
+  private challenge?: ChallengeInstance;
+  private ctally: ChallengeTally = newTally();
+  private challengeLost = false;
   private meta!: SaveData;
   private bossLine?: Phaser.GameObjects.Text;
   private uidSeq = 1000;
@@ -191,6 +197,9 @@ export class RunScene extends Phaser.Scene {
     this.eventDone = this.exitsOpen = this.leaving = this.ending = false;
     this.tally = { hitsTaken: 0, rounds: 0, bestTurnKills: 0 };
     this.turnKills = 0;
+    this.challenge = undefined;
+    this.ctally = newTally();
+    this.challengeLost = false;
     this.meta = loadSave(getStorage());
     this.bossLine = undefined;
     this.hazards = [];
@@ -309,6 +318,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       if (event) this.setupEvent(createRng(this.run.seed + this.run.roomIndex));
       else this.setupFight(arena.breakables, hazards, rng);
       this.ready = true;
+      if (!event) this.offerChallenge(hazards.some(h => h.kind !== 'medkit' && h.kind !== 'relay'));
       this.refreshUi();
     });
   }
@@ -609,6 +619,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     const f = this.fight;
     const view = 'uid' in e ? this.views.get(e.uid) : undefined;
     const u = f && 'uid' in e ? byUid(f, e.uid) : undefined;
+    if (f && this.challenge) this.trackChallenge(e, f);
     switch (e.t) {
       case 'turn': {
         if (f && f.round !== this.lastRound) { this.lastRound = f.round; this.onNewRound(f); }
@@ -1013,6 +1024,8 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     const h = this.hero;
     h.cd = {}; h.casts = {}; h.buffs = []; h.bleed = []; h.mem = {}; h.shield = 0; h.shieldTurns = 0; h.pa = h.maxPa; h.pm = h.maxPm;
     this.tally.rounds = this.fight!.round;
+    this.ctally.round = Math.max(this.ctally.round, this.fight!.round);
+    this.ctally.psyNow = this.run.psy;
     this.tally.bestTurnKills = Math.max(this.tally.bestTurnKills, this.turnKills);
     for (const v of this.views.values()) { v.showBar = false; v.drawBar(); }
     this.views.get(1)?.rest();
@@ -1054,6 +1067,12 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       steps.push(next => this.openImplantChoice(offerImplants(createRng(this.run.seed + ri * 29), this.run.implants, ri, { minRarity: ri >= 6 ? 'epic' : 'rare', psychosis: this.psyOn }), next, 'BUTIN D\'ÉLITE — CHOISIS UN IMPLANT'));
       if (relicRng() < 0.5) steps.push(next => this.openRelicChoice(offerRelics(relicRng, this.relicsLeft(), 2, true), next, 'BUTIN D\'ÉLITE — UNE RELIQUE'));
     }
+    if (this.challenge) {
+      const ch = this.challenge;
+      if (challengeSucceeded(ch, this.ctally)) steps.push(next => this.challengeReward(ch, next));
+      this.challenge = undefined;
+      this.ui.setChallenge(undefined);
+    }
     const c = this.run.contract;
     if (c && c.room === ri) {
       this.run.contract = undefined;
@@ -1069,6 +1088,85 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     }
     const runSteps = (i: number) => (i < steps.length ? steps[i](() => runSteps(i + 1)) : this.openExits());
     this.time.delayedCall(800, () => runSteps(0));
+  }
+
+  // ---------- sector challenges ----------
+
+  /** Before the first turn: two challenges drawn from the seed (a resumed sector shows the same pair). Échap: none. */
+  private offerChallenge(traps: boolean) {
+    const r = this.run, ri = r.roomIndex;
+    if (this.room.isBoss || (r.gentle && ri === 0)) return;
+    const tags = this.spells.map(s => s.tag);
+    const ctx: ChallengeCtx = {
+      ri, enemies: this.room.waves.flat(), spellTags: tags, attackSpells: tags.filter(t => t === 'melee' || t === 'ranged').length,
+      psyOn: this.psyOn, traps, maxHp: this.hero.maxHp,
+    };
+    const offer = drawChallenges(createRng(r.seed * 61 + ri * 997 + 5), ctx);
+    if (!offer.length) return;
+    const options = offer.map(inst => {
+      const def = CHALLENGE_BY_ID.get(inst.id)!;
+      const gold = Math.round(challengeCredits(def.difficulty, ri) * this.stats.creditMult);
+      return { label: def.name, desc: challengeText(inst), cost: `+${gold}¢ · ${Math.round(ITEM_CHANCE[def.difficulty] * 100)} % OBJET`, pick: () => this.takeChallenge(inst) };
+    });
+    this.panel = new ChoicePanel(this, this.controls, 'Défi de secteur',
+      'Relève un défi : réussi jusqu\'au dernier ennemi, il rapporte des crédits et une chance de trouver un objet. Échap : aucun défi.',
+      options, () => { this.panel = undefined; }, 0x00f0ff, { code: 'DÉFI // SECTEUR' });
+  }
+
+  private takeChallenge(inst: ChallengeInstance) {
+    this.challenge = inst;
+    this.ctally = newTally(this.run.psy);
+    this.challengeLost = false;
+    const c = this.run.challenges ?? { won: 0, tried: 0 };
+    this.run.challenges = { ...c, tried: c.tried + 1 };
+    audio.sfx('buy');
+    this.refreshUi();
+  }
+
+  /** Feeds a real fight event (the AI and the previews play on copies, they never get here) and announces the failure once. */
+  private trackChallenge(e: FightEvent, f: Fight) {
+    const ch = this.challenge;
+    if (!ch) return;
+    trackEvent(this.ctally, e, {
+      heroUid: this.hero.uid, round: f.round, psy: this.run.psy,
+      info: uid => { const u = byUid(f, uid); return u ? { team: u.team, kind: u.kind } : undefined; },
+      tag: id => (this.spells.find(s => s.id === id) ?? spell(id))?.tag,
+    });
+    if (!this.challengeLost && challengeFailed(ch, this.ctally)) {
+      this.challengeLost = true;
+      const t = this.screenText(`DÉFI RATÉ — ${CHALLENGE_BY_ID.get(ch.id)!.name.toUpperCase()}`, 9, '#ff2a6d', 70);
+      audio.sfx('deny');
+      this.tweens.add({ targets: t, alpha: 0, delay: 1400, duration: 500, onComplete: () => t.destroy() });
+    }
+  }
+
+  /** The challenge held: credits, and a low chance of an item (rolled from the seed), in a dialog like the chest's. */
+  private challengeReward(ch: ChallengeInstance, next: () => void) {
+    const def = CHALLENGE_BY_ID.get(ch.id)!, ri = this.run.roomIndex;
+    const rng = createRng(this.run.seed * 67 + ri * 101 + 13);
+    const left = this.relicsLeft();
+    const reward = rollReward(rng, def, ri, this.stats.creditMult, left.length > 0);
+    this.run.creditsEarned += reward.credits;
+    const c = this.run.challenges ?? { won: 0, tried: 0 };
+    this.run.challenges = { ...c, won: c.won + 1 };
+    const lines = [`${def.name} : défi réussi !`, `+${reward.credits}¢ de crédits`];
+    let relic: Relic | undefined;
+    let offer: Offer[] = [];
+    if (reward.item === 'relic') {
+      relic = offerRelics(rng, left)[0];
+      if (relic) { lines.push(`Relique ${RELIC_RARITY_NAMES[relic.rarity].toLowerCase()} : ${relic.name}\n${relic.description}`); this.grantRelic(relic); }
+    }
+    if (reward.item === 'implant' || (reward.item === 'relic' && !relic)) {
+      offer = offerImplants(rng, this.run.implants, ri, { minRarity: 'rare', psychosis: this.psyOn });
+      lines.push(offer.length ? 'Un implant rare ou mieux t\'attend : tu en choisis un.' : 'Pas d\'objet cette fois.');
+    }
+    if (reward.item === 'none') lines.push('Pas d\'objet cette fois.');
+    audio.sfx('credit');
+    this.refreshUi();
+    this.panel = new ChoicePanel(this, this.controls, 'Défi réussi', lines.join('\n'),
+      [{ label: 'CONTINUER', desc: '', pick: () => undefined }],
+      () => { this.panel = undefined; if (offer.length) this.openImplantChoice(offer, next, 'PRIME DE DÉFI — CHOISIS UN IMPLANT'); else next(); },
+      0xf5e663, { code: 'BUTIN // DÉFI', square: relic ? () => relicTexture(this, relic!.id) : undefined });
   }
 
   /** Exits on the back edges, each showing what is behind it. */
@@ -1235,6 +1333,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       date: Date.now(), victory, sector, kills: this.run.kills,
       damageDealt: Math.round(this.run.damageDealt), hpHealed: Math.round(this.run.hpHealed), credits: earned, timeMs: Math.round(this.run.timeMs),
       weapon: this.run.weapon, heat: pts, daily: this.run.daily, mode: this.run.mode,
+      challengesWon: this.run.challenges?.won, challengesTried: this.run.challenges?.tried,
     });
     // The elevator's next tiers: CyberHard after any victory, the wanted posters after a CyberHard one.
     const unlocked = unlockAfterRun(save.unlocks, { mode: this.run.mode, victory, daily: !!this.run.daily });
@@ -1598,6 +1697,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     const state = (s: SpellDef) => (this.mode !== 'input' ? 'pas ton tour' : this.spellBlocked(s) ?? this.slotError(s));
     this.ui.setSpells(this.spells, state, this.selected, this.hero.cd);
     this.ui.setTimeline(f);
+    this.ui.setChallenge(this.challenge ? challengeLine(this.challenge, this.ctally) : undefined);
     if (this.mode === 'input') this.ui.setButton('FIN DU TOUR');
     else if (this.mode === 'placement') this.ui.setButton('PRÊT');
     else if (this.mode === 'ai' || this.mode === 'busy') this.ui.setButton(f ? '...' : null);

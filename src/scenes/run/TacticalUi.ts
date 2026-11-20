@@ -45,6 +45,7 @@ export class TacticalUi {
   private timeline: Phaser.GameObjects.Container;
   private info: Phaser.GameObjects.Container;
   private roundText: Phaser.GameObjects.Text;
+  private challengeText: Phaser.GameObjects.Text;
   private hintText: Phaser.GameObjects.Text;
   private hintG: Phaser.GameObjects.Graphics;
   private last?: { spells: SpellDef[]; state: SlotState; selected: number | null; cd: Record<string, number> };
@@ -81,9 +82,10 @@ export class TacticalUi {
     this.timeline = scene.add.container(0, 0);
     this.info = scene.add.container(0, 0);
     this.roundText = title(scene, W - 6, 21, '', 9, T.text).setFontStyle('600').setOrigin(1, 0.5).setStroke('#05030f', 3);
+    this.challengeText = bold(scene, 6, 48, '', 5.5, T.yellow).setOrigin(0, 0.5).setStroke('#05030f', 3);
     this.hintG = scene.add.graphics();
     this.hintText = bold(scene, W / 2, top - 8, '', 6, T.text).setOrigin(0.5);
-    this.root.add([this.tip, this.msg, this.timeline, this.info, this.roundText, this.hintG, this.hintText]);
+    this.root.add([this.tip, this.msg, this.timeline, this.info, this.roundText, this.challengeText, this.hintG, this.hintText]);
     this.root.setScrollFactor(0, 0, true);
     // Hover is worked out from the pointer, not from over/out events on the buttons: the bar is
     // rebuilt on every refresh, and a button destroyed under the cursor never sends its "out".
@@ -333,6 +335,11 @@ export class TacticalUi {
   }
 
   /** Turn order across the top right: whose turn it is, then who comes next. */
+  /** The sector challenge line, top left under the HUD (undefined: none taken). */
+  setChallenge(c: { text: string; state: 'run' | 'failed' } | undefined) {
+    this.challengeText.setText(c?.text ?? '').setColor(c?.state === 'failed' ? T.magenta : T.yellow);
+  }
+
   setTimeline(f: Fight | undefined) {
     this.timeline.removeAll(true);
     if (!f) { this.roundText.setText(''); return; }
