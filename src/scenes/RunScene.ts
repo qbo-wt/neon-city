@@ -1341,6 +1341,8 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       damageDealt: Math.round(this.run.damageDealt), hpHealed: Math.round(this.run.hpHealed), credits: earned, timeMs: Math.round(this.run.timeMs),
       weapon: this.run.weapon, heat: pts, daily: this.run.daily, mode: this.run.mode,
       challengesWon: this.run.challenges?.won, challengesTried: this.run.challenges?.tried,
+      relics: this.run.relics.map(r => r.id), implants: this.run.implants.map(i => i.id),
+      synergies: activeSynergies(this.run.implants, synergyBonus(this.run.relics)).length,
     });
     // The elevator's next tiers: CyberHard after any victory, the wanted posters after a CyberHard one.
     const unlocked = unlockAfterRun(save.unlocks, { mode: this.run.mode, victory, daily: !!this.run.daily });

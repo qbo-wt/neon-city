@@ -20,6 +20,11 @@ export interface RunRecord {
   /** sector challenges held / taken */
   challengesWon?: number;
   challengesTried?: number;
+  /** relic and implant ids carried at the end; absent on older records */
+  relics?: string[];
+  implants?: string[];
+  /** synergy tiers active at the end */
+  synergies?: number;
 }
 
 export const HISTORY_CAP = 50;
@@ -37,6 +42,20 @@ export function isRunRecord(r: unknown): r is RunRecord {
   const o = r as Record<string, unknown>;
   return typeof o.victory === 'boolean'
     && ['date', 'sector', 'kills', 'damageDealt', 'hpHealed', 'credits', 'timeMs'].every(k => isCount(o[k]));
+}
+
+/**
+ * The run shown as "meilleure combinaison": the most synergy tiers active at the end, ties broken by the
+ * deeper sector then the victory. Older records without the field do not compete; null if none has any.
+ */
+export function bestCombo(h: readonly RunRecord[]): RunRecord | null {
+  let best: RunRecord | null = null;
+  for (const r of h) {
+    if (!r.synergies || !r.implants?.length) continue;
+    if (!best || r.synergies > best.synergies!
+      || (r.synergies === best.synergies && (r.sector > best.sector || (r.sector === best.sector && r.victory && !best.victory)))) best = r;
+  }
+  return best;
 }
 
 export function recentFirst(h: readonly RunRecord[]): RunRecord[] {

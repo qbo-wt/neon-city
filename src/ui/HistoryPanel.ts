@@ -1,19 +1,21 @@
 import Phaser from 'phaser';
 import { CONFIG } from '../config';
 import { dateKey } from '../core/daily';
-import { bestFirst, formatTime, recentFirst, recordModeLabel, type RunRecord } from '../core/history';
+import { bestCombo, bestFirst, formatTime, recentFirst, recordModeLabel, type RunRecord } from '../core/history';
 import { fetchBoard, type Board } from '../core/leaderboard';
 import { canRank, playerName } from '../core/player';
 import { MAX_SECTOR, RANK_MODES, RANK_MODE_LABEL, ordinal, sameRunner, type RankMode } from '../core/ranking';
 import type { DailyRecord } from '../core/save';
+import { implantTexture, relicTexture } from '../three/iconModels';
 import { txt } from './text';
 import { C, T, bold, chip, hints, pinToCamera, screenFrame, tabs } from './kit';
 
 type Filter = 'recent' | 'best' | 'daily' | 'board';
 const ROWS = 11;
 const COLS: [label: string, x: number][] = [
-  ['#', 16], ['DATE', 28], ['MODE', 82], ['RÉSULTAT', 124], ['ENNEMIS', 190], ['DÉGÂTS', 234], ['SOINS', 280], ['CRÉDITS', 322], ['TEMPS', 374],
+  ['#', 14], ['DATE', 24], ['MODE', 68], ['RÉSULTAT', 104], ['ENN.', 158], ['DÉGÂTS', 184], ['SOINS', 216], ['CRÉDITS', 244], ['TEMPS', 276], ['DÉFIS', 304], ['ÉQUIPEMENT', 332],
 ];
+const ICON = 8, ICON_STEP = 9, ICON_MAX = 15;
 
 const fmtDate = (ms: number) => {
   const d = new Date(ms), p = (n: number) => String(n).padStart(2, '0');
@@ -93,6 +95,25 @@ export class HistoryPanel {
     g.lineStyle(0.5, C.magenta, 0.7).lineBetween(12, y0 + 10, W - 12, y0 + 10);
     root.add(g);
     cols.forEach(([l, x]) => root.add(bold(s, x, y0 + 5, l, 5, T.magenta).setOrigin(0, 0.5)));
+  }
+
+  /** Relic then implant pictures in a line; a short text (R3 I5) stands in until they are drawn or if a render fails. */
+  private icons(root: Phaser.GameObjects.Container, x: number, y: number, relics: readonly string[], implants: readonly string[]) {
+    const s = this.scene;
+    const items: { id: string; relic: boolean }[] = [
+      ...relics.map(id => ({ id, relic: true })), ...implants.map(id => ({ id, relic: false }))];
+    if (!items.length) { root.add(txt(s, x, y, '—', 6, T.off).setOrigin(0, 0.5)); return; }
+    const fallback = txt(s, x, y, `R${relics.length} I${implants.length}`, 6, T.dim).setOrigin(0, 0.5);
+    root.add(fallback);
+    const shown = items.slice(0, ICON_MAX);
+    if (items.length > shown.length) root.add(txt(s, x + shown.length * ICON_STEP, y, `+${items.length - shown.length}`, 5, T.mute).setOrigin(0, 0.5));
+    shown.forEach((it, n) => (it.relic ? relicTexture(s, it.id) : implantTexture(s, it.id)).then(tex => {
+      if (!tex || this.root !== root || !s.sys?.isActive()) return;
+      fallback.setVisible(false);
+      const img = s.add.image(x + ICON / 2 + n * ICON_STEP, y, tex).setDisplaySize(ICON, ICON);
+      root.add(img);
+      pinToCamera(img);
+    }).catch(() => {}));
   }
 
   private row(root: Phaser.GameObjects.Container, i: number, y0 = 58) {
@@ -183,13 +204,21 @@ export class HistoryPanel {
     }
     list.forEach((r, i) => {
       const y = this.row(root, i);
-      const cells = [String(i + 1), fmtDate(r.date), '', '', String(r.kills), String(r.damageDealt), String(r.hpHealed), `${r.credits}¢`, formatTime(r.timeMs)];
+      const defis = r.challengesTried ? `${r.challengesWon ?? 0}/${r.challengesTried}` : '';
+      const cells = [String(i + 1), fmtDate(r.date), '', '', String(r.kills), String(r.damageDealt), String(r.hpHealed), `${r.credits}¢`, formatTime(r.timeMs), defis];
       cells.forEach((c, k) => { if (c) root.add(txt(s, COLS[k][1], y + 5, c, 7, k === 0 ? T.mute : k === 7 ? T.yellow : T.text).setOrigin(0, 0.5)); });
       const mode = recordModeLabel(r);
       root.add(bold(s, COLS[2][1], y + 5, mode, 5, mode === 'NORMALE' ? T.cyan : mode === 'CYBERHARD' ? T.magenta : T.dim).setOrigin(0, 0.5));
       root.add(chip(s, COLS[3][1], y + 5, r.victory ? 'VICTOIRE' : `MORT — S${r.sector}`, r.victory ? C.yellow : C.magenta, { size: 5, filled: r.victory }));
+      if (r.relics || r.implants) this.icons(root, COLS[10][1], y + 5, r.relics ?? [], r.implants ?? []);
     });
 
+    const combo = bestCombo(all);
+    if (combo) {
+      root.add(bold(s, 14, 238, 'MEILLEURE COMBINAISON', 5, T.magenta).setOrigin(0, 0.5));
+      root.add(txt(s, 104, 238, `${combo.synergies} synergie(s), secteur ${combo.sector}${combo.victory ? ' (victoire)' : ''}`, 6, T.text).setOrigin(0, 0.5));
+      this.icons(root, 220, 238, combo.relics ?? [], combo.implants ?? []);
+    }
     root.add(txt(s, W - 16, H - 12, `${all.length} run(s) enregistrée(s)`, 5, T.off).setOrigin(1, 0.5));
     root.add(hints(s, W / 2, H - 12, [['1-4', 'Onglets'], ['ÉCHAP', 'Fermer']], C.cyan));
     pinToCamera(root);
