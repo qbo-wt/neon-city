@@ -4,6 +4,7 @@ import { FineRain, Skyline } from './cityArt';
 import { C, GlitchText, T, bold, chip, drawBar, scanlines, skewPoly, stripes } from './kit';
 import { title, txt } from './text';
 import { randomTip } from './tips';
+import { VERSION } from '../version';
 
 const LOG = [
   [0, '> NEON//OS 4.2 — démarrage à froid'],
@@ -62,6 +63,7 @@ export class LoadingScreen {
     }
     ui.add(top);
     ui.add(bold(scene, 30, 13, 'NEON//OS 4.2', 5, T.cyan).setOrigin(0, 0.5));
+    ui.add(txt(scene, W - 96, 13, `VERSION ${VERSION}`, 5, T.yellow).setOrigin(1, 0.5));
     ui.add(txt(scene, 82, 13, 'SÉQUENCE DE DÉMARRAGE', 5, T.mute).setOrigin(0, 0.5));
     this.clock = bold(scene, W - 30, 13, '', 5, T.magenta).setOrigin(1, 0.5);
     ui.add(this.clock);

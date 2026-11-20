@@ -14,6 +14,7 @@ import { generateArena } from '../tactics/arena';
 import { createRng } from '../core/rng';
 import { CharacterRig } from '../three/characters';
 import type * as THREE from 'three';
+import { VERSION } from '../version';
 
 export class MenuScene extends Phaser.Scene {
   constructor() { super(SCENES.Menu); }
@@ -82,6 +83,8 @@ export class MenuScene extends Phaser.Scene {
     }
     bold(this, 28, 13, 'NEON//OS 4.2', 5, T.cyan).setOrigin(0, 0.5);
     txt(this, 80, 13, 'DISTRICT 0 // NUIT PERMANENTE', 5, T.mute).setOrigin(0, 0.5);
+    // The build running, to check a deploy reached this browser.
+    txt(this, W - 94, 13, `VERSION ${VERSION}`, 5, T.yellow).setOrigin(1, 0.5);
 
     chip(this, 30, 50, 'ROGUELITE TACTIQUE', C.magenta, { filled: true, size: 5 });
     const logo = new GlitchText(this, 0, 84, 'NEON CITY', 64, '#f4f1ff', { every: 3200 });
