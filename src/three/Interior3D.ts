@@ -465,7 +465,7 @@ export class Interior3D {
     if (!hips) return;
     c.holder.updateMatrixWorld(true);
     const rel = hips.getWorldPosition(this.tmp).y - c.holder.position.y;
-    c.holder.position.y = c.seat + 0.1 - rel;
+    c.holder.position.y = c.seat + 0.07 - rel;
   }
 
   update(dt: number) {

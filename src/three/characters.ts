@@ -26,10 +26,10 @@ export const ALL_AVATARS = ['hero', 'lo', 'doc', 'nyx', 'runner', 'gunner', 'bru
 
 /** Which clip of the Quaternius pack plays each role. Roles without their own clip share the nearest one. */
 const ROLE_CLIP: Record<AnimName, string> = {
-  idle: 'Idle_Loop', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', ready: 'Sword_Idle',
+  idle: 'Idle_Loop_Easy', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', ready: 'Sword_Idle',
   slash: 'Sword_Attack', punch: 'Punch_Jab', kick: 'Punch_Cross', shoot: 'Pistol_Shoot', cast: 'Spell_Simple_Shoot',
   hack: 'Interact', buff: 'Spell_Simple_Enter', jump: 'Jump_Start', roll: 'Roll', hit: 'Hit_Chest', death: 'Death01',
-  victory: 'Dance_Loop', dance: 'Dance_Loop', talk: 'Idle_Talking_Loop', phone: 'Idle_Torch_Loop',
+  victory: 'Dance_Loop', dance: 'Dance_Loop', talk: 'Idle_Talking_Loop_Easy', phone: 'Idle_Torch_Loop_Easy',
   sit: 'Sitting_Idle_Loop', sitTalk: 'Sitting_Talking_Loop',
 };
 const ANIMS = Object.keys(ROLE_CLIP) as AnimName[];
@@ -105,8 +105,8 @@ function loadMotions(): Promise<Map<string, Motion>> {
           // board moves the units, the clip only moves the body up and down).
           const v = t.values.slice(), p = new THREE.Vector3();
           for (let i = 0; i < v.length; i += 3) { p.fromArray(v, i).applyQuaternion(parentRest); p.toArray(v, i); }
-          const x0 = v[0], z0 = v[2];
-          for (let i = 0; i < v.length; i += 3) { v[i] = x0; v[i + 2] = z0; }
+          // Hips stay over the holder (a seated clip leans the hips back, the seat is under them).
+          for (let i = 0; i < v.length; i += 3) { v[i] = 0; v[i + 2] = 0; }
           tracks.push(new THREE.VectorKeyframeTrack(`${bone}.${prop}`, t.times, v));
         }
       }
