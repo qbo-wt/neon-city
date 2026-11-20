@@ -26,7 +26,7 @@ export const ALL_AVATARS = ['hero', 'lo', 'doc', 'nyx', 'runner', 'gunner', 'bru
 
 /** Which clip of the Quaternius pack plays each role. Roles without their own clip share the nearest one. */
 const ROLE_CLIP: Record<AnimName, string> = {
-  idle: 'Idle_Loop_Easy', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', ready: 'Sword_Idle',
+  idle: 'Idle_Loop_Easy', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', ready: 'Idle_Loop_Easy', // Sword_Idle squats on the VRM proportions: it read as sitting on air
   slash: 'Sword_Attack', punch: 'Punch_Jab', kick: 'Punch_Cross', shoot: 'Pistol_Shoot', cast: 'Spell_Simple_Shoot',
   hack: 'Interact', buff: 'Spell_Simple_Enter', jump: 'Jump_Start', roll: 'Roll', hit: 'Hit_Chest', death: 'Death01',
   victory: 'Dance_Loop', dance: 'Dance_Loop', talk: 'Idle_Talking_Loop_Easy', phone: 'Idle_Torch_Loop_Easy',
