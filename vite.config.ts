@@ -4,7 +4,8 @@ import { writeManifest } from './scripts/asset-manifest.mjs';
 export default defineConfig({
   base: './',
   server: { port: 5173, open: false },
-  build: { chunkSizeWarningLimit: 2000 },
+  // Hashed bundles go to build/ (cached forever); public/assets keep stable names and are revalidated (vercel.json).
+  build: { chunkSizeWarningLimit: 2000, assetsDir: 'build' },
   test: { include: ['tests/**/*.test.ts'], environment: 'node' },
   plugins: [{
     // public/assets/manifest.json: the files the loading screen pre-fetches (see src/three/preload.ts).
