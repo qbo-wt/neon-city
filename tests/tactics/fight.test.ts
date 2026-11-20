@@ -35,9 +35,10 @@ describe('movement and tackle', () => {
     const f = createFight(board(['.....', '.....', '.....']), [hero({ x: 0, y: 1 }), makeEnemy('runner', { x: 1, y: 1 }, sc)], fixed);
     beginFight(f);
     const p = byUid(f, 1)!;
-    expect(exitTax(f, p, p)).toBe(0); // runner tackle 1 - player dodge 1
+    expect(exitTax(f, p, p)).toBe(1); // runner tackle 1 - player base dodge 0: no free escape
+    p.st.dodge = 1;
+    expect(exitTax(f, p, p)).toBe(0); // dodge from implants or the skill tree cancels it
     p.st.dodge = 0;
-    expect(exitTax(f, p, p)).toBe(1);
     const map = reachFor(f, p);
     expect(map.has('1,1')).toBe(false);
     // Each first step costs 2 (1 + tackle): 3 PM reach one cell away, not two.

@@ -6,7 +6,7 @@ import type { Implant, Relic, Stats } from './types';
 export function baseStats(): Stats {
   return {
     maxHp: CONFIG.PLAYER_BASE_HP, pa: CONFIG.PLAYER_PA, pm: CONFIG.PLAYER_PM, range: 0, initiative: CONFIG.PLAYER_INIT,
-    damage: 0, damagePct: 0, critChance: 0.05, critMult: 1.5, res: 0, pushDamage: 0, tackle: 1, dodge: 1,
+    damage: 0, damagePct: 0, critChance: 0.05, critMult: 1.5, res: 0, pushDamage: 0, tackle: 1, dodge: 0, // no free escape: an adjacent enemy with tackle costs extra PM to leave
     lifesteal: 0, thorns: 0, killHeal: 0, critHeal: 0, lowHpDamage: 0, psyDamage: 0, dazedDamage: 0, killPa: 0, castPsy: 0,
     psyResist: 0, implantLoadMult: 1, psyRateMult: 1, creditMult: 1, regenOnClear: 0, healMult: 1,
     startBlockers: 0, blockerAmount: CONFIG.BLOCKER_AMOUNT, bossBonusMult: 1,
