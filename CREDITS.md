@@ -2,7 +2,7 @@
 Le jeu : Neon City, par Quentin Bonhoure. Le texte affiché en jeu (écran CRÉDITS du menu) vient de `src/data/credits.ts` : le tenir à jour avec ce fichier.
 
 - **Personnages** : VIPE Heroes Genesis, par Polygonal Mind (vipe.io, polygonalmind.com), licence CC-BY. Fichiers `public/assets/vrm/*.vrm` (allégés : expressions faciales inutilisées retirées par `scripts/slim-vrm.mjs`).
-- **Animations** : Mixamo (Adobe), `public/assets/mixamo/anims`, sous les conditions d'usage de Mixamo (pas une licence Creative Commons ; vérifier ces conditions avant toute redistribution des FBX seuls).
+- **Animations** : Universal Animation Library (Standard), par Quaternius (quaternius.com), licence CC0 1.0. Clips extraits dans `public/assets/anims/ual.glb` (animation seule, sans mesh).
 - **Décors** : Kenney (kenney.nl), City Kit Commercial/Industrial/Roads/Suburban, Car Kit, Space Station Kit, Modular Space Kit, Mini Arcade, Mini Market (Mini Arcade et Mini Market avec Fleur Keijsers et Guus Vermeulen) — CC0. `public/assets/kenney/`.
 - **Mobilier** : KayKit Furniture Bits, par Kay Lousberg (kaylousberg.com) — CC0. `public/assets/kaykit/furniture/`.
 - **Polices** : Chakra Petch et Teko (SIL Open Font License), via @fontsource.

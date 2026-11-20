@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type MToonMaterial, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm';
 import type { AnimName, Rig } from './rigs';
@@ -9,12 +8,12 @@ import { settings } from '../core/settings';
 
 /**
  * Anime characters: VRM avatars (assets/vrm, VIPE Heroes by Polygonal Mind, CC-BY, see CREDITS.md),
- * cel-shaded by their own MToon materials, animated with the shared Mixamo clips
- * (assets/mixamo/anims) retargeted onto the VRM humanoid. The retargeting follows the
+ * cel-shaded by their own MToon materials, animated with the shared Quaternius clips
+ * (assets/anims/ual.glb, Universal Animation Library, CC0) retargeted onto the VRM humanoid. The retargeting follows the
  * three-vrm "humanoidAnimation" example (MIT).
  */
 const VRM_BASE = 'assets/vrm/';
-const ANIM_BASE = 'assets/mixamo/anims/';
+const ANIM_FILE = 'assets/anims/ual.glb';
 
 /** Which avatar plays which unit kind. */
 export const CAST: Record<string, string> = {
@@ -28,28 +27,34 @@ const ANIMS: AnimName[] = ['idle', 'walk', 'slash', 'punch', 'kick', 'shoot', 'c
 /** Clips that play once and hand back to idle. */
 const ONCE = new Set<AnimName>(['slash', 'punch', 'kick', 'shoot', 'cast', 'jump', 'roll', 'hit', 'death', 'victory']);
 
-/** Mixamo bone (without its mixamorig prefix) → VRM humanoid bone. */
+/** Quaternius bone → VRM humanoid bone (the *_leaf end bones and the root are dropped). */
 const RIG: Record<string, VRMHumanBoneName> = {
-  Hips: 'hips', Spine: 'spine', Spine1: 'chest', Spine2: 'upperChest', Neck: 'neck', Head: 'head',
-  LeftShoulder: 'leftShoulder', LeftArm: 'leftUpperArm', LeftForeArm: 'leftLowerArm', LeftHand: 'leftHand',
-  RightShoulder: 'rightShoulder', RightArm: 'rightUpperArm', RightForeArm: 'rightLowerArm', RightHand: 'rightHand',
-  LeftUpLeg: 'leftUpperLeg', LeftLeg: 'leftLowerLeg', LeftFoot: 'leftFoot', LeftToeBase: 'leftToes',
-  RightUpLeg: 'rightUpperLeg', RightLeg: 'rightLowerLeg', RightFoot: 'rightFoot', RightToeBase: 'rightToes',
-  LeftHandThumb1: 'leftThumbMetacarpal', LeftHandThumb2: 'leftThumbProximal', LeftHandThumb3: 'leftThumbDistal',
-  LeftHandIndex1: 'leftIndexProximal', LeftHandIndex2: 'leftIndexIntermediate', LeftHandIndex3: 'leftIndexDistal',
-  LeftHandMiddle1: 'leftMiddleProximal', LeftHandMiddle2: 'leftMiddleIntermediate', LeftHandMiddle3: 'leftMiddleDistal',
-  LeftHandRing1: 'leftRingProximal', LeftHandRing2: 'leftRingIntermediate', LeftHandRing3: 'leftRingDistal',
-  LeftHandPinky1: 'leftLittleProximal', LeftHandPinky2: 'leftLittleIntermediate', LeftHandPinky3: 'leftLittleDistal',
-  RightHandThumb1: 'rightThumbMetacarpal', RightHandThumb2: 'rightThumbProximal', RightHandThumb3: 'rightThumbDistal',
-  RightHandIndex1: 'rightIndexProximal', RightHandIndex2: 'rightIndexIntermediate', RightHandIndex3: 'rightIndexDistal',
-  RightHandMiddle1: 'rightMiddleProximal', RightHandMiddle2: 'rightMiddleIntermediate', RightHandMiddle3: 'rightMiddleDistal',
-  RightHandRing1: 'rightRingProximal', RightHandRing2: 'rightRingIntermediate', RightHandRing3: 'rightRingDistal',
-  RightHandPinky1: 'rightLittleProximal', RightHandPinky2: 'rightLittleIntermediate', RightHandPinky3: 'rightLittleDistal',
+  pelvis: 'hips', spine_01: 'spine', spine_02: 'chest', spine_03: 'upperChest', neck_01: 'neck', Head: 'head',
+  clavicle_l: 'leftShoulder', upperarm_l: 'leftUpperArm', lowerarm_l: 'leftLowerArm', hand_l: 'leftHand',
+  clavicle_r: 'rightShoulder', upperarm_r: 'rightUpperArm', lowerarm_r: 'rightLowerArm', hand_r: 'rightHand',
+  thigh_l: 'leftUpperLeg', calf_l: 'leftLowerLeg', foot_l: 'leftFoot', ball_l: 'leftToes',
+  thigh_r: 'rightUpperLeg', calf_r: 'rightLowerLeg', foot_r: 'rightFoot', ball_r: 'rightToes',
+  thumb_01_l: 'leftThumbMetacarpal', thumb_02_l: 'leftThumbProximal', thumb_03_l: 'leftThumbDistal',
+  index_01_l: 'leftIndexProximal', index_02_l: 'leftIndexIntermediate', index_03_l: 'leftIndexDistal',
+  middle_01_l: 'leftMiddleProximal', middle_02_l: 'leftMiddleIntermediate', middle_03_l: 'leftMiddleDistal',
+  ring_01_l: 'leftRingProximal', ring_02_l: 'leftRingIntermediate', ring_03_l: 'leftRingDistal',
+  pinky_01_l: 'leftLittleProximal', pinky_02_l: 'leftLittleIntermediate', pinky_03_l: 'leftLittleDistal',
+  thumb_01_r: 'rightThumbMetacarpal', thumb_02_r: 'rightThumbProximal', thumb_03_r: 'rightThumbDistal',
+  index_01_r: 'rightIndexProximal', index_02_r: 'rightIndexIntermediate', index_03_r: 'rightIndexDistal',
+  middle_01_r: 'rightMiddleProximal', middle_02_r: 'rightMiddleIntermediate', middle_03_r: 'rightMiddleDistal',
+  ring_01_r: 'rightRingProximal', ring_02_r: 'rightRingIntermediate', ring_03_r: 'rightRingDistal',
+  pinky_01_r: 'rightLittleProximal', pinky_02_r: 'rightLittleIntermediate', pinky_03_r: 'rightLittleDistal',
 };
-const bare = (name: string) => name.replace(/^mixamorig\d*:?/, '');
 
 /**
- * A Mixamo clip with its rotations already moved into world rest space (that part is the same for
+ * Where each clip starts (seconds): the source swings wind up slower than the 110 ms the combat
+ * gives a cast before its impact (RunScene 'cast' event), so the clip skips its wind-up and the
+ * blow lands on the swing.
+ */
+const START: Partial<Record<AnimName, number>> = { slash: 0.29, punch: 0.06, kick: 0.12 };
+
+/**
+ * A clip with its rotations already moved into world rest space (that part is the same for
  * every avatar); only the bone names, the VRM 0 axis flip and the hips scale are per avatar.
  */
 type Motion = { clip: THREE.AnimationClip; hipsHeight: number };
@@ -57,41 +62,43 @@ let motions: Promise<Map<AnimName, Motion>> | undefined;
 
 function loadMotions(): Promise<Map<AnimName, Motion>> {
   motions ??= (async () => {
-    const fbx = new FBXLoader();
-    const list = await Promise.all(ANIMS.map(async name => {
-      const asset = await fbx.loadAsync(`${ANIM_BASE}${name}.fbx`).catch(() => null);
-      const src = asset?.animations[0];
-      if (!asset || !src) return null;
-      const nodes = new Map<string, THREE.Object3D>();
-      asset.traverse(o => nodes.set(bare(o.name), o));
-      asset.updateMatrixWorld(true);
-      const hips = nodes.get('Hips');
+    const asset = await new GLTFLoader().loadAsync(ANIM_FILE).catch(() => null);
+    if (!asset) return new Map<AnimName, Motion>();
+    const nodes = new Map<string, THREE.Object3D>();
+    asset.scene.traverse(o => nodes.set(o.name, o));
+    asset.scene.updateMatrixWorld(true);
+    const hipsHeight = nodes.get('pelvis')!.getWorldPosition(new THREE.Vector3()).y || 1;
+    const restInv = new THREE.Quaternion(), parentRest = new THREE.Quaternion(), q = new THREE.Quaternion();
+    const out = new Map<AnimName, Motion>();
+    for (const src of asset.animations) {
       const tracks: THREE.KeyframeTrack[] = [];
-      const restInv = new THREE.Quaternion(), parentRest = new THREE.Quaternion(), q = new THREE.Quaternion();
       for (const t of src.tracks) {
-        const [rigName, prop] = t.name.split('.');
-        const bone = bare(rigName);
+        const dot = t.name.lastIndexOf('.');
+        const bone = t.name.slice(0, dot), prop = t.name.slice(dot + 1);
         const node = nodes.get(bone);
-        if (!RIG[bone] || !node) continue;
+        if (!RIG[bone] || !node?.parent) continue;
+        node.parent.getWorldQuaternion(parentRest);
         if (t instanceof THREE.QuaternionKeyframeTrack) {
           node.getWorldQuaternion(restInv).invert();
-          node.parent!.getWorldQuaternion(parentRest);
           const v = t.values.slice();
           for (let i = 0; i < v.length; i += 4) {
             q.fromArray(v, i).premultiply(parentRest).multiply(restInv);
             q.toArray(v, i);
           }
           tracks.push(new THREE.QuaternionKeyframeTrack(`${bone}.${prop}`, t.times, v));
-        } else if (t instanceof THREE.VectorKeyframeTrack && bone === 'Hips' && prop === 'position') {
-          // In place: the board moves the units, the clip only moves the body up and down.
-          const v = t.values.slice(), x0 = v[0], z0 = v[2];
+        } else if (t instanceof THREE.VectorKeyframeTrack && bone === 'pelvis' && prop === 'position') {
+          // The rig is Z-up under its root: bring the track to world axes, then in place (the
+          // board moves the units, the clip only moves the body up and down).
+          const v = t.values.slice(), p = new THREE.Vector3();
+          for (let i = 0; i < v.length; i += 3) { p.fromArray(v, i).applyQuaternion(parentRest); p.toArray(v, i); }
+          const x0 = v[0], z0 = v[2];
           for (let i = 0; i < v.length; i += 3) { v[i] = x0; v[i + 2] = z0; }
           tracks.push(new THREE.VectorKeyframeTrack(`${bone}.${prop}`, t.times, v));
         }
       }
-      return [name, { clip: new THREE.AnimationClip(name, src.duration, tracks), hipsHeight: hips?.position.y || 100 }] as const;
-    }));
-    return new Map(list.filter((x): x is readonly [AnimName, Motion] => !!x));
+      out.set(src.name as AnimName, { clip: new THREE.AnimationClip(src.name, src.duration, tracks), hipsHeight });
+    }
+    return out;
   })();
   return motions;
 }
@@ -221,6 +228,7 @@ export class CharacterRig implements Rig {
     const next = this.actions.get(n ?? 'idle');
     if (!next || (next === this.current && !ONCE.has(name))) return;
     next.reset().setEffectiveWeight(1).fadeIn(0.15).play();
+    next.time = START[n ?? 'idle'] ?? 0;
     if (this.current && this.current !== next) this.current.fadeOut(0.15);
     this.current = next;
     this.currentName = name;

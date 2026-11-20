@@ -8,7 +8,7 @@ import { MToonMaterial, type VRM, type VRMHumanBoneName } from '@pixiv/three-vrm
  *
  * Every part is low-poly geometry built here, fitted to the avatar from its own skin (limb radii,
  * face and back surfaces are measured on the vertices at rest) and parented to a normalized
- * humanoid bone, so it follows the retargeted Mixamo clips. Parts on one bone are merged into a
+ * humanoid bone, so it follows the retargeted animation clips. Parts on one bone are merged into a
  * single mesh with three material groups: dark metal (MToon, cel-shaded like the body), neon
  * (unlit) and an ink hull (the black outline). Geometry is built once per avatar and shared by
  * every copy of it; only the metal material is per character (hit flashes and the board's rim

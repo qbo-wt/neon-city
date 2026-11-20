@@ -14,7 +14,7 @@ export interface PreloadStatus {
 
 const GROUPS: [RegExp, string][] = [
   [/^assets\/vrm\//, 'AVATARS ANIME'],
-  [/^assets\/mixamo\//, 'ANIMATIONS'],
+  [/^assets\/anims\//, 'ANIMATIONS'],
   [/^assets\/kenney\/(cars|roads)\//, 'RUES ET VÉHICULES'],
   [/^assets\/kenney\//, 'DÉCORS DE LA VILLE'],
   [/^assets\/kaykit\//, 'MOBILIER'],

@@ -34,7 +34,7 @@ export const CREDIT_SECTIONS: CreditSection[] = [
   {
     title: 'ANIMATIONS',
     use: 'Marche, combat, sorts, victoire…',
-    lines: ['Mixamo, Adobe', 'Utilisées sous les conditions d\'usage de Mixamo', 'https://www.mixamo.com'],
+    lines: ['Universal Animation Library, par Quaternius (quaternius.com), licence CC0', 'https://quaternius.com/packs/universalanimationlibrary.html'],
   },
   {
     title: 'DÉCORS (CC0)',

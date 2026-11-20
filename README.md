@@ -1,6 +1,6 @@
 # Neon City
 
-Rogue-lite tactique au tour par tour, dans le navigateur. Cyberpunk en 3D anime (cel-shading, traits d'encre) vue de trois quarts : décors en kits low-poly (Kenney, KayKit), personnages VRM animés par retarget d'animations Mixamo, néons, pluie, sol mouillé. Bruitages et musique générés par le code.
+Rogue-lite tactique au tour par tour, dans le navigateur. Cyberpunk en 3D anime (cel-shading, traits d'encre) vue de trois quarts : décors en kits low-poly (Kenney, KayKit), personnages VRM animés par retarget d'animations Quaternius (CC0), néons, pluie, sol mouillé. Bruitages et musique générés par le code.
 
 ## Lancer
 
@@ -11,7 +11,7 @@ npm test           # tests de la logique de jeu (Vitest)
 npm run build      # vérification des types + build statique dans dist/
 ```
 
-Les personnages sont des VRM dans `public/assets/vrm` (passer un nouveau par `scripts/slim-vrm.mjs` puis `scripts/compress-vrm.mjs`) ; les animations Mixamo (FBX sans skin) sont dans `public/assets/mixamo/anims`. Voir `CLAUDE.md` et `docs/art-direction.md`.
+Les personnages sont des VRM dans `public/assets/vrm` (passer un nouveau par `scripts/slim-vrm.mjs` puis `scripts/compress-vrm.mjs`) ; les animations (Quaternius Universal Animation Library, CC0, GLB sans mesh) sont dans `public/assets/anims`. Voir `CLAUDE.md` et `docs/art-direction.md`.
 
 ## Contrôles
 
