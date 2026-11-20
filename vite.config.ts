@@ -14,7 +14,14 @@ export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
   server: { port: 5173, open: false },
   // Hashed bundles go to build/ (cached forever); public/assets keep stable names and are revalidated (vercel.json).
-  build: { chunkSizeWarningLimit: 2000, assetsDir: 'build' },
+  build: {
+    chunkSizeWarningLimit: 1500, assetsDir: 'build',
+    // Vendor chunks keep their hash across deploys while the game code changes: a returning player re-downloads only the game.
+    rolldownOptions: { output: { codeSplitting: { groups: [
+      { name: 'vendor-phaser', test: /node_modules[\/]phaser[\/]/, priority: 30 },
+      { name: 'vendor-three', test: /node_modules[\\/](three|@pixiv)[\\/]/, priority: 20 },
+    ] } } },
+  },
   test: { include: ['tests/**/*.test.ts'], environment: 'node' },
   plugins: [{
     // public/assets/manifest.json: the files the loading screen pre-fetches (see src/three/preload.ts).
