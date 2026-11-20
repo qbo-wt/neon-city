@@ -43,6 +43,7 @@ export class CreditsPanel {
   close() {
     if (!this.root) return;
     this.root.destroy();
+    audio.sfx('uiClose');
     this.root = undefined;
     this.body = undefined;
     this.detach();

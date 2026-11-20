@@ -22,7 +22,8 @@ export type SfxId =
   | 'swing' | 'swingHeavy' | 'hit' | 'crit' | 'kill' | 'parry' | 'whiff' | 'dash' | 'hurt'
   | 'enemyShoot' | 'playerShoot' | 'hack' | 'explode' | 'credit' | 'heal' | 'implant' | 'door'
   | 'blocker' | 'spawn' | 'stun' | 'bossRoar' | 'quake' | 'nova' | 'charge' | 'windup' | 'ui' | 'uiOpen'
-  | 'break' | 'glitch' | 'special' | 'elite' | 'relic' | 'buy' | 'deny' | 'talk';
+  | 'break' | 'glitch' | 'special' | 'elite' | 'relic' | 'buy' | 'deny' | 'talk'
+  | 'slash' | 'punch' | 'whip' | 'leap' | 'chestOpen' | 'challengePick' | 'challengeFail' | 'challengeWin' | 'endBeat' | 'endUnlock' | 'uiClose';
 
 const SFX: Record<SfxId, Voice[]> = {
   swing: [{ wave: 'noise', f0: 0, dur: 0.09, vol: 0.22, filter: { type: 'bandpass', f0: 2400, f1: 700, q: 1.2 } }, { wave: 'sine', f0: 320, f1: 120, dur: 0.06, vol: 0.06 }],
@@ -59,6 +60,21 @@ const SFX: Record<SfxId, Voice[]> = {
   elite: [0, 0.25, 0.5].map(d => ({ wave: 'square' as Wave, f0: 880, f1: 660, dur: 0.18, vol: 0.05, delay: d })),
   buy: [{ wave: 'square', f0: 988, dur: 0.06, vol: 0.05 }, { wave: 'square', f0: 1319, dur: 0.12, vol: 0.05, delay: 0.06 }],
   deny: [{ wave: 'square', f0: 180, dur: 0.12, vol: 0.06 }, { wave: 'square', f0: 140, dur: 0.14, vol: 0.06, delay: 0.1 }],
+  // Weapon families: blade (bright metallic swish), fist/blast (dull thud), wire (whip crack), jump (landing).
+  slash: [{ wave: 'noise', f0: 0, dur: 0.11, vol: 0.2, filter: { type: 'bandpass', f0: 4200, f1: 1200, q: 1.6 } }, { wave: 'triangle', f0: 2600, f1: 1500, dur: 0.07, vol: 0.04 }],
+  punch: [{ wave: 'sine', f0: 170, f1: 55, dur: 0.12, vol: 0.2 }, { wave: 'noise', f0: 0, dur: 0.07, vol: 0.2, filter: { type: 'lowpass', f0: 900, f1: 200 } }],
+  whip: [{ wave: 'noise', f0: 0, dur: 0.05, vol: 0.2, filter: { type: 'highpass', f0: 3500 } }, { wave: 'sawtooth', f0: 1800, f1: 300, dur: 0.12, vol: 0.05, filter: { type: 'bandpass', f0: 1500, q: 2 } }],
+  leap: [{ wave: 'sine', f0: 200, f1: 520, dur: 0.14, vol: 0.07 }, { wave: 'noise', f0: 0, dur: 0.12, vol: 0.1, filter: { type: 'bandpass', f0: 600, f1: 1800 } }],
+  chestOpen: [{ wave: 'sawtooth', f0: 90, f1: 150, dur: 0.3, vol: 0.07, filter: { type: 'lowpass', f0: 700 } }, { wave: 'noise', f0: 0, dur: 0.22, vol: 0.08, filter: { type: 'bandpass', f0: 500, f1: 1500 } },
+    ...[784, 1047, 1319].map((f, i) => ({ wave: 'triangle' as Wave, f0: f, dur: 0.22, vol: 0.06, delay: 0.25 + i * 0.07 }))],
+  challengePick: [{ wave: 'square', f0: 440, dur: 0.07, vol: 0.05 }, { wave: 'square', f0: 660, dur: 0.07, vol: 0.05, delay: 0.07 }, { wave: 'square', f0: 880, dur: 0.14, vol: 0.05, delay: 0.14 }],
+  challengeFail: [{ wave: 'sawtooth', f0: 330, f1: 110, dur: 0.45, vol: 0.09, filter: { type: 'lowpass', f0: 1200 } }, { wave: 'square', f0: 98, dur: 0.3, vol: 0.05, delay: 0.1 }],
+  challengeWin: [523, 659, 784, 1047, 1319, 1568].map((f, i) => ({ wave: 'square' as Wave, f0: f, dur: i === 5 ? 0.4 : 0.1, vol: 0.05, delay: i * 0.075 })),
+  endBeat: [{ wave: 'sine', f0: 196, dur: 0.9, vol: 0.09, attack: 0.15 }, { wave: 'triangle', f0: 294, dur: 0.8, vol: 0.04, attack: 0.2, delay: 0.05 }],
+  endUnlock: [{ wave: 'sine', f0: 98, f1: 196, dur: 0.8, vol: 0.12, attack: 0.1 },
+    ...[392, 523, 659, 784, 1047].map((f, i) => ({ wave: 'triangle' as Wave, f0: f, dur: 0.6, vol: 0.06, delay: 0.2 + i * 0.12 })),
+    { wave: 'noise', f0: 0, dur: 0.6, vol: 0.05, delay: 0.3, filter: { type: 'highpass', f0: 6000 } }],
+  uiClose: [{ wave: 'triangle', f0: 900, f1: 400, dur: 0.09, vol: 0.05 }],
   talk: [{ wave: 'square', f0: 600, f1: 500, dur: 0.04, vol: 0.025 }, { wave: 'square', f0: 700, f1: 620, dur: 0.04, vol: 0.02, delay: 0.06 }],
 };
 

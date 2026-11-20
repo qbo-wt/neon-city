@@ -638,7 +638,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
         const s = u.spells.find(x => x.id === e.spell) ?? spell(e.spell);
         if (!same(u, e.cell)) view.face({ x: Math.sign(e.cell.x - u.x), y: Math.sign(e.cell.y - u.y) });
         view.pose('windup', s.id, s.fx);
-        audio.sfx(s.fx === 'shot' ? (u.team === 0 ? 'playerShoot' : 'enemyShoot') : s.fx === 'hack' ? 'hack' : s.fx === 'blast' ? 'swingHeavy' : s.fx === 'buff' || s.fx === 'heal' ? 'special' : 'swing');
+        audio.sfx(s.fx === 'shot' ? (u.team === 0 ? 'playerShoot' : 'enemyShoot') : s.fx === 'hack' ? 'hack' : s.fx === 'blast' ? 'punch' : s.fx === 'slash' ? 'slash' : s.fx === 'wire' ? 'whip' : s.fx === 'jump' ? 'leap' : s.fx === 'buff' || s.fx === 'heal' ? 'special' : 'swing');
         await wait(this, 110);
         view.pose('strike', s.id);
         this.spellFx(u, s, e.cell, e.crit);
@@ -1125,7 +1125,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     this.challengeLost = false;
     const c = this.run.challenges ?? { won: 0, tried: 0 };
     this.run.challenges = { ...c, tried: c.tried + 1 };
-    audio.sfx('buy');
+    audio.sfx('challengePick');
     this.refreshUi();
   }
 
@@ -1141,7 +1141,7 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
     if (!this.challengeLost && challengeFailed(ch, this.ctally)) {
       this.challengeLost = true;
       const t = this.screenText(`DÉFI RATÉ — ${CHALLENGE_BY_ID.get(ch.id)!.name.toUpperCase()}`, 9, '#ff2a6d', 70);
-      audio.sfx('deny');
+      audio.sfx('challengeFail');
       this.tweens.add({ targets: t, alpha: 0, delay: 1400, duration: 500, onComplete: () => t.destroy() });
     }
   }
@@ -1167,12 +1167,12 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       lines.push(offer.length ? 'Un implant rare ou mieux t\'attend : tu en choisis un.' : 'Pas d\'objet cette fois.');
     }
     if (reward.item === 'none') lines.push('Pas d\'objet cette fois.');
-    audio.sfx('credit');
+    audio.sfx('challengeWin');
     this.refreshUi();
     this.panel = new ChoicePanel(this, this.controls, 'Défi réussi', lines.join('\n'),
       [{ label: 'CONTINUER', desc: '', pick: () => undefined }],
       () => { this.panel = undefined; if (offer.length) this.openImplantChoice(offer, next, 'PRIME DE DÉFI — CHOISIS UN IMPLANT'); else next(); },
-      0xf5e663, { code: 'BUTIN // DÉFI', square: relic ? () => relicTexture(this, relic!.id) : undefined });
+      0xf5e663, { code: 'BUTIN // DÉFI', quiet: true, square: relic ? () => relicTexture(this, relic!.id) : undefined });
   }
 
   /** Exits on the back edges, each showing what is behind it. */
@@ -1259,13 +1259,13 @@ ${gifts.join(' · ')}`, 8, '#ff6fb0', 80);
       const lines = [`+${gain}¢ de crédits`];
       if (this.psyOn) { this.run.blockers++; lines.push('+1 neuro-bloqueur'); }
       lines.push(relic ? `Relique ${RELIC_RARITY_NAMES[relic.rarity].toLowerCase()} : ${relic.name}\n${relic.description}` : 'Pas de relique cette fois.');
-      audio.sfx('credit');
+      audio.sfx('chestOpen');
       if (relic) this.grantRelic(relic);
       this.refreshUi();
       // A dialog the player closes, so the contents can be read at leisure.
       this.panel = new ChoicePanel(this, this.controls, 'Coffre ouvert', lines.join('\n'),
         [{ label: 'CONTINUER', desc: '', pick: () => undefined }],
-        () => { this.panel = undefined; this.nextRoom(); }, 0xf5e663, { code: 'BUTIN // COFFRE', square: relic ? () => relicTexture(this, relic!.id) : undefined });
+        () => { this.panel = undefined; this.nextRoom(); }, 0xf5e663, { code: 'BUTIN // COFFRE', quiet: true, square: relic ? () => relicTexture(this, relic!.id) : undefined });
       return;
     }
     const next = this.run.rooms[ri + 1];

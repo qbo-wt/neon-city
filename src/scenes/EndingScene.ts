@@ -118,6 +118,7 @@ export class EndingScene extends Phaser.Scene {
 
   private nextBeat() {
     this.beat++;
+    audio.sfx('endBeat', { pitch: 1 + this.beat * 0.06 });
     this.elapsed = 0;
     this.shown = 0;
     this.drift = 0;
@@ -146,7 +147,7 @@ export class EndingScene extends Phaser.Scene {
     const t = bold(this, W / 2, 47, r.title, 10, T.magenta).setOrigin(0.5).setDepth(14);
     const l = txt(this, W / 2, 59, r.line, 5.5, T.text).setOrigin(0.5).setAlign('center').setWordWrapWidth(pw - 24).setDepth(14);
     this.beatUi.push(p, t, l);
-    audio.sfx('relic');
+    audio.sfx('endUnlock');
   }
 
   /** Who is on screen in this beat, and the camera on them. */
