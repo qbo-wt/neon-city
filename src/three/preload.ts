@@ -1,7 +1,8 @@
+import { assetUrl, setAssetVersions } from './assetUrl';
 import { preloadCharacters } from './characters';
 
 /** public/assets/manifest.json, written by scripts/asset-manifest.mjs. */
-interface Manifest { total: number; files: { path: string; size: number }[] }
+interface Manifest { total: number; files: { path: string; size: number; v?: string }[] }
 
 export interface PreloadStatus {
   /** 0..1 */
@@ -45,6 +46,7 @@ export async function preloadAll(onProgress: (s: PreloadStatus) => void): Promis
   try {
     const r = await fetch('assets/manifest.json', { cache: 'no-cache' });
     if (r.ok) manifest = await r.json() as Manifest;
+    if (manifest) setAssetVersions(manifest.files);
   } catch { /* no manifest: only the avatars are preloaded */ }
   const files = manifest?.files ?? [];
   const total = files.reduce((s, f) => s + f.size, 0);
@@ -59,7 +61,7 @@ export async function preloadAll(onProgress: (s: PreloadStatus) => void): Promis
         const f = files[next++];
         label = groupOf(f.path);
         let got = 0;
-        await drain(f.path, n => { got += n; bytes += n; report(DOWNLOAD_SHARE * bytes / total); }).catch(() => undefined);
+        await drain(assetUrl(f.path), n => { got += n; bytes += n; report(DOWNLOAD_SHARE * bytes / total); }).catch(() => undefined);
         // Size on disk and bytes received can differ (compression): settle on the manifest's size.
         bytes += f.size - got;
         report(DOWNLOAD_SHARE * bytes / total);

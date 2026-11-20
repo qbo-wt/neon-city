@@ -43,6 +43,7 @@ Roguelite tactique cyberpunk au tour par tour (PA/PM, sorts, grille, ligne de vu
 - Les scènes réécrivent leur copie complète de la sauvegarde : un état modifié en cours de scène hors de cette copie doit avoir sa propre clé localStorage (comme `settings.ts`, `tutorial.ts`).
 - Intérieurs : positions en pixels logiques via `at(px, py, h)` ; collisions dans les `blockers` de chaque pièce. Les scènes ambiantes de Capsule repèrent les habitants par l'ordre des `res(...)` dans `BuildingScene` : ne pas les réordonner.
 - Modèles Kenney/KayKit inutilisés supprimés : en récupérer un avec `git checkout 95b5303 -- public/assets/kenney/<kit>/<nom>.glb`, l'ajouter à `DYNAMIC` dans `scripts/prune-kits.mjs` s'il est référencé dynamiquement.
+- Cache : les fichiers de `public/assets` gardent leur nom d'un déploiement à l'autre. Tout téléchargement passe par `assetUrl()` (`src/three/assetUrl.ts`, branché sur `THREE.DefaultLoadingManager`), qui ajoute `?v=<hash>` depuis le manifeste. Un nouveau `fetch` d'asset doit l'utiliser aussi, sinon un ancien navigateur mélange nouveau code et vieux fichiers (T-pose générale). Les bundles Vite sont dans `build/` (cache immuable, `vercel.json`).
 - Nouveau VRM : passer `scripts/slim-vrm.mjs` puis `scripts/compress-vrm.mjs`.
 
 Direction artistique détaillée : `docs/art-direction.md`.

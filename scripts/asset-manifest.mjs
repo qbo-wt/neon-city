@@ -2,7 +2,8 @@
 // in public/assets/manifest.json. The loading screen fetches them all once so the HTTP cache is
 // warm and the 3D scenes build without pop-in. Run by the Vite plugin (dev and build) or by hand:
 //   node scripts/asset-manifest.mjs
-import { readdirSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -23,7 +24,11 @@ export function writeManifest(root = process.cwd()) {
   const pub = resolve(root, 'public');
   const found = [];
   for (const d of DIRS) if (existsSync(join(pub, d))) walk(join(pub, d), found);
-  const files = found.map(f => ({ path: relative(pub, f.path).split('\\').join('/'), size: f.size }));
+  // v: a content hash, appended to the URL by src/three/assetUrl.ts so a changed file is never served stale.
+  const files = found.map(f => ({
+    path: relative(pub, f.path).split('\\').join('/'), size: f.size,
+    v: createHash('sha1').update(readFileSync(f.path)).digest('hex').slice(0, 10),
+  }));
   const manifest = { total: files.reduce((s, f) => s + f.size, 0), files };
   writeFileSync(join(pub, 'assets', 'manifest.json'), JSON.stringify(manifest));
   return manifest;

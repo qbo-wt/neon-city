@@ -4,6 +4,7 @@ import { VRMLoaderPlugin, VRMUtils, type MToonMaterial, type VRM, type VRMHumanB
 import type { AnimName, Rig } from './rigs';
 import { installCyberware } from './cyberware';
 import { LOOK_COLOR } from '../core/ending';
+import { assetUrl } from './assetUrl';
 import { settings } from '../core/settings';
 
 /**
@@ -142,7 +143,7 @@ const files = new Map<string, Promise<ArrayBuffer | null>>();
 function file(name: string) {
   let p = files.get(name);
   if (!p) {
-    p = fetch(`${VRM_BASE}${name}.vrm`).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+    p = fetch(assetUrl(`${VRM_BASE}${name}.vrm`)).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
     files.set(name, p);
   }
   return p;
