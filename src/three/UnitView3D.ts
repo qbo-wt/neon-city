@@ -4,14 +4,34 @@ import { COLORS, CONFIG } from '../config';
 import type { Pt, Unit } from '../tactics/types';
 import { CELL, type World3D } from './World3D';
 import { DroneRig, MannequinRig, PropRig, type AnimName, type Rig } from './rigs';
-import { CAST, CharacterRig } from './characters';
+import { CAST, CharacterRig, type Build } from './characters';
 import { REFLECT_LAYER } from './street/reflect';
 import { disposeTree } from './dispose';
 
 export type PoseKind = 'windup' | 'strike' | 'hurt' | 'charge';
 
-/** Which body animation a spell plays, from its look. */
-const FX_ANIM: Record<string, AnimName> = { slash: 'slash', blast: 'punch', shot: 'shoot', wire: 'slash', hack: 'cast', buff: 'cast', heal: 'cast', jump: 'jump' };
+/**
+ * Which body animation a spell plays: first by spell (the weapon families), then by look and
+ * range. The pack has no rifle, no throw and no whip clip, so those use the nearest gesture.
+ */
+const SPELL_ANIM: Record<string, AnimName> = {
+  // blade: a slash, a lunging jab; mantis blades: quick slashes
+  thrust: 'punch',
+  // titan fists: heavy cross for the uppercut and the wave, a plain jab, a tackle that rolls in
+  uppercut: 'kick', jab: 'punch', shockwave: 'kick', tackle: 'roll',
+  // wire: a flick of the hand to lash or snare, the harpoon is launched like a shot
+  whip: 'cast', garrote: 'cast', web: 'cast', harpoon: 'shoot',
+  // pistol: the roll keeps its distance
+  roll: 'roll', evade: 'roll', guard: 'buff',
+};
+const FX_ANIM: Record<string, AnimName> = { slash: 'slash', blast: 'kick', shot: 'shoot', wire: 'cast', hack: 'hack', buff: 'buff', heal: 'buff', jump: 'jump' };
+function spellAnim(id: string | undefined, fx: string | undefined, ranged: boolean): AnimName {
+  if (id && SPELL_ANIM[id]) return SPELL_ANIM[id];
+  if (fx === 'blast' && ranged) return 'shoot';
+  return FX_ANIM[fx ?? ''] ?? 'slash';
+}
+/** How the enemies move: the runner is quick, the heavy ones swing slowly. */
+const BUILD: Record<string, Build> = { runner: 'light', brute: 'heavy', warden: 'heavy', boss: 'heavy' };
 /** Breakables: the CC0 prop that stands for each kind. */
 const BREAKABLE_MODEL: Record<string, string> = { crate: 'street:crate', barrel: 'street:fuel', trash: 'street:trash', vending: 'street:vending' };
 
@@ -61,6 +81,8 @@ const yawOf = (d: Pt) => Math.atan2(d.x, d.y);
  */
 export class UnitView3D {
   private rig: Rig;
+  /** Fighters with a melee spell wait in a ready stance, the others stand easy. */
+  private stance: AnimName;
   private holder = new THREE.Group();
   private bar: Phaser.GameObjects.Graphics;
   private ring?: THREE.Mesh;
@@ -74,6 +96,7 @@ export class UnitView3D {
 
   constructor(private scene: Phaser.Scene, private world: World3D, readonly unit: Unit, _weaponArt?: string, npcKey?: string) {
     const k = unit.kind;
+    this.stance = unit.team !== 2 && unit.spells.some(s => s.tag === 'melee') ? 'ready' : 'idle';
     if (k === 'drone') this.rig = new DroneRig();
     else if (k === 'pylon') {
       // Psionic relay of the Exécuteur: a dark mast, a violet crystal spinning over it, a halo.
@@ -110,7 +133,7 @@ export class UnitView3D {
       this.rig = new MannequinRig(npcKey ? 'npc' : k);
       // The real character replaces the stand-in as soon as it is loaded (if its files are there).
       const kindKey = npcKey ? 'npc' : k;
-      const real = new CharacterRig(CAST[kindKey] ?? 'res0', kindKey === 'brute' ? 1.2 : kindKey === 'boss' || kindKey === 'warden' ? 1.25 : 1);
+      const real = new CharacterRig(CAST[kindKey] ?? 'res0', kindKey === 'brute' ? 1.2 : kindKey === 'boss' || kindKey === 'warden' ? 1.25 : 1, BUILD[kindKey]);
       void real.ready.then(loaded => {
         if (!loaded || this.dead) return;
         this.holder.remove(this.rig.root);
@@ -118,7 +141,7 @@ export class UnitView3D {
         this.holder.add(real.root);
         this.rig = real;
         inkCharacter(real.root);
-        real.play('idle');
+        real.play(this.stance);
       });
     }
     this.holder.add(this.rig.root);
@@ -153,14 +176,14 @@ export class UnitView3D {
     this.holder.rotation.y = yawOf(d);
   }
 
-  idle() { if (!this.dead) this.rig.play(this.unit.team === 2 ? 'idle' : 'idle'); }
+  idle() { if (!this.dead) this.rig.play(this.stance); }
   rest() { this.idle(); }
 
   pose(kind: PoseKind, spellId?: string, fx?: string) {
     if (this.dead) return;
     if (kind === 'hurt') this.rig.play('hit', true);
     else if (kind === 'charge') this.rig.play('roll', true);
-    else if (kind === 'windup') this.rig.play(FX_ANIM[fx ?? ''] ?? (spellId ? 'slash' : 'slash'), true);
+    else if (kind === 'windup') this.rig.play(spellAnim(spellId, fx, !!spellId && this.unit.spells.some(s => s.id === spellId && s.tag === 'ranged')), true);
   }
 
   /** Tweens the holder between points (world metres). */
@@ -257,7 +280,7 @@ export class UnitView3D {
     this.holder.add(this.aura);
     // New posture: a flash of the phase colour and a power-up gesture.
     this.rig.flash(color);
-    this.rig.play('cast', true);
+    this.rig.play('buff', true);
   }
 
   /** A glowing ring at the feet of the unit whose turn it is. */
