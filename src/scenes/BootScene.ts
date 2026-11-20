@@ -4,7 +4,7 @@ import { generateTextures } from '../gfx/generateTextures';
 import { setupCamera } from '../ui/camera';
 import { LoadingScreen } from '../ui/LoadingScreen';
 import { wipeTo } from '../ui/transition';
-import { preloadAll } from '../three/preload';
+import { preloadAll, preloadRest } from '../three/preload';
 
 /** Shortest time the loading screen stays up, so it never just flashes. */
 const MIN_MS = 1600;
@@ -28,7 +28,7 @@ export class BootScene extends Phaser.Scene {
       const mb = (n: number) => (n / 1048576).toFixed(1).replace('.', ',');
       void preloadAll(s => screen.setProgress(s.progress, s.label, s.total ? `${mb(s.bytes)} / ${mb(s.total)} Mo` : '')).then(() => {
         const wait = Math.max(0, MIN_MS - (this.time.now - t0));
-        this.time.delayedCall(wait, () => this.whenShown(() => { if (this.scene.isActive()) wipeTo(this, SCENES.Menu); }));
+        this.time.delayedCall(wait, () => this.whenShown(() => { if (this.scene.isActive()) { preloadRest(); wipeTo(this, SCENES.Menu); } }));
       });
     });
   }

@@ -24,6 +24,14 @@ export const CAST: Record<string, string> = {
 /** Everyone, for the preloader. */
 export const ALL_AVATARS = ['hero', 'lo', 'doc', 'nyx', 'runner', 'gunner', 'brute', 'bomber', 'hacker', 'warden', 'boss', ...Array.from({ length: 10 }, (_, i) => `res${i}`)];
 
+/** The avatars the menu scene shows: downloaded behind the loading bar. */
+export const MENU_AVATARS = ['hero', 'runner', 'hacker', 'res3', 'res6'];
+/**
+ * Everyone else, fetched in the background once the menu is up, in the order the player needs them:
+ * the apartment and corridor, the first sector's enemies, then the rest.
+ */
+export const BACKGROUND_AVATARS = ['lo', 'doc', 'gunner', 'brute', 'bomber', 'nyx', 'res0', 'res1', 'res2', 'res4', 'res5', 'res7', 'res8', 'res9', 'warden', 'boss'];
+
 /** Which clip of the Quaternius pack plays each role. Roles without their own clip share the nearest one. */
 const ROLE_CLIP: Record<AnimName, string> = {
   idle: 'Idle_Loop_Easy', walk: 'Walk_Loop', jog: 'Jog_Fwd_Loop', ready: 'Idle_Loop_Easy', // Sword_Idle squats on the VRM proportions: it read as sitting on air
@@ -140,18 +148,36 @@ function retarget(m: Motion, vrm: VRM): THREE.AnimationClip {
 
 /** Raw files, fetched once; each character parses its own copy (a VRM cannot be cloned). */
 const files = new Map<string, Promise<ArrayBuffer | null>>();
-function file(name: string) {
+function file(name: string, onBytes?: (n: number) => void) {
   let p = files.get(name);
   if (!p) {
-    p = fetch(assetUrl(`${VRM_BASE}${name}.vrm`)).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+    p = fetch(assetUrl(`${VRM_BASE}${name}.vrm`)).then(async r => {
+      if (!r.ok) return null;
+      if (!onBytes || !r.body) return r.arrayBuffer();
+      // Streamed so the loading bar moves with the bytes.
+      const parts: Uint8Array[] = [];
+      const reader = r.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value); onBytes(value.byteLength);
+      }
+      const out = new Uint8Array(parts.reduce((n, c) => n + c.byteLength, 0));
+      let at = 0;
+      for (const c of parts) { out.set(c, at); at += c.byteLength; }
+      return out.buffer as ArrayBuffer;
+    }).catch(() => null);
     files.set(name, p);
   }
   return p;
 }
 
-/** Fetches every avatar and the animation clips (the loading screen waits on this). */
+/** Downloads one avatar file into the shared cache (no parsing), reporting the bytes as they arrive. */
+export function warmAvatar(name: string, onBytes?: (n: number) => void) { return file(name, onBytes); }
+
+/** Parses the animation clips (the loading screen waits on this; the avatar files are already in the cache). */
 export function preloadCharacters(onProgress?: (done: number, total: number) => void) {
-  const jobs: Promise<unknown>[] = [...ALL_AVATARS.map(file), loadMotions()];
+  const jobs: Promise<unknown>[] = [...MENU_AVATARS.map(a => file(a)), loadMotions()];
   let done = 0;
   return Promise.all(jobs.map(j => j.finally(() => onProgress?.(++done, jobs.length))));
 }
