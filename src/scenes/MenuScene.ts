@@ -3,6 +3,7 @@ import { CONFIG, SCENES } from '../config';
 import { txt } from '../ui/text';
 import { setupCamera } from '../ui/camera';
 import { HelpOverlay } from '../ui/HelpOverlay';
+import { CreditsPanel } from '../ui/CreditsPanel';
 import { Button, C, GlitchText, T, bold, chip, hints, scanlines, skewPoly, stripes } from '../ui/kit';
 import { wipeTo } from '../ui/transition';
 import { FineRain, Skyline } from '../ui/cityArt';
@@ -24,6 +25,7 @@ export class MenuScene extends Phaser.Scene {
   private built = false;
   private play?: Button;
   private help?: HelpOverlay;
+  private credits?: CreditsPanel;
   private sky?: Skyline;
   private rain?: FineRain;
 
@@ -90,21 +92,24 @@ export class MenuScene extends Phaser.Scene {
     txt(this, 30, 121, 'Plus de chrome. Moins d\'humain.', 9, T.yellow).setOrigin(0, 0.5);
 
     this.play = new Button(this, 30, 148, 150, 22, 'JOUER', { accent: C.yellow, solid: true, key: 'ENTRÉE', size: 14, hoverSfx: true, onClick: () => this.start() });
-    const help = new HelpOverlay(this, undefined, undefined, 'hub', () => !this.started);
+    const help = new HelpOverlay(this, undefined, undefined, 'hub', () => !this.started && !this.credits?.isOpen);
     new Button(this, 30, 176, 150, 16, 'COMMANDES', { accent: C.cyan, key: 'I', size: 9, hoverSfx: true, onClick: () => help.toggle() });
     new Button(this, 30, 196, 150, 16, 'GUIDE DU RUNNER', { accent: C.magenta, size: 9, hoverSfx: true, onClick: () => help.openGuide() });
     new Button(this, 30, 216, 150, 16, 'OPTIONS', { accent: C.cyan, key: 'ÉCHAP', size: 9, hoverSfx: true, onClick: () => help.openOptions() });
     this.help = help;
+    const credits = new CreditsPanel(this);
+    this.credits = credits;
+    new Button(this, 30, 236, 150, 16, 'CRÉDITS', { accent: C.violet, size: 9, hoverSfx: true, onClick: () => { if (!help.isOpen) credits.open(); } });
     this.input.keyboard!.on('keydown-ENTER', () => this.start());
     hints(this, 0, H - 14, [['ENTRÉE', 'Jouer'], ['I', 'Commandes'], ['ÉCHAP', 'Options'], ['M', 'Son']], C.yellow).setX(30);
-    txt(this, W - 26, H - 14, 'Avatars VIPE Heroes (CC-BY) · décors Kenney & KayKit (CC0)', 5, T.off).setOrigin(1, 0.5);
+    txt(this, W - 26, H - 14, 'Avatars VIPE Heroes / Polygonal Mind (CC-BY) · décors Kenney & KayKit (CC0)', 5, T.off).setOrigin(1, 0.5);
 
     audio.setMusic('hub');
   }
 
   private started = false;
   private start() {
-    if (this.started || this.help?.isOpen) return;
+    if (this.started || this.help?.isOpen || this.credits?.isOpen) return;
     this.started = true;
     audio.sfx('uiOpen');
     this.play?.setCardState('sel');
